@@ -5,7 +5,7 @@ source /opt/quiz_project/scripts/check_db.sh
 APP_DIR="/opt/quiz_project"
 BIN="$APP_DIR/_build/prod/rel/quiz_project/bin/quiz_project"
 PORT=4005
-PHX_HOST="quiz-project.alissonmachado.dev"
+PHX_HOST="quizzes.alissonmachado.dev"
 
 get_param() {
   aws ssm get-parameter --name "$1" --with-decryption --query Parameter.Value --output text
