@@ -12,7 +12,7 @@
     <div class="flex justify-center gap-3 flex-wrap">
       <%= if assigns[:current_user] do %>
         <.link navigate={~p"/painel"} class="btn btn-primary btn-lg rounded-full">
-          Ir para o painel
+          Acessar meus quizzes
         </.link>
       <% else %>
         <.link navigate={~p"/criar-conta"} class="btn btn-primary btn-lg rounded-full">

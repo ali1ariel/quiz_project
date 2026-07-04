@@ -94,5 +94,51 @@ defmodule QuizProject.AccountsTest do
       assert {:ok, raw_token, _record} = Accounts.issue_api_token(user, %{expires_at: expires_at})
       assert :error = Accounts.authenticate_api_token(raw_token)
     end
+
+    test "lista e revoga somente tokens do próprio usuário", %{user: user} do
+      {:ok, _raw_token, token} = Accounts.issue_api_token(user, %{name: "Meu token"})
+
+      {:ok, other} =
+        Accounts.register_user(%{email: "outro-api@teste.com", password: "senha12345"},
+          authorize?: false
+        )
+
+      assert [listed] = Accounts.list_api_tokens(user)
+      assert listed.id == token.id
+      assert {:error, :not_found} = Accounts.revoke_api_token(token.id, other)
+      assert {:ok, revoked} = Accounts.revoke_api_token(token.id, user)
+      assert revoked.id == token.id
+      assert Accounts.list_api_tokens(user) == []
+    end
+  end
+
+  describe "configurações da conta" do
+    setup do
+      {:ok, user} =
+        Accounts.register_user(
+          %{email: "perfil@teste.com", name: "Nome antigo", password: "senha12345"},
+          authorize?: false
+        )
+
+      %{user: user}
+    end
+
+    test "atualiza nome e e-mail", %{user: user} do
+      assert {:ok, updated} =
+               Accounts.update_profile(user, %{name: "Nome novo", email: "novo@teste.com"})
+
+      assert updated.name == "Nome novo"
+      assert to_string(updated.email) == "novo@teste.com"
+    end
+
+    test "troca senha somente com a senha atual correta", %{user: user} do
+      assert {:error, %Ash.Error.Invalid{}} =
+               Accounts.change_password(user, "senha-errada", "nova-senha-123")
+
+      assert {:ok, updated} = Accounts.change_password(user, "senha12345", "nova-senha-123")
+      assert :error = User.authenticate("perfil@teste.com", "senha12345")
+      assert {:ok, authenticated} = User.authenticate("perfil@teste.com", "nova-senha-123")
+      assert authenticated.id == updated.id
+    end
   end
 end

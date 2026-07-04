@@ -41,6 +41,54 @@ defmodule QuizProject.Accounts.User do
         end
       end
     end
+
+    update :update_profile do
+      accept [:email, :name]
+
+      validate match(:email, ~r/^[^\s@]+@[^\s@]+\.[^\s@]+$/), message: "e-mail inválido"
+    end
+
+    update :change_password do
+      accept []
+      argument :current_password, :string, allow_nil?: false, sensitive?: true
+      argument :password, :string, allow_nil?: false, sensitive?: true
+      require_atomic? false
+
+      validate fn changeset, _ ->
+        current_password = Ash.Changeset.get_argument(changeset, :current_password)
+
+        if is_binary(current_password) and
+             Bcrypt.verify_pass(current_password, changeset.data.hashed_password) do
+          :ok
+        else
+          {:error, field: :current_password, message: "senha atual incorreta"}
+        end
+      end
+
+      validate fn changeset, _ ->
+        password = Ash.Changeset.get_argument(changeset, :password)
+
+        if is_binary(password) and String.length(password) >= 8 do
+          :ok
+        else
+          {:error, field: :password, message: "nova senha deve ter pelo menos 8 caracteres"}
+        end
+      end
+
+      change fn changeset, _ ->
+        case Ash.Changeset.get_argument(changeset, :password) do
+          password when is_binary(password) ->
+            Ash.Changeset.force_change_attribute(
+              changeset,
+              :hashed_password,
+              Bcrypt.hash_pwd_salt(password)
+            )
+
+          _ ->
+            changeset
+        end
+      end
+    end
   end
 
   attributes do

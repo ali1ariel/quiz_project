@@ -80,6 +80,7 @@ defmodule QuizProjectWeb.Router do
     live_session :authenticated,
       on_mount: [{QuizProjectWeb.UserAuth, :ensure_authenticated}] do
       live "/painel", DashboardLive
+      live "/configuracoes", SettingsLive
       live "/quiz/:version_id/editar", QuizEditorLive
       live "/quiz/:quiz_id/gerenciar", QuizManageLive
     end

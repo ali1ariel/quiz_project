@@ -65,7 +65,47 @@ defmodule QuizProject.Accounts do
     Ash.destroy(token, authorize?: false)
   end
 
+  def revoke_api_token(token_id, %{id: user_id}) when is_binary(token_id) do
+    case Ash.get(ApiToken, token_id, authorize?: false) do
+      {:ok, %ApiToken{user_id: ^user_id} = token} ->
+        case Ash.destroy(token, authorize?: false) do
+          :ok -> {:ok, token}
+          {:ok, _destroyed} -> {:ok, token}
+          {:error, error} -> {:error, error}
+        end
+
+      _ ->
+        {:error, :not_found}
+    end
+  end
+
   def revoke_api_token(_token, _user), do: {:error, :unauthorized}
+
+  @doc "Lista os tokens de API do usuário, sem expor os hashes."
+  def list_api_tokens(%{id: user_id}) do
+    ApiToken
+    |> Ash.Query.filter(user_id == ^user_id)
+    |> Ash.Query.sort(inserted_at: :desc)
+    |> Ash.read!(authorize?: false)
+  end
+
+  @doc "Atualiza nome e e-mail do usuário."
+  def update_profile(user, attrs) do
+    user
+    |> Ash.Changeset.for_update(:update_profile, attrs, authorize?: false)
+    |> Ash.update()
+  end
+
+  @doc "Troca a senha após validar a senha atual."
+  def change_password(user, current_password, new_password) do
+    user
+    |> Ash.Changeset.for_update(
+      :change_password,
+      %{current_password: current_password, password: new_password},
+      authorize?: false
+    )
+    |> Ash.update()
+  end
 
   defp hash_token(token) do
     :crypto.hash(:sha256, token)

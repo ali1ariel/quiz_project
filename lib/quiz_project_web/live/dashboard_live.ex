@@ -6,7 +6,7 @@ defmodule QuizProjectWeb.DashboardLive do
 
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_user={@current_user} wide>
+    <Layouts.app flash={@flash} current_user={@current_user} active_nav={:quizzes} wide>
       <div class="flex flex-wrap items-center justify-between gap-3">
         <h1 class="text-2xl font-bold">Meus quizzes</h1>
         <div class="flex gap-2">

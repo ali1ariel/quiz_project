@@ -31,65 +31,99 @@ defmodule QuizProjectWeb.Layouts do
 
   attr :wide, :boolean, default: false, doc: "usa container largo para telas densas"
 
+  attr :active_nav, :atom,
+    default: nil,
+    doc: "destino principal ativo: :quizzes ou :account"
+
   slot :inner_block, required: true
 
   def app(assigns) do
     ~H"""
-    <header class="navbar px-4 sm:px-6 lg:px-8 border-b border-base-300 min-h-14 gap-2">
+    <header class="navbar relative px-4 sm:px-6 lg:px-8 border-b border-base-300 min-h-14 gap-2">
       <div class="flex-1 min-w-0">
         <.link navigate={~p"/"} class="flex w-fit items-center gap-2 font-bold text-lg">
           <span class="inline-flex items-center justify-center size-8 rounded-full bg-primary text-primary-content text-sm shrink-0">
             Q
           </span>
-          Quizzes
+          <span class="md:hidden lg:inline">Quizzes</span>
         </.link>
       </div>
 
       <%!-- navegação completa (desktop) --%>
-      <nav class="hidden md:block flex-none">
-        <ul class="flex px-1 gap-2 items-center">
-          <%= if @current_user do %>
-            <li class="hidden lg:block text-sm opacity-70 mr-1 max-w-48 truncate">
-              {@current_user.email}
-            </li>
-            <li>
-              <.link navigate={~p"/painel"} class="btn btn-ghost btn-sm rounded-full">Painel</.link>
-            </li>
-            <li>
-              <.link href={~p"/sair"} method="delete" class="btn btn-outline btn-sm rounded-full">
-                Sair
-              </.link>
-            </li>
-          <% else %>
-            <li>
-              <.link navigate={~p"/entrar"} class="btn btn-ghost btn-sm rounded-full">Entrar</.link>
-            </li>
-            <li>
-              <.link navigate={~p"/criar-conta"} class="btn btn-primary btn-sm rounded-full">
-                Criar conta
-              </.link>
-            </li>
-          <% end %>
-          <li>
-            <.link href={~p"/api/docs"} class="btn btn-ghost btn-sm rounded-full">API</.link>
-          </li>
-          <li>
-            <label class="sr-only" for="skin-select">Estilo visual</label>
-            <select
-              id="skin-select"
-              data-skin-select
-              phx-update="ignore"
-              class="select select-sm rounded-full w-auto"
-              title="Estilo visual"
-            >
-              <option value="tatil">Tátil 3D</option>
-              <option value="sobrio">Sóbrio</option>
-              <option value="classico">Clássico</option>
-            </select>
-          </li>
-          <li><.theme_toggle /></li>
-        </ul>
+      <nav
+        :if={@current_user}
+        id="desktop-primary-nav"
+        class="absolute left-1/2 hidden -translate-x-1/2 items-center gap-2 md:flex"
+        aria-label="Navegação principal"
+      >
+        <%= if @active_nav == :quizzes do %>
+          <span
+            id="desktop-nav-quizzes"
+            aria-current="page"
+            class="inline-flex cursor-default items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-content shadow-sm"
+            title="Você está em Meus quizzes"
+          >
+            <.icon name="hero-rectangle-stack" class="size-4" /> Meus quizzes
+          </span>
+        <% else %>
+          <.link
+            id="desktop-nav-quizzes"
+            navigate={~p"/painel"}
+            class="inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold opacity-65 transition hover:bg-base-200 hover:opacity-100"
+            title="Criar, editar e acompanhar seus quizzes"
+          >
+            <.icon name="hero-rectangle-stack" class="size-4" /> Meus quizzes
+          </.link>
+        <% end %>
+
+        <%= if @active_nav == :account do %>
+          <span
+            id="desktop-nav-account"
+            aria-current="page"
+            class="inline-flex cursor-default items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-content shadow-sm"
+            title="Você está em Conta e API"
+          >
+            <.icon name="hero-user-circle" class="size-4" /> Conta e API
+          </span>
+        <% else %>
+          <.link
+            id="desktop-nav-account"
+            navigate={~p"/configuracoes"}
+            class="inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold opacity-65 transition hover:bg-base-200 hover:opacity-100"
+            title="Alterar perfil, senha e tokens de integração"
+          >
+            <.icon name="hero-user-circle" class="size-4" /> Conta e API
+          </.link>
+        <% end %>
       </nav>
+
+      <%!-- conta e aparência (desktop) --%>
+      <div class="hidden flex-none items-center justify-end gap-2 md:flex">
+        <%= if @current_user do %>
+          <span class="hidden max-w-44 truncate text-sm opacity-65 xl:block">
+            {@current_user.email}
+          </span>
+          <.link
+            id="desktop-logout"
+            href={~p"/sair"}
+            method="delete"
+            class="rounded-full border border-base-300 px-4 py-2 text-sm font-semibold transition hover:border-error/40 hover:bg-error/10 hover:text-error"
+          >
+            Sair
+          </.link>
+        <% else %>
+          <.link navigate={~p"/entrar"} class="rounded-full px-4 py-2 text-sm font-semibold">
+            Entrar
+          </.link>
+          <.link
+            navigate={~p"/criar-conta"}
+            class="rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-content"
+          >
+            Criar conta
+          </.link>
+        <% end %>
+        <.appearance_control />
+      </div>
 
       <%!-- menu compacto (mobile) --%>
       <details class="dropdown dropdown-end md:hidden flex-none" id="mobile-menu">
@@ -100,8 +134,31 @@ defmodule QuizProjectWeb.Layouts do
           <div class="space-y-2">
             <%= if @current_user do %>
               <p class="text-xs opacity-60 truncate px-1">{@current_user.email}</p>
-              <.link navigate={~p"/painel"} class="btn btn-outline btn-sm w-full rounded-full">
-                Painel
+              <.link
+                navigate={~p"/painel"}
+                class="flex items-center gap-3 rounded-2xl border border-base-300 px-3 py-2.5 transition hover:border-primary hover:bg-base-100"
+              >
+                <span class="grid size-9 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+                  <.icon name="hero-rectangle-stack" class="size-4" />
+                </span>
+                <span class="min-w-0 text-left">
+                  <span class="block text-sm font-semibold">Meus quizzes</span>
+                  <span class="block truncate text-[0.68rem] opacity-55">
+                    Criar, editar e acompanhar
+                  </span>
+                </span>
+              </.link>
+              <.link
+                navigate={~p"/configuracoes"}
+                class="flex items-center gap-3 rounded-2xl border border-transparent px-3 py-2.5 transition hover:border-base-300 hover:bg-base-100"
+              >
+                <span class="grid size-9 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+                  <.icon name="hero-user-circle" class="size-4" />
+                </span>
+                <span class="min-w-0 text-left">
+                  <span class="block text-sm font-semibold">Conta e API</span>
+                  <span class="block truncate text-[0.68rem] opacity-55">Perfil, senha e tokens</span>
+                </span>
               </.link>
               <.link
                 href={~p"/sair"}
@@ -122,7 +179,7 @@ defmodule QuizProjectWeb.Layouts do
               </.link>
             <% end %>
             <.link href={~p"/api/docs"} class="btn btn-ghost btn-sm w-full rounded-full">
-              Documentação da API
+              Docs para desenvolvedores
             </.link>
           </div>
 
@@ -155,6 +212,45 @@ defmodule QuizProjectWeb.Layouts do
     </main>
 
     <.flash_group flash={@flash} />
+    """
+  end
+
+  @doc "Controle compacto de aparência que se expande horizontalmente."
+  def appearance_control(assigns) do
+    ~H"""
+    <div
+      id="appearance-control"
+      class="group relative h-10 w-10 shrink-0 overflow-hidden rounded-full transition-[width] duration-300 ease-out hover:w-[16rem] focus-within:w-[16rem]"
+    >
+      <div class="absolute inset-y-0 right-0 flex w-[16rem] flex-row-reverse items-center gap-2 rounded-full border border-base-300 bg-base-100 p-1 shadow-sm">
+        <button
+          id="appearance-trigger"
+          type="button"
+          class="grid size-8 shrink-0 place-items-center rounded-full text-base-content/65 transition group-hover:bg-primary/10 group-hover:text-primary group-focus-within:bg-primary/10 group-focus-within:text-primary"
+          aria-label="Abrir controles de aparência"
+          title="Aparência"
+        >
+          <.icon name="hero-swatch" class="size-5" />
+        </button>
+
+        <div class="invisible flex min-w-0 flex-1 items-center justify-end gap-2 opacity-0 transition-opacity duration-200 group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100">
+          <label class="sr-only" for="skin-select">Estilo visual</label>
+          <select
+            id="skin-select"
+            data-skin-select
+            phx-update="ignore"
+            class="h-8 w-24 rounded-full border border-base-300 bg-base-100 px-2 text-xs font-medium outline-none transition focus:border-primary"
+            title="Estilo visual"
+          >
+            <option value="tatil">Tátil 3D</option>
+            <option value="sobrio">Sóbrio</option>
+            <option value="classico">Clássico</option>
+          </select>
+          <span class="h-5 w-px bg-base-300"></span>
+          <.theme_toggle />
+        </div>
+      </div>
+    </div>
     """
   end
 
@@ -221,6 +317,8 @@ defmodule QuizProjectWeb.Layouts do
         class="flex p-2 cursor-pointer w-1/3"
         phx-click={JS.dispatch("phx:set-theme")}
         data-phx-theme="system"
+        aria-label="Usar tema do sistema"
+        title="Sistema"
       >
         <.icon name="hero-computer-desktop-micro" class="size-4 opacity-75 hover:opacity-100" />
       </button>
@@ -229,6 +327,8 @@ defmodule QuizProjectWeb.Layouts do
         class="flex p-2 cursor-pointer w-1/3"
         phx-click={JS.dispatch("phx:set-theme")}
         data-phx-theme="light"
+        aria-label="Usar tema claro"
+        title="Claro"
       >
         <.icon name="hero-sun-micro" class="size-4 opacity-75 hover:opacity-100" />
       </button>
@@ -237,6 +337,8 @@ defmodule QuizProjectWeb.Layouts do
         class="flex p-2 cursor-pointer w-1/3"
         phx-click={JS.dispatch("phx:set-theme")}
         data-phx-theme="dark"
+        aria-label="Usar tema escuro"
+        title="Escuro"
       >
         <.icon name="hero-moon-micro" class="size-4 opacity-75 hover:opacity-100" />
       </button>

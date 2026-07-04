@@ -14,6 +14,9 @@ defmodule QuizProjectWeb.DashboardLiveTest do
     assert has_element?(view, "#tab-answered")
     assert has_element?(view, "#create-quiz")
     assert has_element?(view, "#open-import")
+    assert has_element?(view, "span#desktop-nav-quizzes[aria-current=page]")
+    assert has_element?(view, "a#desktop-nav-account")
+    assert has_element?(view, "#appearance-control")
   end
 
   test "criar quiz navega para o editor do rascunho", %{conn: conn} do
