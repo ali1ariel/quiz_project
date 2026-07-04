@@ -272,6 +272,26 @@ defmodule QuizProjectWeb.DashboardLive do
               todas as regras e um exemplo para gerar o quiz já no formato aceito.
             </p>
 
+            <div
+              id="import-api-docs-hint"
+              class="mb-4 flex items-start gap-3 rounded-xl border border-primary/25 bg-primary/5 p-3 text-xs leading-5"
+            >
+              <.icon name="hero-sparkles" class="mt-0.5 size-4 shrink-0 text-primary" />
+              <p>
+                Para importar direto pela IA, confira também nossa
+                <.link
+                  id="import-api-docs-link"
+                  href={~p"/api/docs#usar-com-ia"}
+                  target="_blank"
+                  rel="noreferrer"
+                  class="font-semibold text-primary underline decoration-primary/35 underline-offset-2 hover:decoration-primary"
+                >
+                  documentação da API
+                </.link>
+                e envie esse link para ela consultar antes de iniciar a importação.
+              </p>
+            </div>
+
             <div :if={@import_errors != []} class="alert alert-error rounded-xl mb-3 text-sm">
               <ul class="list-disc list-inside">
                 <li :for={error <- @import_errors}>{error}</li>

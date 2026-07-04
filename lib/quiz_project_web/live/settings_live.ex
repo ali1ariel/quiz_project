@@ -182,7 +182,10 @@ defmodule QuizProjectWeb.SettingsLive do
                       mostrado uma única vez.
                     </p>
                     <.link
+                      id="token-api-docs-link"
                       href={~p"/api/docs"}
+                      target="_blank"
+                      rel="noreferrer"
                       class="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
                     >
                       Abrir documentação da API <.icon name="hero-arrow-up-right" class="size-3.5" />
@@ -329,20 +332,25 @@ defmodule QuizProjectWeb.SettingsLive do
   end
 
   @impl true
-  def mount(_params, _session, socket) do
+  def mount(params, _session, socket) do
     user = socket.assigns.current_user
     tokens = Accounts.list_api_tokens(user)
 
     {:ok,
      socket
      |> assign(:page_title, "Conta e API - Quizzes")
-     |> assign(:tab, "profile")
+     |> assign(:tab, tab_from_params(params))
      |> assign(:profile_form, profile_form(user))
      |> assign(:password_form, password_form())
      |> assign(:token_form, token_form())
      |> assign(:new_token, nil)
      |> assign(:token_count, length(tokens))
      |> stream(:api_tokens, tokens, dom_id: &"api-token-#{&1.id}")}
+  end
+
+  @impl true
+  def handle_params(params, _uri, socket) do
+    {:noreply, assign(socket, :tab, tab_from_params(params))}
   end
 
   @impl true
@@ -446,6 +454,9 @@ defmodule QuizProjectWeb.SettingsLive do
   end
 
   defp token_form, do: to_form(%{"name" => ""}, as: :token)
+
+  defp tab_from_params(%{"tab" => tab}) when tab in @tabs, do: tab
+  defp tab_from_params(_params), do: "profile"
 
   defp blank_to_nil(nil), do: nil
 

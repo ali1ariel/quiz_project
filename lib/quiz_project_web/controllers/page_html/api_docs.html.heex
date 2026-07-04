@@ -27,6 +27,12 @@
           >
             Ver endpoints
           </a>
+          <a
+            href="#usar-com-ia"
+            class="rounded-full border border-base-300 px-5 py-2.5 font-semibold transition hover:border-primary hover:text-primary"
+          >
+            Usar com IA
+          </a>
         </div>
       </div>
     </section>
@@ -46,20 +52,79 @@
       </div>
     </section>
 
+    <section
+      id="usar-com-ia"
+      class="scroll-mt-6 overflow-hidden rounded-3xl border border-primary/25 bg-primary/5 p-6 sm:p-8"
+    >
+      <div class="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
+        <div class="max-w-2xl">
+          <p class="text-sm font-semibold text-primary">Usar com IA</p>
+          <h2 class="mt-1 text-2xl font-bold">Envie esta documentação para sua IA</h2>
+          <p class="mt-3 leading-7 opacity-75">
+            Ao pedir que uma IA crie ou importe quizzes, envie o link desta página e peça que
+            ela consulte os endpoints, a autenticação e o contrato JSON antes de agir.
+            Compartilhe o token somente em uma ferramenta confiável e nunca em conversas públicas.
+          </p>
+        </div>
+        <div class="shrink-0 rounded-2xl bg-base-100 p-4 shadow-sm">
+          <p class="text-xs font-semibold uppercase tracking-[0.16em] opacity-55">
+            Link para compartilhar
+          </p>
+          <code id="api-docs-public-url" class="mt-2 block break-all text-sm text-primary">
+            {url(~p"/api/docs")}
+          </code>
+        </div>
+      </div>
+      <div id="api-ai-prompt" class="mt-6 rounded-2xl border border-base-300 bg-base-100 p-5">
+        <p class="text-xs font-semibold uppercase tracking-[0.16em] opacity-55">
+          Prompt sugerido
+        </p>
+        <p class="mt-2 text-sm leading-6">
+          Consulte <code>{url(~p"/api/docs")}</code> antes de continuar. Siga a API v1 e use o
+          endpoint de importação descrito na documentação.
+        </p>
+      </div>
+    </section>
+
     <section id="autenticacao" class="scroll-mt-6 space-y-5">
       <div>
         <p class="text-sm font-semibold text-primary">01 · Autenticação</p>
-        <h2 class="mt-1 text-2xl font-bold">Emita um token</h2>
+        <h2 class="mt-1 text-2xl font-bold">Gere um token de acesso</h2>
         <p class="mt-2 max-w-3xl leading-7 opacity-70">
-          Envie suas credenciais uma vez. O token retornado só é exibido nessa resposta; guarde-o
-          como segredo e envie-o no header Authorization das próximas chamadas.
+          A forma recomendada é gerar o token pela sua conta. Ele é exibido uma única vez:
+          copie-o, guarde-o como segredo e envie-o no header Authorization das chamadas seguintes.
+        </p>
+      </div>
+      <div
+        id="token-via-settings"
+        class="flex flex-col gap-4 rounded-2xl border border-primary/30 bg-primary/5 p-5 sm:flex-row sm:items-center sm:justify-between"
+      >
+        <div>
+          <h3 class="font-bold">Pela interface da conta — recomendado</h3>
+          <p class="mt-1 text-sm leading-6 opacity-70">
+            Entre na sua conta, abra Configurações, selecione Tokens e crie uma credencial para
+            sua integração ou agente de IA.
+          </p>
+        </div>
+        <.link
+          id="api-docs-open-token-settings"
+          href={~p"/configuracoes?tab=tokens"}
+          class="inline-flex shrink-0 items-center justify-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-primary-content transition hover:-translate-y-0.5"
+        >
+          Abrir configurações <.icon name="hero-arrow-right" class="size-4" />
+        </.link>
+      </div>
+      <div>
+        <h3 class="font-bold">Alternativa programática</h3>
+        <p class="mt-1 text-sm leading-6 opacity-70">
+          Em um cliente sob seu controle, também é possível emitir o token diretamente pela API.
         </p>
       </div>
       <div class="overflow-hidden rounded-2xl border border-base-300 bg-neutral text-neutral-content">
         <div class="flex items-center justify-between border-b border-white/10 px-5 py-3 text-xs opacity-70">
           <span>Emitir token</span><span>POST /api/v1/auth/tokens</span>
         </div>
-        <pre class="overflow-x-auto p-5 text-sm leading-6"><code phx-no-curly-interpolation>curl -X POST http://localhost:4000/api/v1/auth/tokens \
+        <pre class="overflow-x-auto p-5 text-sm leading-6"><code phx-no-curly-interpolation>curl -X POST <%= url(~p"/api/v1/auth/tokens") %> \
   -H 'Content-Type: application/json' \
   -d '{
     "email": "voce@exemplo.com",
@@ -68,153 +133,746 @@
   }'</code></pre>
       </div>
       <div class="overflow-hidden rounded-2xl border border-base-300 bg-neutral text-neutral-content">
+        <div class="border-b border-white/10 px-5 py-3 text-xs opacity-70">
+          Resposta · 201 Created
+        </div>
+        <pre class="overflow-x-auto p-5 text-sm leading-6"><code phx-no-curly-interpolation>{
+  "data": {
+    "id": "UUID_DO_TOKEN",
+    "name": "Meu agente",
+    "token": "quiz_SEGREDO_EXIBIDO_UMA_VEZ",
+    "token_type": "Bearer",
+    "scopes": ["quizzes:read", "quizzes:write", "quizzes:publish"],
+    "expires_at": null
+  }
+}</code></pre>
+      </div>
+      <div class="overflow-hidden rounded-2xl border border-base-300 bg-neutral text-neutral-content">
         <div class="border-b border-white/10 px-5 py-3 text-xs opacity-70">Usar o token</div>
-        <pre class="overflow-x-auto p-5 text-sm leading-6"><code phx-no-curly-interpolation>curl http://localhost:4000/api/v1/quizzes \
+        <pre class="overflow-x-auto p-5 text-sm leading-6"><code phx-no-curly-interpolation>curl <%= url(~p"/api/v1/quizzes") %> \
   -H 'Authorization: Bearer quiz_SEU_TOKEN'</code></pre>
       </div>
+      <.api_fields title="Escopos emitidos por padrão">
+        <:field name="quizzes:read" type="scope" presence="Leitura">
+          Consulta quizzes, versões e valida rascunhos.
+        </:field>
+        <:field name="quizzes:write" type="scope" presence="Escrita">
+          Cria, importa e altera quizzes, rascunhos, questões e alternativas.
+        </:field>
+        <:field name="quizzes:publish" type="scope" presence="Publicação">
+          Publica uma versão validada. Todos os tokens criados atualmente recebem os três escopos.
+        </:field>
+      </.api_fields>
       <p class="rounded-2xl border border-warning/40 bg-warning/10 p-4 text-sm leading-6">
-        Para revogar o token atual, envie <code>DELETE /api/v1/auth/token</code>
-        com o mesmo header
-        Authorization.
+        Revogue tokens pela tela de Configurações ou envie <code>DELETE /api/v1/auth/token</code>
+        com o mesmo header Authorization.
       </p>
     </section>
 
-    <section id="endpoints" class="scroll-mt-6 space-y-5">
+    <section id="contratos" class="scroll-mt-6 space-y-6">
       <div>
-        <p class="text-sm font-semibold text-primary">02 · Referência</p>
-        <h2 class="mt-1 text-2xl font-bold">Endpoints</h2>
-      </div>
-      <div class="overflow-hidden rounded-2xl border border-base-300">
-        <div class="overflow-x-auto">
-          <table class="w-full min-w-[720px] text-left text-sm">
-            <thead class="bg-base-200 text-xs uppercase tracking-wider opacity-70">
-              <tr>
-                <th class="px-5 py-4">Método</th><th class="px-5 py-4">Rota</th><th class="px-5 py-4">
-                  Descrição
-                </th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-base-300">
-              <tr>
-                <td class="px-5 py-4 font-bold text-success">GET</td><td class="px-5 py-4 font-mono">
-                  /quizzes
-                </td><td class="px-5 py-4">Lista seus quizzes.</td>
-              </tr>
-              <tr>
-                <td class="px-5 py-4 font-bold text-info">POST</td><td class="px-5 py-4 font-mono">
-                  /quizzes
-                </td><td class="px-5 py-4">Cria quiz e rascunho inicial.</td>
-              </tr>
-              <tr>
-                <td class="px-5 py-4 font-bold text-info">POST</td><td class="px-5 py-4 font-mono">
-                  /quizzes/import
-                </td><td class="px-5 py-4">Importa o formato JSON em português.</td>
-              </tr>
-              <tr>
-                <td class="px-5 py-4 font-bold text-success">GET</td><td class="px-5 py-4 font-mono">
-                  /quizzes/:id
-                </td><td class="px-5 py-4">Lê o agrupador e suas versões.</td>
-              </tr>
-              <tr>
-                <td class="px-5 py-4 font-bold text-warning">PATCH</td><td class="px-5 py-4 font-mono">
-                  /quizzes/:id
-                </td><td class="px-5 py-4">Ativa ou desativa o quiz.</td>
-              </tr>
-              <tr>
-                <td class="px-5 py-4 font-bold text-info">POST</td><td class="px-5 py-4 font-mono">
-                  /quizzes/:id/drafts
-                </td><td class="px-5 py-4">Obtém ou cria a próxima versão editável.</td>
-              </tr>
-              <tr>
-                <td class="px-5 py-4 font-bold text-success">GET</td><td class="px-5 py-4 font-mono">
-                  /quiz-versions/:id
-                </td><td class="px-5 py-4">Lê o conteúdo completo da versão.</td>
-              </tr>
-              <tr>
-                <td class="px-5 py-4 font-bold text-warning">PATCH</td><td class="px-5 py-4 font-mono">
-                  /quiz-versions/:id
-                </td><td class="px-5 py-4">Altera os dados do rascunho.</td>
-              </tr>
-              <tr>
-                <td class="px-5 py-4 font-bold text-info">POST</td><td class="px-5 py-4 font-mono">
-                  /quiz-versions/:id/questions
-                </td><td class="px-5 py-4">Adiciona uma questão.</td>
-              </tr>
-              <tr>
-                <td class="px-5 py-4 font-bold text-warning">PATCH</td><td class="px-5 py-4 font-mono">
-                  /questions/:id
-                </td><td class="px-5 py-4">Altera questão e alternativas.</td>
-              </tr>
-              <tr>
-                <td class="px-5 py-4 font-bold text-error">DELETE</td><td class="px-5 py-4 font-mono">
-                  /questions/:id
-                </td><td class="px-5 py-4">Remove questão do rascunho.</td>
-              </tr>
-              <tr>
-                <td class="px-5 py-4 font-bold text-info">POST</td><td class="px-5 py-4 font-mono">
-                  /quiz-versions/:id/validate
-                </td><td class="px-5 py-4">Valida sem publicar.</td>
-              </tr>
-              <tr>
-                <td class="px-5 py-4 font-bold text-info">POST</td><td class="px-5 py-4 font-mono">
-                  /quiz-versions/:id/publish
-                </td><td class="px-5 py-4">Publica e congela a versão.</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </section>
-
-    <section id="exemplos" class="scroll-mt-6 space-y-5">
-      <div>
-        <p class="text-sm font-semibold text-primary">03 · Exemplos</p>
-        <h2 class="mt-1 text-2xl font-bold">Criar um rascunho completo</h2>
-      </div>
-      <div class="overflow-hidden rounded-2xl border border-base-300 bg-neutral text-neutral-content">
-        <div class="border-b border-white/10 px-5 py-3 text-xs opacity-70">Criar quiz</div>
-        <pre class="overflow-x-auto p-5 text-sm leading-6"><code phx-no-curly-interpolation>curl -X POST http://localhost:4000/api/v1/quizzes \
-  -H 'Authorization: Bearer quiz_SEU_TOKEN' \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "name": "Fundamentos de Elixir",
-    "description": "Conceitos básicos da linguagem",
-    "total_points": 100,
-    "question_order_mode": "fixed"
-  }'</code></pre>
-      </div>
-      <div class="overflow-hidden rounded-2xl border border-base-300 bg-neutral text-neutral-content">
-        <div class="border-b border-white/10 px-5 py-3 text-xs opacity-70">
-          Adicionar questão objetiva
-        </div>
-        <pre class="overflow-x-auto p-5 text-sm leading-6"><code phx-no-curly-interpolation>curl -X POST http://localhost:4000/api/v1/quiz-versions/VERSION_ID/questions \
-  -H 'Authorization: Bearer quiz_SEU_TOKEN' \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "statement": "Listas Elixir são imutáveis?",
-    "type": "true_false",
-    "true_false_answer": true
-  }'</code></pre>
-      </div>
-    </section>
-
-    <section id="contratos" class="grid gap-5 md:grid-cols-2">
-      <div class="rounded-2xl border border-base-300 p-6">
-        <h2 class="text-xl font-bold">Tipos de questão</h2>
-        <ul class="mt-4 space-y-2 text-sm opacity-75">
-          <li><code>true_false</code> — verdadeiro ou falso</li>
-          <li><code>single</code> — exatamente uma alternativa correta</li>
-          <li><code>multiple</code> — múltiplas alternativas corretas</li>
-          <li><code>text</code> — resposta discursiva</li>
-        </ul>
-      </div>
-      <div class="rounded-2xl border border-base-300 p-6">
-        <h2 class="text-xl font-bold">Respostas e erros</h2>
-        <p phx-no-curly-interpolation class="mt-4 text-sm leading-6 opacity-75">
-          Sucesso usa <code>{"data": ...}</code>. Erros usam <code>{"error": {"code": "...", "message": "..."}}</code>. Validações retornam
-          HTTP 422; acesso inválido retorna 401; recursos de outro usuário aparecem como 404.
+        <p class="text-sm font-semibold text-primary">02 · Contratos</p>
+        <h2 class="mt-1 text-2xl font-bold">Formato das requisições e respostas</h2>
+        <p class="mt-2 max-w-3xl leading-7 opacity-70">
+          Todos os corpos usam JSON em UTF-8. IDs são UUIDs; datas usam ISO 8601; valores
+          decimais como <code>total_points</code> e <code>weight</code> retornam como strings.
         </p>
       </div>
+
+      <div class="grid gap-4 md:grid-cols-3">
+        <div class="rounded-2xl border border-base-300 p-5">
+          <p class="text-xs font-bold uppercase tracking-[0.14em] text-primary">Sucesso</p>
+          <p phx-no-curly-interpolation class="mt-3 text-sm leading-6 opacity-75">
+            Respostas com conteúdo usam <code>{"data": ...}</code>. Exclusões bem-sucedidas usam
+            <code>204 No Content</code>
+            sem corpo.
+          </p>
+        </div>
+        <div class="rounded-2xl border border-base-300 p-5">
+          <p class="text-xs font-bold uppercase tracking-[0.14em] text-primary">Atualizações</p>
+          <p class="mt-3 text-sm leading-6 opacity-75">
+            Corpos de <code>PATCH</code> são parciais. Campos desconhecidos são ignorados.
+            Envie apenas os campos que deseja alterar.
+          </p>
+        </div>
+        <div class="rounded-2xl border border-base-300 p-5">
+          <p class="text-xs font-bold uppercase tracking-[0.14em] text-primary">Propriedade</p>
+          <p class="mt-3 text-sm leading-6 opacity-75">
+            A API mostra somente recursos da conta autenticada. Um recurso inexistente ou de
+            outra conta retorna o mesmo <code>404</code>.
+          </p>
+        </div>
+      </div>
+
+      <div class="space-y-4">
+        <h3 class="text-xl font-bold">Modelos retornados</h3>
+        <.api_fields title="Quiz">
+          <:field name="id" type="UUID" presence="Sempre">
+            Identificador do agrupador do quiz.
+          </:field>
+          <:field name="public_slug" type="string" presence="Sempre">
+            Slug do link público em <code>/q/:public_slug</code>.
+          </:field>
+          <:field name="active" type="boolean" presence="Sempre">
+            Se <code>false</code>, o link existe, mas não aceita novas respostas.
+          </:field>
+          <:field name="inserted_at" type="datetime" presence="Sempre">Data de criação.</:field>
+          <:field name="updated_at" type="datetime" presence="Sempre">Última alteração.</:field>
+          <:field name="versions" type="VersionSummary[]" presence="Sempre">
+            Versões da mais recente para a mais antiga. Cada item tem <code>id</code>, <code>version_number</code>, <code>name</code>, <code>status</code>,
+            <code>published_at</code>
+            e <code>updated_at</code>.
+          </:field>
+        </.api_fields>
+
+        <.api_fields title="Version · versão completa">
+          <:field name="id" type="UUID" presence="Sempre">Identificador da versão.</:field>
+          <:field name="quiz_id" type="UUID" presence="Sempre">Identificador do quiz pai.</:field>
+          <:field name="version_number" type="integer" presence="Sempre">
+            Começa em 1 e cresce a cada novo rascunho.
+          </:field>
+          <:field name="name" type="string" presence="Sempre">Título do quiz.</:field>
+          <:field name="description" type="string" presence="Sempre">
+            Descrição; pode ser vazia.
+          </:field>
+          <:field name="total_points" type="decimal string" presence="Sempre">
+            Exemplo: <code>"100"</code> ou <code>"7.5"</code>.
+          </:field>
+          <:field name="unequal_weights" type="boolean" presence="Sempre">
+            Permite pesos diferentes entre questões.
+          </:field>
+          <:field name="question_order_mode" type="enum" presence="Sempre">
+            <code>fixed</code>, <code>random</code> ou <code>ai</code>.
+          </:field>
+          <:field name="status" type="enum" presence="Sempre">
+            <code>draft</code> ou <code>published</code>.
+          </:field>
+          <:field name="published_at" type="datetime | null" presence="Sempre">
+            Nulo enquanto for rascunho.
+          </:field>
+          <:field name="changelog" type="string[]" presence="Sempre">
+            Resumo de alterações gerado na publicação.
+          </:field>
+          <:field name="inserted_at" type="datetime" presence="Sempre">Data de criação.</:field>
+          <:field name="updated_at" type="datetime" presence="Sempre">Última alteração.</:field>
+          <:field name="questions" type="Question[]" presence="Sempre">
+            Questões ordenadas por <code>position</code>.
+          </:field>
+        </.api_fields>
+
+        <.api_fields title="Question">
+          <:field name="id" type="UUID" presence="Sempre">
+            Identificador desta questão na versão.
+          </:field>
+          <:field name="identity_key" type="UUID" presence="Sempre">
+            Identidade estável da questão entre versões.
+          </:field>
+          <:field name="position" type="integer" presence="Sempre">
+            Posição iniciada em zero.
+          </:field>
+          <:field name="statement" type="string" presence="Sempre">Enunciado.</:field>
+          <:field name="type" type="enum" presence="Sempre">
+            <code>true_false</code>, <code>single</code>, <code>multiple</code>
+            ou <code>text</code>.
+          </:field>
+          <:field name="allow_partial_credit" type="boolean" presence="Sempre">
+            Usado em questões <code>multiple</code>.
+          </:field>
+          <:field name="true_false_answer" type="boolean | null" presence="Sempre">
+            Resposta de questões <code>true_false</code>.
+          </:field>
+          <:field name="editor_note" type="string | null" presence="Sempre">
+            Resposta de referência e explicação.
+          </:field>
+          <:field name="weight" type="decimal string | null" presence="Sempre">
+            Peso quando <code>unequal_weights</code> estiver ativo.
+          </:field>
+          <:field name="annulled" type="boolean" presence="Sempre">
+            Informa se a questão foi anulada.
+          </:field>
+          <:field name="annulled_reason" type="string | null" presence="Sempre">
+            Motivo da anulação.
+          </:field>
+          <:field name="options" type="Option[]" presence="Sempre">
+            Lista vazia para questões sem alternativas.
+          </:field>
+        </.api_fields>
+
+        <.api_fields title="Option">
+          <:field name="id" type="UUID" presence="Sempre">Identificador da alternativa.</:field>
+          <:field name="identity_key" type="UUID" presence="Sempre">
+            Identidade estável entre versões.
+          </:field>
+          <:field name="position" type="integer" presence="Sempre">
+            Posição iniciada em zero.
+          </:field>
+          <:field name="text" type="string" presence="Sempre">
+            Texto exibido ao participante.
+          </:field>
+          <:field name="correct" type="boolean" presence="Sempre">
+            Se a alternativa compõe o gabarito.
+          </:field>
+        </.api_fields>
+
+        <div class="overflow-hidden rounded-2xl border border-base-300 bg-neutral text-neutral-content">
+          <div class="border-b border-white/10 px-5 py-3 text-xs opacity-70">
+            Exemplo de resposta Version · campos sem valor retornam null
+          </div>
+          <pre class="overflow-x-auto p-5 text-sm leading-6"><code phx-no-curly-interpolation>{
+  "data": {
+    "id": "VERSION_UUID",
+    "quiz_id": "QUIZ_UUID",
+    "version_number": 1,
+    "name": "Fundamentos de Elixir",
+    "description": "Conceitos básicos",
+    "total_points": "100",
+    "unequal_weights": false,
+    "question_order_mode": "fixed",
+    "status": "draft",
+    "published_at": null,
+    "changelog": [],
+    "inserted_at": "2026-07-04T21:00:00Z",
+    "updated_at": "2026-07-04T21:00:00Z",
+    "questions": [
+      {
+        "id": "QUESTION_UUID",
+        "identity_key": "STABLE_QUESTION_UUID",
+        "position": 0,
+        "statement": "Elixir roda na BEAM?",
+        "type": "true_false",
+        "allow_partial_credit": false,
+        "true_false_answer": true,
+        "editor_note": "Sim, Elixir compila para bytecode da BEAM.",
+        "weight": null,
+        "annulled": false,
+        "annulled_reason": null,
+        "options": []
+      }
+    ]
+  }
+}</code></pre>
+        </div>
+      </div>
+    </section>
+
+    <section id="endpoints" class="scroll-mt-6 space-y-6">
+      <div>
+        <p class="text-sm font-semibold text-primary">03 · Referência</p>
+        <h2 class="mt-1 text-2xl font-bold">Endpoints e parâmetros</h2>
+        <p class="mt-2 max-w-3xl leading-7 opacity-70">
+          Abra uma rota para ver corpo, regras e resposta. Todas exigem Bearer token, exceto a
+          emissão inicial em <code>POST /auth/tokens</code>.
+        </p>
+      </div>
+
+      <div class="space-y-3">
+        <h3 class="text-lg font-bold">Quizzes</h3>
+
+        <.api_endpoint
+          id="endpoint-list-quizzes"
+          method="GET"
+          path="/api/v1/quizzes"
+          scope="token válido"
+          response="200 · Quiz[]"
+        >
+          <p class="text-sm leading-6 opacity-75">
+            Lista os quizzes da conta, do mais recente para o mais antigo. Não recebe query
+            params nem paginação atualmente. Cada quiz inclui resumos das suas versões.
+          </p>
+          <p phx-no-curly-interpolation class="text-sm">
+            <strong>Resposta:</strong> <code>{"data": [Quiz, ...]}</code>
+          </p>
+        </.api_endpoint>
+
+        <.api_endpoint
+          id="endpoint-create-quiz"
+          method="POST"
+          path="/api/v1/quizzes"
+          scope="quizzes:write"
+          response="201 · Version"
+        >
+          <p class="text-sm leading-6 opacity-75">
+            Cria um quiz e sua versão 1 em estado <code>draft</code>. O corpo pode ser vazio;
+            nome e questões são exigidos apenas para publicar.
+          </p>
+          <.api_fields title="Body JSON">
+            <:field name="name" type="string" presence="Opcional · padrão vazio">
+              Título do quiz.
+            </:field>
+            <:field name="description" type="string" presence="Opcional · padrão vazio">
+              Descrição do quiz.
+            </:field>
+            <:field
+              name="total_points"
+              type="number | decimal string"
+              presence="Opcional · padrão 100"
+            >
+              Precisa ser maior que zero.
+            </:field>
+            <:field name="unequal_weights" type="boolean" presence="Opcional · padrão false">
+              Ativa pesos por questão.
+            </:field>
+            <:field name="question_order_mode" type="enum" presence="Opcional · padrão fixed">
+              <code>fixed</code>, <code>random</code> ou <code>ai</code>.
+            </:field>
+          </.api_fields>
+          <p class="text-sm">
+            <strong>Resposta:</strong>
+            versão completa, incluindo <code>quiz_id</code>
+            e <code>questions: []</code>.
+          </p>
+        </.api_endpoint>
+
+        <.api_endpoint
+          id="endpoint-import-quiz"
+          method="POST"
+          path="/api/v1/quizzes/import"
+          scope="quizzes:write"
+          response="201 · Version"
+        >
+          <p class="text-sm leading-6 opacity-75">
+            Cria um rascunho completo em uma chamada. Este endpoint usa deliberadamente chaves em
+            português e o mesmo formato do importador da interface.
+          </p>
+          <.api_fields title="Body raiz · formato de importação">
+            <:field name="nome" type="string" presence="Obrigatório">
+              Não pode estar vazio.
+            </:field>
+            <:field name="descricao" type="string" presence="Opcional · padrão vazio">
+              Descrição do quiz.
+            </:field>
+            <:field name="nota_total" type="number > 0" presence="Opcional · padrão 100">
+              Nota máxima.
+            </:field>
+            <:field name="pesos_desiguais" type="boolean" presence="Opcional · padrão false">
+              Permite <code>peso</code> por questão.
+            </:field>
+            <:field name="modo_ordem" type="enum" presence="Opcional · padrão fixa">
+              <code>fixa</code>, <code>aleatoria</code> ou <code>ia</code>.
+            </:field>
+            <:field name="questoes" type="QuestãoImportada[]" presence="Obrigatório">
+              Lista com pelo menos uma questão.
+            </:field>
+          </.api_fields>
+          <.api_fields title="Cada item de questoes">
+            <:field name="enunciado" type="string" presence="Obrigatório">
+              Não pode estar vazio.
+            </:field>
+            <:field name="tipo" type="enum" presence="Obrigatório">
+              <code>verdadeiro_falso</code>, <code>unica</code>, <code>multipla</code>
+              ou <code>discursiva</code>.
+            </:field>
+            <:field
+              name="resposta_verdadeiro_falso"
+              type="boolean"
+              presence="Obrigatório em verdadeiro_falso"
+            >
+              Gabarito da afirmação.
+            </:field>
+            <:field
+              name="alternativas"
+              type="AlternativaImportada[]"
+              presence="Obrigatório em unica/multipla"
+            >
+              Ao menos 2 itens com <code>texto</code> e <code>correta</code>.
+            </:field>
+            <:field name="nota_parcial" type="boolean" presence="Opcional em multipla">
+              Concede crédito proporcional quando não houver marcação errada.
+            </:field>
+            <:field name="resposta_referencia" type="string" presence="Opcional">
+              Explicação e referência para correção discursiva por IA.
+            </:field>
+            <:field name="peso" type="number >= 0" presence="Opcional">
+              Usado quando <code>pesos_desiguais</code> for verdadeiro.
+            </:field>
+          </.api_fields>
+          <.api_fields title="Cada item de alternativas">
+            <:field name="texto" type="string" presence="Obrigatório">
+              Texto da alternativa.
+            </:field>
+            <:field name="correta" type="boolean" presence="Opcional · padrão false">
+              Marca a alternativa como parte do gabarito.
+            </:field>
+          </.api_fields>
+          <p class="text-sm leading-6 opacity-75">
+            Em <code>unica</code>, exatamente uma alternativa deve ter <code>correta: true</code>;
+            em <code>multipla</code>, pelo menos uma. Chaves desconhecidas são ignoradas.
+          </p>
+          <.link
+            href={~p"/formato-importacao.md"}
+            class="inline-flex items-center gap-2 text-sm font-semibold text-primary hover:underline"
+          >
+            <.icon name="hero-arrow-down-tray" class="size-4" />
+            Baixar contrato completo e exemplo JSON
+          </.link>
+        </.api_endpoint>
+
+        <.api_endpoint
+          id="endpoint-show-quiz"
+          method="GET"
+          path="/api/v1/quizzes/:id"
+          scope="token válido"
+          response="200 · Quiz"
+        >
+          <.api_fields title="Path params">
+            <:field name="id" type="UUID" presence="Obrigatório">
+              ID do quiz, não da versão.
+            </:field>
+          </.api_fields>
+          <p class="text-sm">
+            <strong>Resposta:</strong>
+            quiz com a lista de resumos das versões. O conteúdo das questões não vem nesta rota.
+          </p>
+        </.api_endpoint>
+
+        <.api_endpoint
+          id="endpoint-update-quiz"
+          method="PATCH"
+          path="/api/v1/quizzes/:id"
+          scope="quizzes:write"
+          response="200 · Quiz"
+        >
+          <.api_fields title="Body JSON">
+            <:field name="active" type="boolean" presence="Obrigatório">
+              <code>false</code> impede novas respostas; <code>true</code> reabre o quiz.
+            </:field>
+          </.api_fields>
+          <p class="text-sm">
+            Ausência ou tipo incorreto em <code>active</code>
+            retorna <code>422 validation_error</code>.
+          </p>
+        </.api_endpoint>
+
+        <.api_endpoint
+          id="endpoint-create-draft"
+          method="POST"
+          path="/api/v1/quizzes/:id/drafts"
+          scope="quizzes:write"
+          response="201 · Version"
+        >
+          <p class="text-sm leading-6 opacity-75">
+            Retorna o rascunho existente. Se não houver um, copia a versão publicada mais
+            recente para a próxima <code>version_number</code>, preservando identidades de questões
+            e alternativas. Não recebe body.
+          </p>
+          <.api_fields title="Path params">
+            <:field name="id" type="UUID" presence="Obrigatório">ID do quiz.</:field>
+          </.api_fields>
+        </.api_endpoint>
+      </div>
+
+      <div class="space-y-3">
+        <h3 class="text-lg font-bold">Versões e publicação</h3>
+
+        <.api_endpoint
+          id="endpoint-show-version"
+          method="GET"
+          path="/api/v1/quiz-versions/:id"
+          scope="token válido"
+          response="200 · Version"
+        >
+          <.api_fields title="Path params">
+            <:field name="id" type="UUID" presence="Obrigatório">
+              ID da versão obtido em <code>Quiz.versions</code>.
+            </:field>
+          </.api_fields>
+          <p class="text-sm">Retorna a versão completa, com todas as questões e alternativas.</p>
+        </.api_endpoint>
+
+        <.api_endpoint
+          id="endpoint-update-version"
+          method="PATCH"
+          path="/api/v1/quiz-versions/:id"
+          scope="quizzes:write"
+          response="200 · Version"
+        >
+          <p class="text-sm leading-6 opacity-75">
+            Edita somente rascunhos. Todos os campos são opcionais e a resposta traz a versão completa recarregada.
+          </p>
+          <.api_fields title="Body JSON parcial">
+            <:field name="name" type="string" presence="Opcional">Título.</:field>
+            <:field name="description" type="string" presence="Opcional">Descrição.</:field>
+            <:field name="total_points" type="number | decimal string" presence="Opcional">
+              Precisa ser maior que zero.
+            </:field>
+            <:field name="unequal_weights" type="boolean" presence="Opcional">
+              Ativa pesos por questão.
+            </:field>
+            <:field name="question_order_mode" type="enum" presence="Opcional">
+              <code>fixed</code>, <code>random</code> ou <code>ai</code>.
+            </:field>
+          </.api_fields>
+        </.api_endpoint>
+
+        <.api_endpoint
+          id="endpoint-validate-version"
+          method="POST"
+          path="/api/v1/quiz-versions/:id/validate"
+          scope="token válido"
+          response="200 · Validation"
+        >
+          <p class="text-sm leading-6 opacity-75">
+            Executa as mesmas regras da publicação sem alterar nada. Uma validação
+            negativa ainda retorna HTTP 200; consulte <code>data.valid</code>. Não recebe body.
+          </p>
+          <pre class="overflow-x-auto rounded-xl bg-neutral p-4 text-sm leading-6 text-neutral-content"><code phx-no-curly-interpolation>{
+  "data": {
+    "valid": false,
+    "errors": ["O quiz precisa de um nome", "O quiz precisa de pelo menos uma questão"]
+  }
+}</code></pre>
+        </.api_endpoint>
+
+        <.api_endpoint
+          id="endpoint-publish-version"
+          method="POST"
+          path="/api/v1/quiz-versions/:id/publish"
+          scope="quizzes:publish"
+          response="200 · Version"
+        >
+          <p class="text-sm leading-6 opacity-75">
+            Valida, publica e congela o rascunho. Também gera tags internas de IA e o changelog.
+            Não recebe body. Se houver problemas de conteúdo, retorna <code>422</code> com todos
+            os erros em <code>error.details</code>.
+          </p>
+          <div class="rounded-xl border border-base-300 bg-base-100 p-4 text-sm leading-6">
+            <strong>Regras principais:</strong>
+            nome preenchido, pelo menos uma questão, nota total
+            positiva, enunciados preenchidos e gabarito coerente com cada tipo. Se pesos desiguais
+            estiverem ativos, a soma dos pesos definidos não pode exceder a nota total.
+          </div>
+        </.api_endpoint>
+      </div>
+
+      <div class="space-y-3">
+        <h3 class="text-lg font-bold">Questões e alternativas</h3>
+
+        <.api_endpoint
+          id="endpoint-create-question"
+          method="POST"
+          path="/api/v1/quiz-versions/:id/questions"
+          scope="quizzes:write"
+          response="201 · Question"
+        >
+          <p class="text-sm leading-6 opacity-75">
+            Adiciona uma questão ao fim do rascunho. A posição é atribuída automaticamente.
+            O endpoint permite salvar incompleto; use a validação antes de publicar.
+          </p>
+          <.api_fields title="Body JSON">
+            <:field name="statement" type="string" presence="Opcional · padrão vazio">
+              Enunciado.
+            </:field>
+            <:field name="type" type="enum" presence="Opcional · padrão single">
+              <code>true_false</code>, <code>single</code>, <code>multiple</code>
+              ou <code>text</code>.
+            </:field>
+            <:field
+              name="allow_partial_credit"
+              type="boolean"
+              presence="Opcional · padrão false"
+            >
+              Use apenas com <code>multiple</code>.
+            </:field>
+            <:field
+              name="true_false_answer"
+              type="boolean | null"
+              presence="Exigido para publicar true_false"
+            >
+              Gabarito verdadeiro/falso.
+            </:field>
+            <:field name="editor_note" type="string | null" presence="Opcional">
+              Explicação ou resposta de referência.
+            </:field>
+            <:field name="weight" type="number | decimal string | null" presence="Opcional">
+              Peso da questão.
+            </:field>
+            <:field name="options" type="OptionInput[]" presence="Opcional · padrão []">
+              Alternativas com <code>text</code>, <code>correct</code> e <code>position</code>.
+            </:field>
+          </.api_fields>
+          <pre class="overflow-x-auto rounded-xl bg-neutral p-4 text-sm leading-6 text-neutral-content"><code phx-no-curly-interpolation>{
+  "statement": "Quais valores são booleanos?",
+  "type": "multiple",
+  "allow_partial_credit": true,
+  "editor_note": "true e false são os booleanos de Elixir.",
+  "options": [
+    {"text": "true", "correct": true, "position": 0},
+    {"text": "false", "correct": true, "position": 1},
+    {"text": "nil", "correct": false, "position": 2}
+  ]
+}</code></pre>
+        </.api_endpoint>
+
+        <.api_endpoint
+          id="endpoint-update-question"
+          method="PATCH"
+          path="/api/v1/questions/:id"
+          scope="quizzes:write"
+          response="200 · Question"
+        >
+          <p class="text-sm leading-6 opacity-75">
+            Atualiza uma questão de rascunho. Aceita os mesmos campos da criação, além de <code>position</code>. Se
+            <code>options</code>
+            for omitido, as alternativas permanecem;
+            se for enviado, ele substitui a coleção inteira.
+          </p>
+          <.api_fields title="Regras de options no PATCH">
+            <:field name="options[].id" type="UUID" presence="Para manter uma alternativa">
+              IDs existentes preservam identidade e atualizam o item.
+            </:field>
+            <:field name="options[].text" type="string" presence="Opcional">
+              Texto da alternativa.
+            </:field>
+            <:field name="options[].correct" type="boolean" presence="Opcional · padrão false">
+              Participa do gabarito.
+            </:field>
+            <:field name="options[].position" type="integer" presence="Opcional · padrão 0">
+              Ordem da alternativa.
+            </:field>
+          </.api_fields>
+          <p class="rounded-xl border border-warning/30 bg-warning/10 p-4 text-sm leading-6">
+            Atenção: alternativas existentes omitidas da lista enviada são excluídas; itens sem
+            <code>id</code>
+            são criados como novas alternativas.
+          </p>
+        </.api_endpoint>
+
+        <.api_endpoint
+          id="endpoint-delete-question"
+          method="DELETE"
+          path="/api/v1/questions/:id"
+          scope="quizzes:write"
+          response="204 · sem corpo"
+        >
+          <p class="text-sm leading-6 opacity-75">
+            Remove a questão de um rascunho e renumera as posições restantes. Questões de
+            versões publicadas não podem ser removidas.
+          </p>
+          <.api_fields title="Path params">
+            <:field name="id" type="UUID" presence="Obrigatório">
+              ID da questão, não o <code>identity_key</code>.
+            </:field>
+          </.api_fields>
+        </.api_endpoint>
+      </div>
+
+      <div class="space-y-3">
+        <h3 class="text-lg font-bold">Token atual</h3>
+        <.api_endpoint
+          id="endpoint-revoke-token"
+          method="DELETE"
+          path="/api/v1/auth/token"
+          scope="token válido"
+          response="204 · sem corpo"
+        >
+          <p class="text-sm leading-6 opacity-75">
+            Revoga imediatamente o Bearer token usado nesta requisição. As demais credenciais da
+            conta continuam ativas. Não recebe path params nem body.
+          </p>
+        </.api_endpoint>
+      </div>
+    </section>
+
+    <section id="fluxo-completo" class="scroll-mt-6 space-y-5">
+      <div>
+        <p class="text-sm font-semibold text-primary">04 · Fluxo recomendado</p>
+        <h2 class="mt-1 text-2xl font-bold">Do rascunho à publicação</h2>
+      </div>
+      <ol class="grid gap-4 md:grid-cols-2">
+        <li class="rounded-2xl border border-base-300 p-5">
+          <span class="text-xs font-bold text-primary">1 · CRIAR</span>
+          <p class="mt-2 font-semibold">
+            <code>POST /quizzes</code> ou <code>POST /quizzes/import</code>
+          </p>
+          <p class="mt-1 text-sm leading-6 opacity-70">
+            Guarde <code>data.id</code> como VERSION_ID e <code>data.quiz_id</code> como QUIZ_ID.
+          </p>
+        </li>
+        <li class="rounded-2xl border border-base-300 p-5">
+          <span class="text-xs font-bold text-primary">2 · EDITAR</span>
+          <p class="mt-2 font-semibold"><code>PATCH /quiz-versions/VERSION_ID</code></p>
+          <p class="mt-1 text-sm leading-6 opacity-70">
+            Ajuste metadados e adicione questões enquanto o status for <code>draft</code>.
+          </p>
+        </li>
+        <li class="rounded-2xl border border-base-300 p-5">
+          <span class="text-xs font-bold text-primary">3 · VALIDAR</span>
+          <p class="mt-2 font-semibold"><code>POST /quiz-versions/VERSION_ID/validate</code></p>
+          <p class="mt-1 text-sm leading-6 opacity-70">
+            Prossiga apenas quando <code>data.valid</code> for <code>true</code>.
+          </p>
+        </li>
+        <li class="rounded-2xl border border-base-300 p-5">
+          <span class="text-xs font-bold text-primary">4 · PUBLICAR</span>
+          <p class="mt-2 font-semibold"><code>POST /quiz-versions/VERSION_ID/publish</code></p>
+          <p class="mt-1 text-sm leading-6 opacity-70">
+            A versão se torna imutável. Use <code>POST /quizzes/QUIZ_ID/drafts</code>
+            para a próxima edição.
+          </p>
+        </li>
+      </ol>
+    </section>
+
+    <section id="erros" class="scroll-mt-6 space-y-5">
+      <div>
+        <p class="text-sm font-semibold text-primary">05 · Erros</p>
+        <h2 class="mt-1 text-2xl font-bold">Códigos e formatos de falha</h2>
+      </div>
+      <.api_fields title="Respostas de erro">
+        <:field
+          name="401 unauthorized"
+          type="error object"
+          presence="Token ausente, inválido, revogado ou expirado"
+        >
+          Inclui <code>WWW-Authenticate: Bearer realm="quiz-api"</code>.
+        </:field>
+        <:field
+          name="401 invalid_credentials"
+          type="error object"
+          presence="Falha ao emitir token"
+        >
+          E-mail ou senha inválidos.
+        </:field>
+        <:field name="403 insufficient_scope" type="error object" presence="Escopo ausente">
+          Inclui <code>required_scope</code>.
+        </:field>
+        <:field name="404 not_found" type="error object" presence="Ausente ou de outra conta">
+          Não revela a existência de recursos alheios.
+        </:field>
+        <:field
+          name="409 version_not_editable"
+          type="error object"
+          presence="Estado incompatível"
+        >
+          Operação de escrita em versão publicada.
+        </:field>
+        <:field
+          name="409 published_version_required"
+          type="error object"
+          presence="Sem base para novo rascunho"
+        >
+          Não existe versão publicada para copiar.
+        </:field>
+        <:field
+          name="422 validation_error"
+          type="error + details[]"
+          presence="Parâmetros ou conteúdo inválidos"
+        >
+          As mensagens legíveis ficam em <code>error.details</code>.
+        </:field>
+        <:field name="422 operation_failed" type="error object" presence="Falha não classificada">
+          A operação não pôde ser concluída.
+        </:field>
+      </.api_fields>
+      <pre class="overflow-x-auto rounded-2xl bg-neutral p-5 text-sm leading-6 text-neutral-content"><code phx-no-curly-interpolation>{
+  "error": {
+    "code": "validation_error",
+    "details": [
+      "Questão 1: precisa de pelo menos 2 alternativas",
+      "Questão 1: marque exatamente 1 alternativa correta"
+    ]
+  }
+}</code></pre>
     </section>
   </div>
 </Layouts.app>

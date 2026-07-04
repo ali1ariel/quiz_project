@@ -66,6 +66,7 @@ defmodule QuizProjectWeb.SettingsLiveTest do
 
     assert has_element?(view, "#token-form")
     assert has_element?(view, "#tokens-empty")
+    assert has_element?(view, "#token-api-docs-link[href='/api/docs']")
 
     view
     |> form("#token-form", %{"token" => %{"name" => "Agente local"}})
@@ -84,5 +85,12 @@ defmodule QuizProjectWeb.SettingsLiveTest do
     view |> element("#revoke-token-#{token.id}") |> render_click()
     refute has_element?(view, "#api-token-#{token.id}")
     assert Accounts.list_api_tokens(user) == []
+  end
+
+  test "abre diretamente a aba de tokens pela URL", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/configuracoes?tab=tokens")
+
+    assert has_element?(view, "#token-settings")
+    assert has_element?(view, "#token-form")
   end
 end

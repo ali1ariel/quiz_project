@@ -37,6 +37,8 @@ defmodule QuizProjectWeb.DashboardLiveTest do
 
     view |> element("#open-import") |> render_click()
     assert has_element?(view, "#import-modal")
+    assert has_element?(view, "#download-format")
+    assert has_element?(view, "#import-api-docs-link[href='/api/docs#usar-com-ia']")
 
     json =
       ~s({"nome": "Importado", "questoes": [{"enunciado": "2+2=4?", "tipo": "verdadeiro_falso", "resposta_verdadeiro_falso": true}]})
