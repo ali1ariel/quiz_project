@@ -1,6 +1,8 @@
 defmodule QuizProjectWeb.Router do
   use QuizProjectWeb, :router
 
+  import QuizProjectWeb.UserAuth
+
   pipeline :browser do
     plug :accepts, ["html"]
     plug :fetch_session
@@ -8,6 +10,8 @@ defmodule QuizProjectWeb.Router do
     plug :put_root_layout, html: {QuizProjectWeb.Layouts, :root}
     plug :protect_from_forgery
     plug :put_secure_browser_headers
+    plug :fetch_current_user
+    plug :ensure_participant_token
   end
 
   pipeline :api do
@@ -18,12 +22,26 @@ defmodule QuizProjectWeb.Router do
     pipe_through :browser
 
     get "/", PageController, :home
+    delete "/sair", AuthController, :logout
   end
 
-  # Other scopes may use custom stacks.
-  # scope "/api", QuizProjectWeb do
-  #   pipe_through :api
-  # end
+  scope "/", QuizProjectWeb do
+    pipe_through [:browser, :redirect_if_authenticated]
+
+    get "/entrar", AuthController, :login_form
+    post "/entrar", AuthController, :login
+    get "/criar-conta", AuthController, :register_form
+    post "/criar-conta", AuthController, :register
+  end
+
+  scope "/", QuizProjectWeb do
+    pipe_through [:browser, :require_authenticated_user]
+
+    live_session :authenticated,
+      on_mount: [{QuizProjectWeb.UserAuth, :ensure_authenticated}] do
+      live "/painel", DashboardLive
+    end
+  end
 
   # Enable LiveDashboard and Swoosh mailbox preview in development
   if Application.compile_env(:quiz_project, :dev_routes) do

@@ -27,43 +27,52 @@ defmodule QuizProjectWeb.Layouts do
   """
   attr :flash, :map, required: true, doc: "the map of flash messages"
 
-  attr :current_scope, :map,
-    default: nil,
-    doc: "the current [scope](https://phoenix.hexdocs.pm/scopes.html)"
+  attr :current_user, :map, default: nil, doc: "usuário logado, se houver"
+
+  attr :wide, :boolean, default: false, doc: "usa container largo para telas densas"
 
   slot :inner_block, required: true
 
   def app(assigns) do
     ~H"""
-    <header class="navbar px-4 sm:px-6 lg:px-8">
+    <header class="navbar px-4 sm:px-6 lg:px-8 border-b border-base-300 min-h-14">
       <div class="flex-1">
-        <a href="/" class="flex-1 flex w-fit items-center gap-2">
-          <img src={~p"/images/logo.svg"} width="36" />
-          <span class="text-sm font-semibold">v{Application.spec(:phoenix, :vsn)}</span>
-        </a>
+        <.link navigate={~p"/"} class="flex w-fit items-center gap-2 font-bold text-lg">
+          <span class="inline-flex items-center justify-center size-8 rounded-full bg-primary text-primary-content text-sm">
+            Q
+          </span>
+          Quizzes
+        </.link>
       </div>
-      <div class="flex-none">
-        <ul class="flex flex-column px-1 space-x-4 items-center">
-          <li>
-            <a href="https://phoenixframework.org/" class="btn btn-ghost">Website</a>
-          </li>
-          <li>
-            <a href="https://github.com/phoenixframework/phoenix" class="btn btn-ghost">GitHub</a>
-          </li>
-          <li>
-            <.theme_toggle />
-          </li>
-          <li>
-            <a href="https://phoenix.hexdocs.pm/overview.html" class="btn btn-primary">
-              Get Started <span aria-hidden="true">&rarr;</span>
-            </a>
-          </li>
+      <nav class="flex-none">
+        <ul class="flex px-1 gap-2 items-center">
+          <%= if @current_user do %>
+            <li class="hidden sm:block text-sm opacity-70 mr-1">{@current_user.email}</li>
+            <li>
+              <.link navigate={~p"/painel"} class="btn btn-ghost btn-sm rounded-full">Painel</.link>
+            </li>
+            <li>
+              <.link href={~p"/sair"} method="delete" class="btn btn-outline btn-sm rounded-full">
+                Sair
+              </.link>
+            </li>
+          <% else %>
+            <li>
+              <.link navigate={~p"/entrar"} class="btn btn-ghost btn-sm rounded-full">Entrar</.link>
+            </li>
+            <li>
+              <.link navigate={~p"/criar-conta"} class="btn btn-primary btn-sm rounded-full">
+                Criar conta
+              </.link>
+            </li>
+          <% end %>
+          <li><.theme_toggle /></li>
         </ul>
-      </div>
+      </nav>
     </header>
 
-    <main class="px-4 py-20 sm:px-6 lg:px-8">
-      <div class="mx-auto max-w-2xl space-y-4">
+    <main class="px-4 py-8 sm:px-6 lg:px-8">
+      <div class={["mx-auto space-y-4", if(@wide, do: "max-w-5xl", else: "max-w-2xl")]}>
         {render_slot(@inner_block)}
       </div>
     </main>

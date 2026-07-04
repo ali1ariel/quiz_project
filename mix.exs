@@ -43,6 +43,8 @@ defmodule QuizProject.MixProject do
     [
       {:ash_postgres, "~> 2.0"},
       {:ash_phoenix, "~> 2.0"},
+      {:bcrypt_elixir, "~> 3.0"},
+      {:simple_sat, "~> 0.1"},
       {:sourceror, "~> 1.8", only: [:dev, :test]},
       {:ash, "~> 3.0"},
       {:phoenix, "~> 1.8.8"},

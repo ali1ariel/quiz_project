@@ -1,0 +1,55 @@
+<Layouts.app flash={@flash} current_user={assigns[:current_user]}>
+  <div class="mx-auto max-w-sm w-full pt-8">
+    <h1 class="text-2xl font-bold text-center mb-1">Criar conta</h1>
+    <p class="text-center text-sm opacity-70 mb-6">
+      Já tem conta?
+      <.link navigate={~p"/entrar"} class="link link-primary">Entrar</.link>
+    </p>
+
+    <div :if={@error} class="alert alert-error rounded-2xl mb-4 text-sm" id="register-error">
+      {@error}
+    </div>
+
+    <form method="post" action={~p"/criar-conta"} class="space-y-4" id="register-form">
+      <input type="hidden" name="_csrf_token" value={Plug.CSRFProtection.get_csrf_token()} />
+      <div>
+        <label class="label text-sm mb-1" for="register-name">Nome (opcional)</label>
+        <input
+          type="text"
+          name="user[name]"
+          id="register-name"
+          value={@name}
+          class="input input-bordered w-full rounded-full"
+          placeholder="Como quer ser chamado"
+        />
+      </div>
+      <div>
+        <label class="label text-sm mb-1" for="register-email">E-mail</label>
+        <input
+          type="email"
+          name="user[email]"
+          id="register-email"
+          value={@email}
+          required
+          class="input input-bordered w-full rounded-full"
+          placeholder="voce@exemplo.com"
+        />
+      </div>
+      <div>
+        <label class="label text-sm mb-1" for="register-password">Senha</label>
+        <input
+          type="password"
+          name="user[password]"
+          id="register-password"
+          required
+          minlength="8"
+          class="input input-bordered w-full rounded-full"
+          placeholder="Mínimo de 8 caracteres"
+        />
+      </div>
+      <button type="submit" class="btn btn-primary w-full rounded-full" id="register-submit">
+        Criar conta
+      </button>
+    </form>
+  </div>
+</Layouts.app>
