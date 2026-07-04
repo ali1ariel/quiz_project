@@ -71,6 +71,9 @@ defmodule QuizProjectWeb.Layouts do
             </li>
           <% end %>
           <li>
+            <.link href={~p"/api/docs"} class="btn btn-ghost btn-sm rounded-full">API</.link>
+          </li>
+          <li>
             <label class="sr-only" for="skin-select">Estilo visual</label>
             <select
               id="skin-select"
@@ -118,6 +121,9 @@ defmodule QuizProjectWeb.Layouts do
                 Criar conta
               </.link>
             <% end %>
+            <.link href={~p"/api/docs"} class="btn btn-ghost btn-sm w-full rounded-full">
+              Documentação da API
+            </.link>
           </div>
 
           <div class="flex items-center justify-between gap-3">

@@ -62,4 +62,37 @@ defmodule QuizProject.AccountsTest do
       assert :error = User.authenticate("nao@existe.com", "senha12345")
     end
   end
+
+  describe "tokens de API" do
+    setup do
+      {:ok, user} =
+        Accounts.register_user(%{email: "api@teste.com", password: "senha12345"},
+          authorize?: false
+        )
+
+      %{user: user}
+    end
+
+    test "emite, autentica e revoga sem persistir o segredo puro", %{user: user} do
+      assert {:ok, raw_token, record} = Accounts.issue_api_token(user, %{name: "Teste"})
+      assert String.starts_with?(raw_token, "quiz_")
+      assert record.name == "Teste"
+      refute record.token_hash == raw_token
+
+      assert {:ok, authenticated, authenticated_token} =
+               Accounts.authenticate_api_token(raw_token)
+
+      assert authenticated.id == user.id
+      assert authenticated_token.id == record.id
+
+      assert :ok = Accounts.revoke_api_token(record, user)
+      assert :error = Accounts.authenticate_api_token(raw_token)
+    end
+
+    test "rejeita token expirado", %{user: user} do
+      expires_at = DateTime.add(DateTime.utc_now(), -60, :second)
+      assert {:ok, raw_token, _record} = Accounts.issue_api_token(user, %{expires_at: expires_at})
+      assert :error = Accounts.authenticate_api_token(raw_token)
+    end
+  end
 end

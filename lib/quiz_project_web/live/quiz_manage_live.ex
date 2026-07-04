@@ -17,9 +17,9 @@ defmodule QuizProjectWeb.QuizManageLive do
           <h1 class="text-2xl font-bold">{@published.name}</h1>
           <p class="text-sm opacity-60">
             Versão publicada<span :if={version_suffix(@published.version_number)}>
-              · {version_suffix(@published.version_number)}</span> — {length(
-              @published.questions
-            )} questões
+              · {version_suffix(@published.version_number)}
+            </span>
+            — {length(@published.questions)} questões
             <span :if={!@quiz.active} class="text-warning font-medium">· respostas encerradas</span>
           </p>
         </div>

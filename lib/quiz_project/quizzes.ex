@@ -33,7 +33,24 @@ defmodule QuizProject.Quizzes do
   ## Criação e edição de rascunho
 
   @doc "Cria um quiz novo com a versão 1 em rascunho. Requer usuário logado."
-  def create_draft_quiz(%{id: owner_id}) do
+  def create_draft_quiz(owner), do: create_draft_quiz(owner, %{})
+
+  def create_draft_quiz(%{id: owner_id}, attrs) when is_map(attrs) do
+    Ash.transact([Quiz, QuizVersion], fn ->
+      version = create_draft_records(owner_id)
+
+      if map_size(attrs) == 0 do
+        version
+      else
+        case update_draft(version, attrs, %{id: owner_id}) do
+          {:ok, updated} -> %{updated | quiz: version.quiz}
+          {:error, error} -> {:error, error}
+        end
+      end
+    end)
+  end
+
+  defp create_draft_records(owner_id) do
     quiz =
       Quiz
       |> Ash.Changeset.for_create(:create, %{owner_id: owner_id}, authorize?: false)
@@ -46,7 +63,7 @@ defmodule QuizProject.Quizzes do
       )
       |> Ash.create!()
 
-    {:ok, %{version | quiz: quiz}}
+    %{version | quiz: quiz}
   end
 
   @doc """
@@ -56,49 +73,51 @@ defmodule QuizProject.Quizzes do
   def preview_import(json), do: Importer.parse(json)
 
   @doc "Importa um quiz de JSON. Entra como rascunho para revisão."
-  def import_quiz(owner, json) do
+  def import_quiz(%{id: owner_id}, json) do
     with {:ok, attrs} <- Importer.parse(json) do
-      {:ok, version} = create_draft_quiz(owner)
+      Ash.transact([Quiz, QuizVersion, Question, Option], fn ->
+        version = create_draft_records(owner_id)
 
-      version =
-        version
-        |> Ash.Changeset.for_update(
-          :update_draft,
-          Map.take(attrs, [
-            :name,
-            :description,
-            :total_points,
-            :unequal_weights,
-            :question_order_mode
-          ]),
-          authorize?: false
-        )
-        |> Ash.update!()
-
-      Enum.each(attrs.questions, fn question_attrs ->
-        {options, question_attrs} = Map.pop(question_attrs, :options)
-
-        question =
-          Question
-          |> Ash.Changeset.for_create(
-            :create,
-            Map.put(question_attrs, :quiz_version_id, version.id),
+        version =
+          version
+          |> Ash.Changeset.for_update(
+            :update_draft,
+            Map.take(attrs, [
+              :name,
+              :description,
+              :total_points,
+              :unequal_weights,
+              :question_order_mode
+            ]),
             authorize?: false
           )
-          |> Ash.create!()
+          |> Ash.update!()
 
-        Enum.each(options, fn option_attrs ->
-          Option
-          |> Ash.Changeset.for_create(
-            :create,
-            Map.put(option_attrs, :question_id, question.id),
-            authorize?: false
-          )
-          |> Ash.create!()
+        Enum.each(attrs.questions, fn question_attrs ->
+          {options, question_attrs} = Map.pop(question_attrs, :options)
+
+          question =
+            Question
+            |> Ash.Changeset.for_create(
+              :create,
+              Map.put(question_attrs, :quiz_version_id, version.id),
+              authorize?: false
+            )
+            |> Ash.create!()
+
+          Enum.each(options, fn option_attrs ->
+            Option
+            |> Ash.Changeset.for_create(
+              :create,
+              Map.put(option_attrs, :question_id, question.id),
+              authorize?: false
+            )
+            |> Ash.create!()
+          end)
         end)
-      end)
 
-      {:ok, reload_version(version)}
+        reload_version(version)
+      end)
     end
   end
 
@@ -120,34 +139,39 @@ defmodule QuizProject.Quizzes do
   """
   def upsert_question(version, question_attrs, options_attrs, actor) do
     with :ok <- authorize_owner(version, actor),
-         :ok <- ensure_draft(version) do
-      question =
-        case question_attrs[:id] do
-          nil ->
-            position = Enum.count(load_questions(version))
-
-            Question
-            |> Ash.Changeset.for_create(
-              :create,
-              question_attrs
-              |> Map.delete(:id)
-              |> Map.merge(%{quiz_version_id: version.id, position: position}),
-              authorize?: false
-            )
-            |> Ash.create!()
-
-          id ->
-            Question
-            |> Ash.get!(id, authorize?: false)
-            |> Ash.Changeset.for_update(:update, Map.delete(question_attrs, :id),
-              authorize?: false
-            )
-            |> Ash.update!()
-        end
-
+         :ok <- ensure_draft(version),
+         {:ok, question} <- upsert_question_record(version, question_attrs) do
       sync_options(question, options_attrs)
       {:ok, Ash.load!(question, [:options], reuse_values?: false, authorize?: false)}
     end
+  end
+
+  defp upsert_question_record(version, %{id: nil} = attrs) do
+    upsert_question_record(version, Map.delete(attrs, :id))
+  end
+
+  defp upsert_question_record(version, %{id: id} = attrs) do
+    case Ash.get(Question, id, authorize?: false) do
+      {:ok, %Question{quiz_version_id: version_id} = question} when version_id == version.id ->
+        question
+        |> Ash.Changeset.for_update(:update, Map.delete(attrs, :id), authorize?: false)
+        |> Ash.update()
+
+      _ ->
+        {:error, :question_not_found}
+    end
+  end
+
+  defp upsert_question_record(version, attrs) do
+    position = Enum.count(load_questions(version))
+
+    Question
+    |> Ash.Changeset.for_create(
+      :create,
+      Map.merge(attrs, %{quiz_version_id: version.id, position: position}),
+      authorize?: false
+    )
+    |> Ash.create()
   end
 
   defp sync_options(question, options_attrs) do
@@ -475,6 +499,60 @@ defmodule QuizProject.Quizzes do
     |> Ash.Query.sort(inserted_at: :desc)
     |> Ash.Query.load(:versions)
     |> Ash.read!(authorize?: false)
+  end
+
+  @doc "Busca um quiz pertencente ao ator sem lançar exceção."
+  def get_owned_quiz(id, actor) do
+    case Ash.get(Quiz, id, load: [:versions], authorize?: false) do
+      {:ok, %Quiz{} = quiz_record} ->
+        case authorize_owner(quiz_record, actor) do
+          :ok -> {:ok, quiz_record}
+          error -> error
+        end
+
+      _ ->
+        {:error, :not_found}
+    end
+  end
+
+  @doc "Busca uma versão completa pertencente ao ator sem lançar exceção."
+  def get_owned_version_full(id, actor) do
+    case Ash.get(QuizVersion, id, load: [:quiz] ++ @version_load, authorize?: false) do
+      {:ok, %QuizVersion{} = version} ->
+        case authorize_owner(version, actor) do
+          :ok -> {:ok, version}
+          error -> error
+        end
+
+      _ ->
+        {:error, :not_found}
+    end
+  end
+
+  @doc "Busca uma questão pertencente ao ator sem lançar exceção."
+  def get_owned_question(id, actor) do
+    case Ash.get(Question, id, load: [:options], authorize?: false) do
+      {:ok, %Question{} = question} ->
+        version = get_version!(question.quiz_version_id)
+
+        case authorize_owner(version, actor) do
+          :ok -> {:ok, question, version}
+          error -> error
+        end
+
+      _ ->
+        {:error, :not_found}
+    end
+  end
+
+  @doc "Executa as validações de publicação sem alterar o rascunho."
+  def validate_draft(version, actor) do
+    with :ok <- authorize_owner(version, actor),
+         :ok <- ensure_draft(version) do
+      version
+      |> Ash.load!(@version_load, reuse_values?: false, authorize?: false)
+      |> Publisher.validate()
+    end
   end
 
   def get_quiz!(id), do: Ash.get!(Quiz, id, load: [:versions], authorize?: false)

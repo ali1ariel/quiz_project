@@ -63,6 +63,10 @@ defmodule QuizProject.Accounts.User do
     timestamps()
   end
 
+  relationships do
+    has_many :api_tokens, QuizProject.Accounts.ApiToken
+  end
+
   identities do
     identity :unique_email, [:email], message: "e-mail já cadastrado"
   end

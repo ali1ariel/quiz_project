@@ -64,7 +64,9 @@ defmodule QuizProjectWeb.DashboardLive do
                 publicado
               </span>
               <span
-                :if={published_version(quiz) && version_suffix(published_version(quiz).version_number)}
+                :if={
+                  published_version(quiz) && version_suffix(published_version(quiz).version_number)
+                }
                 class="badge badge-ghost badge-sm rounded-full"
               >
                 {version_suffix(published_version(quiz).version_number)}
@@ -277,47 +279,47 @@ defmodule QuizProjectWeb.DashboardLive do
             </div>
 
             <form phx-change="validate_import" phx-submit="preview_import" id="import-form">
-            <div
-              class="border-2 border-dashed border-base-300 rounded-xl p-4 mb-3 text-center"
-              phx-drop-target={@uploads.json_file.ref}
-            >
-              <.live_file_input
-                upload={@uploads.json_file}
-                class="file-input file-input-bordered file-input-sm w-full max-w-xs rounded-full"
-              />
-              <p class="text-xs opacity-60 mt-2">Arquivo .json (máx. 1 MB)</p>
-              <p
-                :for={entry <- @uploads.json_file.entries}
-                class="text-xs mt-1 font-mono"
-                id={"upload-entry-#{entry.ref}"}
+              <div
+                class="border-2 border-dashed border-base-300 rounded-xl p-4 mb-3 text-center"
+                phx-drop-target={@uploads.json_file.ref}
               >
-                {entry.client_name}
-              </p>
-              <p
-                :for={error <- upload_errors(@uploads.json_file)}
-                class="text-xs text-error mt-1"
-              >
-                {upload_error_message(error)}
-              </p>
-            </div>
+                <.live_file_input
+                  upload={@uploads.json_file}
+                  class="file-input file-input-bordered file-input-sm w-full max-w-xs rounded-full"
+                />
+                <p class="text-xs opacity-60 mt-2">Arquivo .json (máx. 1 MB)</p>
+                <p
+                  :for={entry <- @uploads.json_file.entries}
+                  class="text-xs mt-1 font-mono"
+                  id={"upload-entry-#{entry.ref}"}
+                >
+                  {entry.client_name}
+                </p>
+                <p
+                  :for={error <- upload_errors(@uploads.json_file)}
+                  class="text-xs text-error mt-1"
+                >
+                  {upload_error_message(error)}
+                </p>
+              </div>
 
-            <div class="divider text-xs opacity-60 my-2">ou cole o JSON</div>
+              <div class="divider text-xs opacity-60 my-2">ou cole o JSON</div>
 
-            <textarea
-              name="json"
-              id="import-json"
-              rows="8"
-              class="textarea textarea-bordered w-full rounded-xl font-mono text-xs"
-              placeholder={import_placeholder()}
-            >{@import_json}</textarea>
-            <div class="modal-action">
-              <button type="button" phx-click="close_import" class="btn btn-ghost rounded-full">
-                Cancelar
-              </button>
-              <button type="submit" id="import-submit" class="btn btn-primary rounded-full">
-                Revisar importação
-              </button>
-            </div>
+              <textarea
+                name="json"
+                id="import-json"
+                rows="8"
+                class="textarea textarea-bordered w-full rounded-xl font-mono text-xs"
+                placeholder={import_placeholder()}
+              >{@import_json}</textarea>
+              <div class="modal-action">
+                <button type="button" phx-click="close_import" class="btn btn-ghost rounded-full">
+                  Cancelar
+                </button>
+                <button type="submit" id="import-submit" class="btn btn-primary rounded-full">
+                  Revisar importação
+                </button>
+              </div>
             </form>
           </div>
         </div>
@@ -417,8 +419,7 @@ defmodule QuizProjectWeb.DashboardLive do
 
     case Quizzes.preview_import(json) do
       {:ok, attrs} ->
-        {:noreply,
-         assign(socket, import_preview: %{json: json, attrs: attrs}, import_errors: [])}
+        {:noreply, assign(socket, import_preview: %{json: json, attrs: attrs}, import_errors: [])}
 
       {:error, errors} when is_list(errors) ->
         {:noreply, assign(socket, import_errors: errors, import_json: json)}

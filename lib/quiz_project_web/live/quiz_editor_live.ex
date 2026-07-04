@@ -35,7 +35,8 @@ defmodule QuizProjectWeb.QuizEditorLive do
           </h1>
           <span class="badge badge-warning rounded-full">
             rascunho<span :if={version_suffix(@version.version_number)}>
-              · {version_suffix(@version.version_number)}</span>
+              · {version_suffix(@version.version_number)}
+            </span>
           </span>
           <span :if={@saved_at} class="text-xs opacity-50" id="autosave-indicator">
             salvo automaticamente

@@ -18,10 +18,15 @@ defmodule QuizProjectWeb.Router do
     plug :accepts, ["json"]
   end
 
+  pipeline :api_authenticated do
+    plug QuizProjectWeb.ApiAuth, :fetch_api_user
+  end
+
   scope "/", QuizProjectWeb do
     pipe_through :browser
 
     get "/", PageController, :home
+    get "/api/docs", PageController, :api_docs
     delete "/sair", AuthController, :logout
 
     live_session :public,
@@ -30,6 +35,34 @@ defmodule QuizProjectWeb.Router do
       live "/tentativa/:id", AttemptLive
       live "/tentativa/:id/resultado", ResultLive
     end
+  end
+
+  scope "/api/v1", QuizProjectWeb.Api do
+    pipe_through :api
+
+    post "/auth/tokens", AuthController, :create
+  end
+
+  scope "/api/v1", QuizProjectWeb.Api do
+    pipe_through [:api, :api_authenticated]
+
+    delete "/auth/token", AuthController, :delete
+
+    get "/quizzes", QuizController, :index
+    post "/quizzes", QuizController, :create
+    post "/quizzes/import", QuizController, :import
+    get "/quizzes/:id", QuizController, :show
+    patch "/quizzes/:id", QuizController, :update
+    post "/quizzes/:id/drafts", QuizController, :create_draft
+
+    get "/quiz-versions/:id", VersionController, :show
+    patch "/quiz-versions/:id", VersionController, :update
+    post "/quiz-versions/:id/questions", QuestionController, :create
+    post "/quiz-versions/:id/validate", VersionController, :validate
+    post "/quiz-versions/:id/publish", VersionController, :publish
+
+    patch "/questions/:id", QuestionController, :update
+    delete "/questions/:id", QuestionController, :delete
   end
 
   scope "/", QuizProjectWeb do
