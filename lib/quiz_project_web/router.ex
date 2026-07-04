@@ -23,6 +23,13 @@ defmodule QuizProjectWeb.Router do
 
     get "/", PageController, :home
     delete "/sair", AuthController, :logout
+
+    live_session :public,
+      on_mount: [{QuizProjectWeb.UserAuth, :mount_current_user}] do
+      live "/q/:slug", QuizPublicLive
+      live "/tentativa/:id", AttemptLive
+      live "/tentativa/:id/resultado", ResultLive
+    end
   end
 
   scope "/", QuizProjectWeb do
@@ -40,6 +47,8 @@ defmodule QuizProjectWeb.Router do
     live_session :authenticated,
       on_mount: [{QuizProjectWeb.UserAuth, :ensure_authenticated}] do
       live "/painel", DashboardLive
+      live "/quiz/:version_id/editar", QuizEditorLive
+      live "/quiz/:quiz_id/gerenciar", QuizManageLive
     end
   end
 
