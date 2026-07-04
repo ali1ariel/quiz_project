@@ -484,7 +484,8 @@ defmodule QuizProjectWeb.QuizEditorLive do
          question_options: [],
          annul_question: nil,
          publish_errors: [],
-         saved_at: nil
+         saved_at: nil,
+         page_title: editor_page_title(version)
        )}
     else
       :published ->
@@ -511,7 +512,12 @@ defmodule QuizProjectWeb.QuizEditorLive do
 
     case Quizzes.update_draft(socket.assigns.version, attrs, socket.assigns.current_user) do
       {:ok, version} ->
-        {:noreply, assign(socket, version: version, saved_at: DateTime.utc_now())}
+        {:noreply,
+         assign(socket,
+           version: version,
+           saved_at: DateTime.utc_now(),
+           page_title: editor_page_title(version)
+         )}
 
       {:error, _} ->
         {:noreply, socket}
@@ -810,6 +816,10 @@ defmodule QuizProjectWeb.QuizEditorLive do
   defp type_label(:single), do: "Uma correta"
   defp type_label(:multiple), do: "Múltiplas corretas"
   defp type_label(:text), do: "Discursiva"
+
+  # v1 é criação (sem nome ainda no fluxo); demais versões são edição do quiz.
+  defp editor_page_title(%{version_number: 1}), do: build_title(["Criando"])
+  defp editor_page_title(version), do: build_title(["Editando", title_name(version.name)])
 
   defp type_options, do: @type_options
   defp order_options, do: @order_options

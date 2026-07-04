@@ -457,7 +457,8 @@ defmodule QuizProjectWeb.ResultLive do
            ordered_questions: ordered_questions,
            points: Scoring.question_points(version, version.questions),
            stats: stats(version, attempt, answers),
-           show_summary: false
+           show_summary: false,
+           page_title: build_title(["Resultados", title_name(version.name)])
          )
          |> paginate(1)}
     end

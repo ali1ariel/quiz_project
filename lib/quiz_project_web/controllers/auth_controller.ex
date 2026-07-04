@@ -6,7 +6,7 @@ defmodule QuizProjectWeb.AuthController do
   alias QuizProjectWeb.UserAuth
 
   def register_form(conn, _params) do
-    render(conn, :register, error: nil, email: "", name: "")
+    render(conn, :register, error: nil, email: "", name: "", page_title: "Criar conta - Quizzes")
   end
 
   def register(conn, %{"user" => %{"email" => email, "password" => password} = params}) do
@@ -22,13 +22,14 @@ defmodule QuizProjectWeb.AuthController do
         render(conn, :register,
           error: humanize_errors(error),
           email: email,
-          name: params["name"] || ""
+          name: params["name"] || "",
+          page_title: "Criar conta - Quizzes"
         )
     end
   end
 
   def login_form(conn, _params) do
-    render(conn, :login, error: nil, email: "")
+    render(conn, :login, error: nil, email: "", page_title: "Entrar - Quizzes")
   end
 
   def login(conn, %{"user" => %{"email" => email, "password" => password}}) do
@@ -39,7 +40,11 @@ defmodule QuizProjectWeb.AuthController do
         |> UserAuth.log_in_user(user)
 
       :error ->
-        render(conn, :login, error: "E-mail ou senha inválidos.", email: email)
+        render(conn, :login,
+          error: "E-mail ou senha inválidos.",
+          email: email,
+          page_title: "Entrar - Quizzes"
+        )
     end
   end
 

@@ -334,7 +334,8 @@ defmodule QuizProjectWeb.DashboardLive do
        show_import: false,
        import_errors: [],
        import_json: "",
-       import_preview: nil
+       import_preview: nil,
+       page_title: build_title(["Meus quizzes"])
      )
      |> allow_upload(:json_file,
        accept: ~w(.json application/json),

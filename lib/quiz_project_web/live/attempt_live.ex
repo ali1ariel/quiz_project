@@ -331,6 +331,7 @@ defmodule QuizProjectWeb.AttemptLive do
         {:ok,
          socket
          |> assign(attempt: attempt, version: attempt.quiz_version)
+         |> assign(page_title: build_title([title_name(attempt.quiz_version.name)]))
          |> assign(page: 1, restore_timers: %{}, confirm_anyway: false, validated: false)
          |> assign(show_confirm_modal: false, pending: %{unanswered: 0, later: 0})
          |> assign(pending_unanswered_numbers: [], pending_later_numbers: [])

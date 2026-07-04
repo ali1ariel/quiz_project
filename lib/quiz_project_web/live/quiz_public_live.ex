@@ -100,7 +100,8 @@ defmodule QuizProjectWeb.QuizPublicLive do
            quiz: quiz,
            version: version,
            in_progress: Attempts.find_in_progress(version, participant),
-           start_error: nil
+           start_error: nil,
+           page_title: build_title([title_name(version.name)])
          )}
 
       {:error, :not_found} ->

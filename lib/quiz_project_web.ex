@@ -17,7 +17,9 @@ defmodule QuizProjectWeb do
   those modules here.
   """
 
-  def static_paths, do: ~w(assets fonts images favicon.ico robots.txt formato-importacao.md)
+  def static_paths,
+    do:
+      ~w(assets fonts images favicon.ico favicon.png favicon-32.png favicon-48.png robots.txt formato-importacao.md)
 
   def router do
     quote do

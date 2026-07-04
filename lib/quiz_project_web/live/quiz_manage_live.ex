@@ -210,6 +210,7 @@ defmodule QuizProjectWeb.QuizManageLive do
       {:ok,
        socket
        |> assign(quiz: quiz, tab: :attempts, annul_question: nil)
+       |> assign(page_title: build_title(["Gerenciando", title_name(published.name)]))
        |> load_published(published.id)
        |> load_attempts()
        |> assign(history: Quizzes.version_history(quiz))}

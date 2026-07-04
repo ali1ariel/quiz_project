@@ -509,4 +509,18 @@ defmodule QuizProjectWeb.CoreComponents do
   """
   def version_suffix(1), do: nil
   def version_suffix(number) when is_integer(number), do: "versão #{number}"
+
+  @doc """
+  Monta o título da aba/janela: junta as partes com " - " e termina sempre em
+  "Quizzes". Partes vazias são ignoradas. Ex.: `["Resultados", "Prova"]` vira
+  "Resultados - Prova - Quizzes".
+  """
+  def build_title(parts) do
+    (List.wrap(parts) ++ ["Quizzes"])
+    |> Enum.reject(&(&1 in [nil, ""]))
+    |> Enum.join(" - ")
+  end
+
+  @doc "Nome do quiz para exibição, com fallback quando ainda não tem nome."
+  def title_name(name), do: if(name in [nil, ""], do: "Quiz sem nome", else: name)
 end

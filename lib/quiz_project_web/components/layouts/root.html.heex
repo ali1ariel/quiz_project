@@ -4,7 +4,12 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="csrf-token" content={get_csrf_token()} />
-    <.live_title default="QuizProject" suffix=" · Phoenix Framework" phx-no-format>{assigns[:page_title]}</.live_title>
+    <link rel="icon" type="image/png" sizes="256x256" href={~p"/favicon.png"} />
+    <link rel="icon" type="image/png" sizes="48x48" href={~p"/favicon-48.png"} />
+    <link rel="icon" type="image/png" sizes="32x32" href={~p"/favicon-32.png"} />
+    <link rel="alternate icon" href={~p"/favicon.ico"} />
+    <link rel="apple-touch-icon" href={~p"/favicon.png"} />
+    <.live_title default="Quizzes" suffix="" phx-no-format>{assigns[:page_title]}</.live_title>
     <link phx-track-static rel="stylesheet" href={~p"/assets/css/app.css"} />
     <script defer phx-track-static type="text/javascript" src={~p"/assets/js/app.js"}>
     </script>
