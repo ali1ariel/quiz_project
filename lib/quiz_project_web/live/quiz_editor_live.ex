@@ -70,7 +70,7 @@ defmodule QuizProjectWeb.QuizEditorLive do
         </div>
       </div>
 
-      <form phx-change="autosave" id="quiz-form" class="card bg-base-200 rounded-2xl p-5 space-y-4">
+      <form phx-change="autosave" id="quiz-form" class="card qcard bg-base-200 p-5 space-y-4">
         <div class="grid sm:grid-cols-2 gap-4">
           <div>
             <label class="label text-sm mb-1" for="quiz-name">Nome do quiz</label>
@@ -165,12 +165,12 @@ defmodule QuizProjectWeb.QuizEditorLive do
       <div
         :for={{question, index} <- Enum.with_index(@questions)}
         id={"question-#{question.id}"}
-        class="card bg-base-200 rounded-2xl p-4"
+        class="card qcard bg-base-200 p-4"
       >
         <div class="flex items-start gap-3">
           <span class="badge badge-neutral rounded-full mt-1">{index + 1}</span>
           <div class="flex-1 min-w-0">
-            <p class="font-medium break-words">
+            <p class="qtext font-medium break-words">
               {if question.statement == "", do: "(sem enunciado)", else: question.statement}
             </p>
             <div class="flex flex-wrap gap-2 mt-1 text-xs">

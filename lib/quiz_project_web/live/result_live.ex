@@ -49,12 +49,15 @@ defmodule QuizProjectWeb.ResultLive do
           <div
             :for={{question, index} <- @page_questions}
             id={"result-question-#{question.id}"}
-            class="card bg-base-200 rounded-2xl p-5"
+            class={[
+              "card qcard p-5",
+              result_state_class(question, answer(@answers, question), @points[question.id])
+            ]}
           >
             <div class="flex items-start justify-between gap-2">
               <div class="flex items-start gap-3 min-w-0">
                 <span class="badge badge-neutral rounded-full mt-0.5">{index + 1}</span>
-                <p class="font-medium break-words">{question.statement}</p>
+                <p class="qtext font-medium break-words">{question.statement}</p>
               </div>
               <.status_badge
                 question={question}
@@ -265,6 +268,18 @@ defmodule QuizProjectWeb.ResultLive do
       zero?(answer.score) -> "incorreta"
       full?(answer.score, points) -> "correta"
       true -> "parcialmente correta"
+    end
+  end
+
+  # O card inteiro é tingido pelo resultado: verde correta, vermelho
+  # incorreta, âmbar parcial/anulada, apagado para "não sei".
+  defp result_state_class(question, answer, points) do
+    cond do
+      question.annulled -> "qstate-annulled"
+      answer.state == :dont_know -> "qstate-dontknow"
+      zero?(answer.score) -> "qstate-err"
+      full?(answer.score, points) -> "qstate-ok"
+      true -> "qstate-partial"
     end
   end
 

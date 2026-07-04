@@ -66,6 +66,19 @@ defmodule QuizProjectWeb.Layouts do
               </.link>
             </li>
           <% end %>
+          <li>
+            <label class="sr-only" for="skin-select">Estilo visual</label>
+            <select
+              id="skin-select"
+              data-skin-select
+              class="select select-sm rounded-full w-auto"
+              title="Estilo visual"
+            >
+              <option value="tatil">Tátil 3D</option>
+              <option value="sobrio">Sóbrio</option>
+              <option value="classico">Clássico</option>
+            </select>
+          </li>
           <li><.theme_toggle /></li>
         </ul>
       </nav>

@@ -52,7 +52,7 @@ defmodule QuizProjectWeb.DashboardLive do
         <div
           :for={quiz <- @created}
           id={"quiz-#{quiz.id}"}
-          class="card bg-base-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center gap-3"
+          class="card qcard bg-base-200 p-4 flex flex-col sm:flex-row sm:items-center gap-3"
         >
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2 flex-wrap">
@@ -108,7 +108,7 @@ defmodule QuizProjectWeb.DashboardLive do
         <div
           :for={attempt <- @answered}
           id={"attempt-#{attempt.id}"}
-          class="card bg-base-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center gap-3"
+          class="card qcard bg-base-200 p-4 flex flex-col sm:flex-row sm:items-center gap-3"
         >
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2 flex-wrap">

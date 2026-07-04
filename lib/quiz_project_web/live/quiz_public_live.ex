@@ -12,7 +12,7 @@ defmodule QuizProjectWeb.QuizPublicLive do
     ~H"""
     <Layouts.app flash={@flash} current_user={@current_user}>
       <div class="pt-6 max-w-lg mx-auto w-full">
-        <div class="card bg-base-200 rounded-3xl p-6 space-y-4">
+        <div class="card qcard bg-base-200 p-6 space-y-4">
           <div>
             <h1 class="text-2xl font-bold">{@version.name}</h1>
             <p :if={@version.description != ""} class="opacity-70 mt-1">{@version.description}</p>

@@ -34,12 +34,15 @@ defmodule QuizProjectWeb.AttemptLive do
         <div
           :for={{question, global_index} <- @page_questions}
           id={"attempt-question-#{question.id}"}
-          class="card bg-base-200 rounded-2xl p-5"
+          class={[
+            "card qcard p-5",
+            question_state_class(answer(@answers, question)) || "bg-base-200"
+          ]}
         >
           <div class="flex items-start justify-between gap-2 mb-3">
             <div class="flex items-start gap-3 min-w-0">
               <span class="badge badge-neutral rounded-full mt-0.5">{global_index + 1}</span>
-              <p class="font-medium break-words">{question.statement}</p>
+              <p class="qtext font-medium break-words">{question.statement}</p>
             </div>
             <div class="flex flex-col items-end gap-1 shrink-0">
               <span
@@ -574,6 +577,16 @@ defmodule QuizProjectWeb.AttemptLive do
   end
 
   defp answer(answers, question), do: answers[question.id]
+
+  # Feedback visual no card inteiro: âmbar quando marcada para depois,
+  # apagado/tracejado quando "não sei". nil = card normal.
+  defp question_state_class(answer) do
+    cond do
+      answer.marked_later -> "qstate-later"
+      answer.state == :dont_know -> "qstate-dontknow"
+      true -> nil
+    end
+  end
 
   # Números (1-based, na ordem da tentativa) das questões pendentes,
   # separados entre sem resposta e marcadas para responder depois.

@@ -33,7 +33,7 @@ defmodule QuizProjectWeb.QuizManageLive do
         </div>
       </div>
 
-      <div class="card bg-base-200 rounded-2xl p-4 text-sm flex flex-row items-center gap-2">
+      <div class="card qcard bg-base-200 p-4 text-sm flex flex-row items-center gap-2">
         <.icon name="hero-link" class="size-4 opacity-60" />
         <span class="font-mono break-all" id="public-link">{url(~p"/q/#{@quiz.public_slug}")}</span>
       </div>
@@ -65,7 +65,7 @@ defmodule QuizProjectWeb.QuizManageLive do
         <div
           :for={attempt <- @attempts}
           id={"manage-attempt-#{attempt.id}"}
-          class="card bg-base-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center gap-3"
+          class="card qcard bg-base-200 p-4 flex flex-col sm:flex-row sm:items-center gap-3"
         >
           <div class="flex-1">
             <p class="font-semibold">"{attempt.display_identity}"</p>
@@ -99,12 +99,12 @@ defmodule QuizProjectWeb.QuizManageLive do
         <div
           :for={{question, index} <- Enum.with_index(@published.questions)}
           id={"manage-question-#{question.id}"}
-          class="card bg-base-200 rounded-2xl p-4"
+          class="card qcard bg-base-200 p-4"
         >
           <div class="flex items-start gap-3">
             <span class="badge badge-neutral rounded-full mt-1">{index + 1}</span>
             <div class="flex-1 min-w-0">
-              <p class="font-medium break-words">{question.statement}</p>
+              <p class="qtext font-medium break-words">{question.statement}</p>
               <div class="flex flex-wrap gap-2 mt-1 text-xs">
                 <span class="badge badge-ghost badge-sm rounded-full">{type_label(question.type)}</span>
                 <span :if={question.annulled} class="badge badge-error badge-sm rounded-full">
@@ -132,7 +132,7 @@ defmodule QuizProjectWeb.QuizManageLive do
         <div
           :for={version <- @history}
           id={"version-#{version.id}"}
-          class="card bg-base-200 rounded-2xl p-4"
+          class="card qcard bg-base-200 p-4"
         >
           <div class="flex items-center gap-2">
             <span class="badge badge-primary rounded-full">v{version.version_number}</span>
