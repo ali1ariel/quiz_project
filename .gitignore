@@ -35,3 +35,6 @@ quiz_project-*.tar
 npm-debug.log
 /assets/node_modules/
 
+# Segredos locais de desenvolvimento (gerados por scripts/gen_dev_secret.sh).
+/config/dev.secret.exs
+

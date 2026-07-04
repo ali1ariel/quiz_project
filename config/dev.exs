@@ -91,3 +91,9 @@ config :phoenix_live_view,
 
 # Disable swoosh api client as it is only required for production adapters.
 config :swoosh, :api_client, false
+
+# Segredos locais (ex.: chaves de IA) fora do controle de versão.
+# Gere com scripts/gen_dev_secret.sh. Opcional — ignorado se ausente.
+if File.exists?(Path.expand("dev.secret.exs", __DIR__)) do
+  import_config "dev.secret.exs"
+end

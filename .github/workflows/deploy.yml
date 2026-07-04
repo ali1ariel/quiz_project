@@ -1,0 +1,65 @@
+name: "Deploy to AWS"
+
+on:
+  push:
+    branches: ["master"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: "Deploy to EC2"
+    runs-on: ubuntu-latest
+
+    environment: production
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.18.2"
+          otp-version: "27.3.4"
+
+      - name: Install Dependencies
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+          mix deps.get
+
+      - name: Compile (warnings as errors)
+        env:
+          MIX_ENV: prod
+        run: mix compile --warnings-as-errors
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Create or Update CodeDeploy Application
+        run: |
+          aws deploy create-application \
+            --application-name quiz_project || true
+
+      - name: Create or Update Deployment Group
+        run: |
+          aws deploy create-deployment-group \
+            --application-name quiz_project \
+            --deployment-group-name quiz_project-production \
+            --service-role-arn ${{ secrets.AWS_CODEDEPLOY_SERVICE_ROLE }} \
+            --deployment-style deploymentType=IN_PLACE,deploymentOption=WITHOUT_TRAFFIC_CONTROL \
+            --ec2-tag-filters Key=Environment,Type=KEY_AND_VALUE,Value=Production || true
+
+      - name: Create CodeDeploy Deployment
+        run: |
+          aws deploy create-deployment \
+            --application-name quiz_project \
+            --deployment-group-name quiz_project-production \
+            --github-location repository=${{ github.repository }},commitId=${{ github.sha }}
