@@ -4,6 +4,9 @@ config :ash, policies: [show_policy_breakdowns?: true], disable_async?: true
 # Acelera hashing de senha nos testes
 config :bcrypt_elixir, :log_rounds, 1
 
+# Nos testes a IA é sempre o provider heurístico local
+config :quiz_project, :ai_provider, QuizProject.AI.Fake
+
 # Configure your database
 #
 # The MIX_TEST_PARTITION environment variable can be used

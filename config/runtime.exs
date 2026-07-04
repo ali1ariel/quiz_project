@@ -20,6 +20,42 @@ if System.get_env("PHX_SERVER") do
   config :quiz_project, QuizProjectWeb.Endpoint, server: true
 end
 
+# Integração com IA: as API keys vêm de variáveis de ambiente do sistema
+# (não por usuário no protótipo). AI_PROVIDER escolhe explicitamente
+# ("openai", "gemini" ou "fake"); sem ela, usa o primeiro provider com chave
+# configurada, caindo no Fake (heurística local) se não houver nenhuma.
+if config_env() != :test do
+  config :quiz_project,
+    openai_api_key: System.get_env("OPENAI_API_KEY"),
+    openai_model: System.get_env("OPENAI_MODEL", "gpt-4o-mini"),
+    gemini_api_key: System.get_env("GEMINI_API_KEY"),
+    gemini_model: System.get_env("GEMINI_MODEL", "gemini-2.0-flash")
+
+  ai_provider =
+    case System.get_env("AI_PROVIDER") do
+      "openai" ->
+        QuizProject.AI.OpenAI
+
+      "gemini" ->
+        QuizProject.AI.Gemini
+
+      "fake" ->
+        QuizProject.AI.Fake
+
+      nil ->
+        cond do
+          System.get_env("OPENAI_API_KEY") not in [nil, ""] -> QuizProject.AI.OpenAI
+          System.get_env("GEMINI_API_KEY") not in [nil, ""] -> QuizProject.AI.Gemini
+          true -> QuizProject.AI.Fake
+        end
+
+      other ->
+        raise "AI_PROVIDER inválido: #{inspect(other)}. Use \"openai\", \"gemini\" ou \"fake\"."
+    end
+
+  config :quiz_project, ai_provider: ai_provider
+end
+
 config :quiz_project, QuizProjectWeb.Endpoint,
   http: [port: String.to_integer(System.get_env("PORT", "4000"))]
 
