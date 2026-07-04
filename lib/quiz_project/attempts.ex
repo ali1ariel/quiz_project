@@ -222,9 +222,7 @@ defmodule QuizProject.Attempts do
   def toggle_marked_later(attempt, answer) do
     with :ok <- ensure_in_progress(attempt) do
       answer
-      |> Ash.Changeset.for_update(:save, %{marked_later: !answer.marked_later},
-        authorize?: false
-      )
+      |> Ash.Changeset.for_update(:save, %{marked_later: !answer.marked_later}, authorize?: false)
       |> Ash.update()
     end
   end

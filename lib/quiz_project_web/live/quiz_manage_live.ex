@@ -16,12 +16,15 @@ defmodule QuizProjectWeb.QuizManageLive do
         <div>
           <h1 class="text-2xl font-bold">{@published.name}</h1>
           <p class="text-sm opacity-60">
-            Versão publicada v{@published.version_number} —
-            {length(@published.questions)} questões
+            Versão publicada v{@published.version_number} — {length(@published.questions)} questões
           </p>
         </div>
         <div class="flex gap-2">
-          <button id="edit-new-version" phx-click="edit_new_version" class="btn btn-outline rounded-full">
+          <button
+            id="edit-new-version"
+            phx-click="edit_new_version"
+            class="btn btn-outline rounded-full"
+          >
             <.icon name="hero-pencil" class="size-4" /> Editar (nova versão)
           </button>
           <.link navigate={~p"/q/#{@quiz.public_slug}"} class="btn btn-primary rounded-full">
@@ -37,7 +40,13 @@ defmodule QuizProjectWeb.QuizManageLive do
 
       <div role="tablist" class="tabs tabs-border">
         <button
-          :for={{tab, label} <- [attempts: "Tentativas", questions: "Questões", versions: "Histórico de versões"]}
+          :for={
+            {tab, label} <- [
+              attempts: "Tentativas",
+              questions: "Questões",
+              versions: "Histórico de versões"
+            ]
+          }
           role="tab"
           id={"manage-tab-#{tab}"}
           class={["tab", @tab == tab && "tab-active"]}
@@ -242,7 +251,10 @@ defmodule QuizProjectWeb.QuizManageLive do
 
   defp load_published(socket, version_id) do
     version = Quizzes.get_version_full!(version_id)
-    assign(socket, published: %{version | questions: Enum.sort_by(version.questions, & &1.position)})
+
+    assign(socket,
+      published: %{version | questions: Enum.sort_by(version.questions, & &1.position)}
+    )
   end
 
   defp load_attempts(socket) do

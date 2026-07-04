@@ -16,7 +16,8 @@ defmodule QuizProject.AI.OpenAI do
 
   @impl true
   def grade_text_answer(statement, reference, answer) do
-    with {:ok, body} <- chat(Prompts.grade_system(), Prompts.grade_user(statement, reference, answer)) do
+    with {:ok, body} <-
+           chat(Prompts.grade_system(), Prompts.grade_user(statement, reference, answer)) do
       parse_grade(body)
     end
   end

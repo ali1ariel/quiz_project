@@ -30,7 +30,10 @@ defmodule QuizProjectWeb.QuizPublicLive do
           <div :if={@in_progress} class="alert rounded-2xl text-sm" id="resume-box">
             <.icon name="hero-arrow-path" class="size-5" />
             <span>Você tem uma tentativa em andamento neste quiz.</span>
-            <.link navigate={~p"/tentativa/#{@in_progress.id}"} class="btn btn-primary btn-sm rounded-full">
+            <.link
+              navigate={~p"/tentativa/#{@in_progress.id}"}
+              class="btn btn-primary btn-sm rounded-full"
+            >
               Continuar
             </.link>
           </div>

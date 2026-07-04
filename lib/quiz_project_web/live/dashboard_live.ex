@@ -153,7 +153,13 @@ defmodule QuizProjectWeb.DashboardLive do
         </div>
       </div>
 
-      <dialog :if={@show_import} id="import-modal" class="modal modal-open" phx-window-keydown="close_import" phx-key="escape">
+      <dialog
+        :if={@show_import}
+        id="import-modal"
+        class="modal modal-open"
+        phx-window-keydown="close_import"
+        phx-key="escape"
+      >
         <div class="modal-box rounded-2xl max-w-2xl">
           <h3 class="font-bold text-lg mb-2">Importar quiz via JSON</h3>
           <p class="text-sm opacity-70 mb-4">
@@ -247,7 +253,8 @@ defmodule QuizProjectWeb.DashboardLive do
         {:noreply, assign(socket, import_errors: errors, import_json: json)}
 
       {:error, _} ->
-        {:noreply, assign(socket, import_errors: ["Erro inesperado na importação"], import_json: json)}
+        {:noreply,
+         assign(socket, import_errors: ["Erro inesperado na importação"], import_json: json)}
     end
   end
 

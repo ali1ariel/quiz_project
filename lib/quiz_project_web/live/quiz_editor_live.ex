@@ -57,7 +57,11 @@ defmodule QuizProjectWeb.QuizEditorLive do
         </div>
       </div>
 
-      <div :if={@publish_errors != []} class="alert alert-error rounded-2xl text-sm" id="publish-errors">
+      <div
+        :if={@publish_errors != []}
+        class="alert alert-error rounded-2xl text-sm"
+        id="publish-errors"
+      >
         <div>
           <p class="font-semibold mb-1">Corrija antes de publicar:</p>
           <ul class="list-disc list-inside">
@@ -158,7 +162,11 @@ defmodule QuizProjectWeb.QuizEditorLive do
         Nenhuma pergunta ainda. Use o botão "+" para adicionar.
       </p>
 
-      <div :for={{question, index} <- Enum.with_index(@questions)} id={"question-#{question.id}"} class="card bg-base-200 rounded-2xl p-4">
+      <div
+        :for={{question, index} <- Enum.with_index(@questions)}
+        id={"question-#{question.id}"}
+        class="card bg-base-200 rounded-2xl p-4"
+      >
         <div class="flex items-start gap-3">
           <span class="badge badge-neutral rounded-full mt-1">{index + 1}</span>
           <div class="flex-1 min-w-0">
@@ -227,7 +235,12 @@ defmodule QuizProjectWeb.QuizEditorLive do
             {if @question_form["id"], do: "Editar pergunta", else: "Adicionar pergunta"}
           </h3>
 
-          <form phx-change="question_change" phx-submit="save_question" id="question-form" class="space-y-4">
+          <form
+            phx-change="question_change"
+            phx-submit="save_question"
+            id="question-form"
+            class="space-y-4"
+          >
             <div>
               <label class="label text-sm mb-1" for="question-statement">Enunciado</label>
               <textarea
@@ -241,7 +254,11 @@ defmodule QuizProjectWeb.QuizEditorLive do
 
             <div>
               <label class="label text-sm mb-1" for="question-type">Tipo da pergunta</label>
-              <select name="type" id="question-type" class="select select-bordered w-full rounded-full">
+              <select
+                name="type"
+                id="question-type"
+                class="select select-bordered w-full rounded-full"
+              >
                 <option
                   :for={{label, value} <- type_options()}
                   value={value}
@@ -538,7 +555,8 @@ defmodule QuizProjectWeb.QuizEditorLive do
   end
 
   def handle_event("add_option", _params, socket) do
-    {:noreply, assign(socket, question_options: socket.assigns.question_options ++ [new_option()])}
+    {:noreply,
+     assign(socket, question_options: socket.assigns.question_options ++ [new_option()])}
   end
 
   def handle_event("remove_option", %{"key" => key}, socket) do
@@ -558,8 +576,7 @@ defmodule QuizProjectWeb.QuizEditorLive do
         id: form["id"],
         statement: String.trim(form["statement"]),
         type: type,
-        true_false_answer:
-          if(type == :true_false, do: form["true_false_answer"] == "true"),
+        true_false_answer: if(type == :true_false, do: form["true_false_answer"] == "true"),
         allow_partial_credit: type == :multiple and form["allow_partial_credit"] == "true",
         reference_answer: if(type == :text, do: presence(form["reference_answer"])),
         editor_note: presence(form["editor_note"]),
@@ -607,7 +624,11 @@ defmodule QuizProjectWeb.QuizEditorLive do
   def handle_event("move_question", %{"id" => id, "direction" => direction}, socket) do
     question = Enum.find(socket.assigns.questions, &(&1.id == id))
 
-    Quizzes.move_question(question, String.to_existing_atom(direction), socket.assigns.current_user)
+    Quizzes.move_question(
+      question,
+      String.to_existing_atom(direction),
+      socket.assigns.current_user
+    )
 
     {:noreply, reload_version(socket)}
   end
@@ -617,7 +638,16 @@ defmodule QuizProjectWeb.QuizEditorLive do
   defp apply_question_params(socket, params) do
     form =
       socket.assigns.question_form
-      |> Map.merge(Map.take(params, ["statement", "type", "true_false_answer", "reference_answer", "editor_note", "weight"]))
+      |> Map.merge(
+        Map.take(params, [
+          "statement",
+          "type",
+          "true_false_answer",
+          "reference_answer",
+          "editor_note",
+          "weight"
+        ])
+      )
       |> Map.put(
         "allow_partial_credit",
         to_string(Map.has_key?(params, "allow_partial_credit"))

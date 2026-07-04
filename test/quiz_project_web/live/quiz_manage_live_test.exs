@@ -56,7 +56,11 @@ defmodule QuizProjectWeb.QuizManageLiveTest do
     assert annulled.annulled
   end
 
-  test "lista tentativas finalizadas com identificação", %{conn: conn, quiz: quiz, published: published} do
+  test "lista tentativas finalizadas com identificação", %{
+    conn: conn,
+    quiz: quiz,
+    published: published
+  } do
     {:ok, attempt} =
       Attempts.start_attempt(
         published,

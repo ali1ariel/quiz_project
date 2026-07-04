@@ -57,7 +57,13 @@ defmodule QuizProject.Quizzes do
         version
         |> Ash.Changeset.for_update(
           :update_draft,
-          Map.take(attrs, [:name, :description, :total_points, :unequal_weights, :question_order_mode]),
+          Map.take(attrs, [
+            :name,
+            :description,
+            :total_points,
+            :unequal_weights,
+            :question_order_mode
+          ]),
           authorize?: false
         )
         |> Ash.update!()

@@ -58,7 +58,8 @@ defmodule QuizProject.AI.Fake do
           "A resposta diverge substancialmente da referência esperada."
       end
 
-    {:ok, %{percent: percent, feedback: feedback <> " (avaliação heurística local, sem IA externa)"}}
+    {:ok,
+     %{percent: percent, feedback: feedback <> " (avaliação heurística local, sem IA externa)"}}
   end
 
   @impl true

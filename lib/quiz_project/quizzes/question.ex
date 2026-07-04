@@ -44,8 +44,11 @@ defmodule QuizProject.Quizzes.Question do
 
       change fn changeset, _ ->
         case Ash.Changeset.get_attribute(changeset, :identity_key) do
-          nil -> Ash.Changeset.force_change_attribute(changeset, :identity_key, Ash.UUID.generate())
-          _ -> changeset
+          nil ->
+            Ash.Changeset.force_change_attribute(changeset, :identity_key, Ash.UUID.generate())
+
+          _ ->
+            changeset
         end
       end
     end

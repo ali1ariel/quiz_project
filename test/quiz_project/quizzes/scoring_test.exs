@@ -10,7 +10,8 @@ defmodule QuizProject.Quizzes.ScoringTest do
   defp question(id, weight \\ nil), do: %{id: id, weight: weight}
 
   test "sem pesos: divide igualmente" do
-    points = Scoring.question_points(version(%{}), [question(1), question(2), question(3), question(4)])
+    points =
+      Scoring.question_points(version(%{}), [question(1), question(2), question(3), question(4)])
 
     assert Decimal.equal?(points[1], Decimal.new(25))
     assert Enum.all?(Map.values(points), &Decimal.equal?(&1, Decimal.new(25)))

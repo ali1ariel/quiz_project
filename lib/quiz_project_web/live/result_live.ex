@@ -54,10 +54,18 @@ defmodule QuizProjectWeb.ResultLive do
                 <span class="badge badge-neutral rounded-full mt-0.5">{index + 1}</span>
                 <p class="font-medium break-words">{question.statement}</p>
               </div>
-              <.status_badge question={question} answer={answer(@answers, question)} points={@points[question.id]} />
+              <.status_badge
+                question={question}
+                answer={answer(@answers, question)}
+                points={@points[question.id]}
+              />
             </div>
 
-            <div :if={question.annulled} class="alert alert-warning rounded-xl mt-3 text-sm" id={"annulled-#{question.id}"}>
+            <div
+              :if={question.annulled}
+              class="alert alert-warning rounded-xl mt-3 text-sm"
+              id={"annulled-#{question.id}"}
+            >
               <.icon name="hero-shield-exclamation" class="size-5" />
               <div>
                 <p class="font-semibold">Questão anulada — pontuação integral concedida a todos</p>
@@ -106,7 +114,10 @@ defmodule QuizProjectWeb.ResultLive do
                 <p class="text-xs uppercase opacity-50 mb-1">Nota da Inteligência Artificial</p>
                 <p class="whitespace-pre-wrap">{answer(@answers, question).ai_feedback}</p>
 
-                <div :if={answer(@answers, question).ai_reference_generated} class="mt-2 pt-2 border-t border-base-300">
+                <div
+                  :if={answer(@answers, question).ai_reference_generated}
+                  class="mt-2 pt-2 border-t border-base-300"
+                >
                   <p class="text-xs opacity-60 mb-1">
                     <.icon name="hero-sparkles" class="size-3 inline" />
                     O criador não forneceu resposta de referência — a referência abaixo foi
@@ -138,7 +149,10 @@ defmodule QuizProjectWeb.ResultLive do
             <span class="font-semibold text-sm">
               Resumo — {format_decimal(@attempt.score)}/{format_decimal(@attempt.max_score)} pts
             </span>
-            <.icon name={if @show_summary, do: "hero-chevron-down", else: "hero-chevron-up"} class="size-5" />
+            <.icon
+              name={if @show_summary, do: "hero-chevron-down", else: "hero-chevron-up"}
+              class="size-5"
+            />
           </button>
           <div :if={@show_summary} class="px-5 pb-5">
             <.summary attempt={@attempt} stats={@stats} />

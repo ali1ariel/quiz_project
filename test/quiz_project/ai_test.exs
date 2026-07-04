@@ -16,6 +16,7 @@ defmodule QuizProject.AITest do
 
     test "resposta idêntica à referência pontua alto" do
       reference = "A fotossíntese converte luz solar em energia química"
+
       {:ok, %{percent: percent, feedback: feedback}} =
         Fake.grade_text_answer("Explique a fotossíntese", reference, reference)
 

@@ -339,7 +339,10 @@ defmodule QuizProject.AttemptsTest do
       assert Decimal.equal?(answer_for(finished, multiple).score, Decimal.new(0))
     end
 
-    test "discursiva sem referência do criador usa referência gerada", %{owner: owner, anonymous: anon} do
+    test "discursiva sem referência do criador usa referência gerada", %{
+      owner: owner,
+      anonymous: anon
+    } do
       {:ok, version} = Quizzes.create_draft_quiz(owner)
       {:ok, version} = Quizzes.update_draft(version, %{name: "Só discursiva"}, owner)
 
@@ -474,7 +477,10 @@ defmodule QuizProject.AttemptsTest do
         Quizzes.upsert_question(
           draft,
           %{id: draft_single.id, annulled: false, annulled_reason: nil},
-          Enum.map(draft_single.options, &%{id: &1.id, text: &1.text, correct: &1.correct, position: &1.position}),
+          Enum.map(
+            draft_single.options,
+            &%{id: &1.id, text: &1.text, correct: &1.correct, position: &1.position}
+          ),
           owner
         )
 

@@ -65,7 +65,11 @@ defmodule QuizProjectWeb.QuizEditorLiveTest do
     assert html =~ "pelo menos uma questão"
   end
 
-  test "publica quiz válido e navega para gerenciamento", %{conn: conn, version: version, user: user} do
+  test "publica quiz válido e navega para gerenciamento", %{
+    conn: conn,
+    version: version,
+    user: user
+  } do
     {:ok, _} = Quizzes.update_draft(version, %{name: "Quiz publicável"}, user)
 
     {:ok, _} =
@@ -86,7 +90,11 @@ defmodule QuizProjectWeb.QuizEditorLiveTest do
     assert Quizzes.get_version!(version.id).status == :published
   end
 
-  test "versão publicada redireciona para gerenciamento", %{conn: conn, version: version, user: user} do
+  test "versão publicada redireciona para gerenciamento", %{
+    conn: conn,
+    version: version,
+    user: user
+  } do
     {:ok, _} = Quizzes.update_draft(version, %{name: "Quiz"}, user)
 
     {:ok, _} =

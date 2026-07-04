@@ -63,9 +63,15 @@ defmodule QuizProject.Attempts.Grader do
 
     score =
       cond do
-        marked_incorrect > 0 -> @zero
-        marked_correct == 0 -> @zero
-        marked_correct == total_correct -> points
+        marked_incorrect > 0 ->
+          @zero
+
+        marked_correct == 0 ->
+          @zero
+
+        marked_correct == total_correct ->
+          points
+
         question.allow_partial_credit ->
           points
           |> Decimal.mult(Decimal.new(marked_correct))

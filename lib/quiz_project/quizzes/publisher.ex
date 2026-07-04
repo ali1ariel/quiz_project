@@ -37,7 +37,9 @@ defmodule QuizProject.Quizzes.Publisher do
       end)
 
       # recarrega para o changelog comparar os dados finais
-      version = Ash.load!(version, [questions: [:options]], reuse_values?: false, authorize?: false)
+      version =
+        Ash.load!(version, [questions: [:options]], reuse_values?: false, authorize?: false)
+
       changelog = Changelog.diff(previous_published(version), version)
 
       published =

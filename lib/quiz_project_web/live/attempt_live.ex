@@ -87,7 +87,10 @@ defmodule QuizProjectWeb.AttemptLive do
               phx-value-question-id={question.id}
               class={[
                 "btn btn-xs rounded-full",
-                if(answer(@answers, question).state == :dont_know, do: "btn-neutral", else: "btn-ghost")
+                if(answer(@answers, question).state == :dont_know,
+                  do: "btn-neutral",
+                  else: "btn-ghost"
+                )
               ]}
               id={"dont-know-#{question.id}"}
             >
@@ -167,7 +170,11 @@ defmodule QuizProjectWeb.AttemptLive do
             <button phx-click="cancel_confirm" class="btn btn-ghost rounded-full" id="cancel-confirm">
               Cancelar
             </button>
-            <button phx-click="finalize_forced" class="btn btn-warning rounded-full" id="finalize-forced">
+            <button
+              phx-click="finalize_forced"
+              class="btn btn-warning rounded-full"
+              id="finalize-forced"
+            >
               Confirmar e finalizar
             </button>
           </div>
@@ -325,7 +332,8 @@ defmodule QuizProjectWeb.AttemptLive do
          |> push_navigate(to: ~p"/")}
     end
   rescue
-    Ash.Error.Invalid -> {:ok, socket |> put_flash(:error, "Tentativa não encontrada.") |> push_navigate(to: ~p"/")}
+    Ash.Error.Invalid ->
+      {:ok, socket |> put_flash(:error, "Tentativa não encontrada.") |> push_navigate(to: ~p"/")}
   end
 
   ## Eventos de resposta
@@ -475,7 +483,8 @@ defmodule QuizProjectWeb.AttemptLive do
         {:noreply, put_answer(socket, updated)}
 
       {:error, :finished} ->
-        {:noreply, push_navigate(socket, to: ~p"/tentativa/#{socket.assigns.attempt.id}/resultado")}
+        {:noreply,
+         push_navigate(socket, to: ~p"/tentativa/#{socket.assigns.attempt.id}/resultado")}
 
       {:error, _} ->
         {:noreply, socket}

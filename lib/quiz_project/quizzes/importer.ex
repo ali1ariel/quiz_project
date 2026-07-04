@@ -41,9 +41,14 @@ defmodule QuizProject.Quizzes.Importer do
   """
   def parse(json) when is_binary(json) do
     case Jason.decode(json) do
-      {:ok, map} when is_map(map) -> parse(map)
-      {:ok, _} -> {:error, ["O JSON precisa ser um objeto"]}
-      {:error, %Jason.DecodeError{} = error} -> {:error, ["JSON inválido: #{Exception.message(error)}"]}
+      {:ok, map} when is_map(map) ->
+        parse(map)
+
+      {:ok, _} ->
+        {:error, ["O JSON precisa ser um objeto"]}
+
+      {:error, %Jason.DecodeError{} = error} ->
+        {:error, ["JSON inválido: #{Exception.message(error)}"]}
     end
   end
 
@@ -139,10 +144,17 @@ defmodule QuizProject.Quizzes.Importer do
             else: []
           ),
           cond do
-            invalid -> []
-            exactly_one? and correct_count != 1 -> ["Questão #{index}: marque exatamente 1 alternativa como correta"]
-            not exactly_one? and correct_count < 1 -> ["Questão #{index}: marque pelo menos 1 alternativa como correta"]
-            true -> []
+            invalid ->
+              []
+
+            exactly_one? and correct_count != 1 ->
+              ["Questão #{index}: marque exatamente 1 alternativa como correta"]
+
+            not exactly_one? and correct_count < 1 ->
+              ["Questão #{index}: marque pelo menos 1 alternativa como correta"]
+
+            true ->
+              []
           end
         ])
 
@@ -168,8 +180,7 @@ defmodule QuizProject.Quizzes.Importer do
             position: position,
             statement: String.trim(question["enunciado"]),
             type: type,
-            true_false_answer:
-              if(type == :true_false, do: question["resposta_verdadeiro_falso"]),
+            true_false_answer: if(type == :true_false, do: question["resposta_verdadeiro_falso"]),
             allow_partial_credit: type == :multiple and question["nota_parcial"] == true,
             reference_answer: if(type == :text, do: question["resposta_referencia"]),
             editor_note: question["nota_editor"],
