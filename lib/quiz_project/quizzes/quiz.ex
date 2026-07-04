@@ -32,6 +32,10 @@ defmodule QuizProject.Quizzes.Quiz do
         Ash.Changeset.force_change_attribute(changeset, :public_slug, generate_slug())
       end
     end
+
+    update :set_active do
+      accept [:active]
+    end
   end
 
   attributes do
@@ -39,6 +43,13 @@ defmodule QuizProject.Quizzes.Quiz do
 
     attribute :public_slug, :string do
       allow_nil? false
+    end
+
+    # Quiz desativado não aceita novas respostas; o link público mostra que as
+    # respostas foram encerradas. Reativável a qualquer momento pelo dono.
+    attribute :active, :boolean do
+      allow_nil? false
+      default true
     end
 
     timestamps()

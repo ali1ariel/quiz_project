@@ -225,4 +225,46 @@ defmodule QuizProjectWeb.AttemptFlowTest do
     other_conn = anonymous_session(build_conn(), "outro-token")
     assert {:error, {:live_redirect, %{to: "/"}}} = live(other_conn, path)
   end
+
+  test "anulação é retroativa: re-corrige tentativas de versões anteriores", %{
+    quiz: quiz,
+    version: version,
+    owner: owner
+  } do
+    {conn, view, _path} = start_anonymous_attempt(quiz)
+
+    tf = Enum.find(version.questions, &(&1.type == :true_false))
+    single = Enum.find(version.questions, &(&1.type == :single))
+    correct_option = Enum.find(single.options, & &1.correct)
+
+    # erra a V/F (correta é "verdadeiro") e acerta a única → 50%
+    view |> element("#tf-#{tf.id}-false") |> render_click()
+    view |> element("#single-#{single.id}-#{correct_option.id}") |> render_click()
+    view |> element("#confirm-attempt") |> render_click()
+    {result_path, _flash} = assert_redirect(view)
+
+    # antes da v2: 50%, questão ainda não anulada
+    {:ok, _view, before_html} = live(conn, result_path)
+    assert before_html =~ "50% de aproveitamento"
+    refute before_html =~ "annulled-#{tf.id}"
+
+    # cria e publica a v2, anulando a questão V/F nela
+    {:ok, draft} = Quizzes.ensure_draft(quiz, owner)
+    {:ok, v2} = Quizzes.publish(Quizzes.get_version!(draft.id), owner)
+    v2 = Quizzes.get_version_full!(v2.id)
+    v2_tf = Enum.find(v2.questions, &(&1.type == :true_false))
+    {:ok, _} = Quizzes.annul_question(v2_tf, "Enunciado ambíguo", owner)
+
+    # a anulação propagou para a questão da v1 (mesma identity_key) e a nota
+    # da tentativa foi persistida: sobe para 100%
+    tf_v1 = Quizzes.get_question!(tf.id)
+    assert tf_v1.annulled
+    assert tf_v1.annulled_reason == "Enunciado ambíguo"
+
+    {:ok, _view, html} = live(conn, result_path)
+    assert html =~ "annulled-#{tf.id}"
+    assert html =~ "Questão anulada — pontuação integral concedida a todos"
+    assert html =~ "Enunciado ambíguo"
+    assert html =~ "100% de aproveitamento"
+  end
 end

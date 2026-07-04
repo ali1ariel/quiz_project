@@ -16,10 +16,24 @@ defmodule QuizProjectWeb.QuizManageLive do
         <div>
           <h1 class="text-2xl font-bold">{@published.name}</h1>
           <p class="text-sm opacity-60">
-            Versão publicada v{@published.version_number} — {length(@published.questions)} questões
+            Versão publicada<span :if={version_suffix(@published.version_number)}>
+              · {version_suffix(@published.version_number)}</span> — {length(
+              @published.questions
+            )} questões
+            <span :if={!@quiz.active} class="text-warning font-medium">· respostas encerradas</span>
           </p>
         </div>
         <div class="flex gap-2">
+          <button
+            id="toggle-active"
+            phx-click="toggle_active"
+            data-confirm={
+              @quiz.active && "Desativar o quiz? Ninguém poderá enviar novas respostas até reativar."
+            }
+            class="btn btn-outline rounded-full"
+          >
+            {if @quiz.active, do: "Desativar quiz", else: "Reativar quiz"}
+          </button>
           <button
             id="edit-new-version"
             phx-click="edit_new_version"
@@ -27,7 +41,13 @@ defmodule QuizProjectWeb.QuizManageLive do
           >
             <.icon name="hero-pencil" class="size-4" /> Editar (nova versão)
           </button>
-          <.link navigate={~p"/q/#{@quiz.public_slug}"} class="btn btn-primary rounded-full">
+          <.link
+            :if={@quiz.active}
+            href={~p"/q/#{@quiz.public_slug}"}
+            target="_blank"
+            rel="noopener"
+            class="btn btn-primary rounded-full"
+          >
             Abrir link público
           </.link>
         </div>
@@ -70,9 +90,10 @@ defmodule QuizProjectWeb.QuizManageLive do
           <div class="flex-1">
             <p class="font-semibold">"{attempt.display_identity}"</p>
             <p class="text-xs opacity-60">
-              v{attempt.quiz_version.version_number} · finalizada em {format_datetime(
-                attempt.finished_at
-              )}
+              <span :if={version_suffix(attempt.quiz_version.version_number)}>
+                {version_suffix(attempt.quiz_version.version_number)} ·
+              </span>
+              finalizada em {format_datetime(attempt.finished_at)}
             </p>
           </div>
           <span class="badge badge-success rounded-full">
@@ -135,7 +156,7 @@ defmodule QuizProjectWeb.QuizManageLive do
           class="card qcard bg-base-200 p-4"
         >
           <div class="flex items-center gap-2">
-            <span class="badge badge-primary rounded-full">v{version.version_number}</span>
+            <span class="badge badge-primary rounded-full">versão {version.version_number}</span>
             <span class="text-sm opacity-60">
               publicada em {format_datetime(version.published_at)}
             </span>
@@ -211,6 +232,23 @@ defmodule QuizProjectWeb.QuizManageLive do
     {:noreply, assign(socket, tab: String.to_existing_atom(tab))}
   end
 
+  def handle_event("toggle_active", _params, socket) do
+    quiz = socket.assigns.quiz
+
+    case Quizzes.set_quiz_active(quiz, !quiz.active, socket.assigns.current_user) do
+      {:ok, updated} ->
+        message =
+          if quiz.active,
+            do: "Quiz desativado. Novas respostas estão bloqueadas.",
+            else: "Quiz reativado. Já aceita respostas."
+
+        {:noreply, socket |> assign(quiz: updated) |> put_flash(:info, message)}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Não foi possível alterar o status do quiz.")}
+    end
+  end
+
   def handle_event("edit_new_version", _params, socket) do
     case Quizzes.ensure_draft(socket.assigns.quiz, socket.assigns.current_user) do
       {:ok, draft} ->
@@ -241,6 +279,7 @@ defmodule QuizProjectWeb.QuizManageLive do
          socket
          |> assign(annul_question: nil)
          |> load_published(socket.assigns.published.id)
+         |> load_attempts()
          |> assign(history: Quizzes.version_history(socket.assigns.quiz))
          |> put_flash(:info, "Questão anulada. Todos recebem a pontuação integral.")}
 

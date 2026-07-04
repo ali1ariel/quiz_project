@@ -72,19 +72,22 @@ defmodule QuizProject.Quizzes.Question do
       accept [:ai_tags, :compatibility_hash]
     end
 
-    update :annul do
-      argument :reason, :string, allow_nil?: false
+    # Anula ou reverte a questão. A anulação é retroativa e aplicada a todas as
+    # versões pela camada de domínio (`Quizzes.annul_across_versions/4`).
+    update :set_annulment do
+      argument :annulled, :boolean, allow_nil?: false
+      argument :reason, :string
       require_atomic? false
 
-      change set_attribute(:annulled, true)
-      change set_attribute(:annulled_at, &DateTime.utc_now/0)
-
       change fn changeset, _ ->
-        Ash.Changeset.force_change_attribute(
-          changeset,
-          :annulled_reason,
-          Ash.Changeset.get_argument(changeset, :reason)
-        )
+        annulled = Ash.Changeset.get_argument(changeset, :annulled)
+        reason = if annulled, do: Ash.Changeset.get_argument(changeset, :reason)
+        annulled_at = if annulled, do: DateTime.utc_now()
+
+        changeset
+        |> Ash.Changeset.force_change_attribute(:annulled, annulled)
+        |> Ash.Changeset.force_change_attribute(:annulled_reason, reason)
+        |> Ash.Changeset.force_change_attribute(:annulled_at, annulled_at)
       end
     end
   end

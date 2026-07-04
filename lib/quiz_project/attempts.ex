@@ -389,6 +389,56 @@ defmodule QuizProject.Attempts do
   defp ensure_in_progress(%Attempt{status: :in_progress}), do: :ok
   defp ensure_in_progress(%Attempt{}), do: {:error, :finished}
 
+  @doc """
+  Re-corrige as tentativas finalizadas que responderam `question` (uma linha de
+  questão de uma versão específica) e recalcula a nota de cada tentativa. É a
+  base da anulação retroativa: com a questão anulada o `Grader` concede a
+  pontuação integral; ao reverter, ele recalcula a nota normal a partir da
+  resposta. As demais questões da tentativa não são reavaliadas.
+  """
+  def regrade_question(question, points) do
+    Answer
+    |> Ash.Query.filter(question_id == ^question.id)
+    |> Ash.Query.load(:attempt)
+    |> Ash.read!(authorize?: false)
+    |> Enum.filter(&(&1.attempt && &1.attempt.status == :finished))
+    |> Enum.each(fn answer ->
+      result = Grader.grade(question, answer, points)
+
+      answer
+      |> Ash.Changeset.for_update(:set_grade, result, authorize?: false)
+      |> Ash.update!()
+
+      recompute_totals(answer.attempt_id)
+    end)
+
+    :ok
+  end
+
+  defp recompute_totals(attempt_id) do
+    attempt = Ash.get!(Attempt, attempt_id, load: [:answers], authorize?: false)
+
+    total =
+      Enum.reduce(attempt.answers, Decimal.new(0), fn answer, acc ->
+        Decimal.add(acc, answer.score || Decimal.new(0))
+      end)
+
+    max = attempt.max_score || Decimal.new(0)
+
+    percent =
+      if Decimal.compare(max, Decimal.new(0)) == :gt do
+        total |> Decimal.mult(Decimal.new(100)) |> Decimal.div(max) |> Decimal.round(1)
+      else
+        Decimal.new(0)
+      end
+
+    attempt
+    |> Ash.Changeset.for_update(:set_totals, %{score: total, max_score: max, percent: percent},
+      authorize?: false
+    )
+    |> Ash.update!()
+  end
+
   ## Associação de tentativas anônimas à conta
 
   @doc """

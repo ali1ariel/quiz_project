@@ -29,7 +29,9 @@ defmodule QuizProjectWeb.ResultLive do
         <div>
           <h1 class="text-2xl font-bold">{@version.name}</h1>
           <p class="text-sm opacity-60">
-            Resultado de "{@attempt.display_identity}" — versão v{@version.version_number}
+            Resultado de "{@attempt.display_identity}"<span :if={
+              version_suffix(@version.version_number)
+            }> — {version_suffix(@version.version_number)}</span>
           </p>
         </div>
         <div class="text-right hidden md:block">
@@ -151,7 +153,61 @@ defmodule QuizProjectWeb.ResultLive do
       </div>
 
       <%!-- cortina de resumo (mobile): sobe do rodapé por cima das questões --%>
-      <div class="lg:hidden fixed bottom-0 inset-x-0 z-30" id="summary-mobile">
+      <div
+        class="lg:hidden fixed bottom-0 inset-x-0 z-30"
+        id="summary-mobile"
+        phx-hook=".SwipeSummary"
+        data-open={to_string(@show_summary)}
+      >
+        <script :type={Phoenix.LiveView.ColocatedHook} name=".SwipeSummary">
+          export default {
+            mounted() {
+              this.threshold = 40
+              this.startX = null
+              this.startY = null
+
+              this.onStart = (e) => {
+                const t = e.touches && e.touches[0]
+                if (!t) return
+                this.startX = t.clientX
+                this.startY = t.clientY
+              }
+
+              this.onEnd = (e) => {
+                if (this.startY === null) return
+                const t = e.changedTouches && e.changedTouches[0]
+                if (!t) return
+                const dx = t.clientX - this.startX
+                const dy = t.clientY - this.startY
+                this.startX = this.startY = null
+
+                // ignora gestos predominantemente horizontais
+                if (Math.abs(dx) > Math.abs(dy)) return
+
+                const open = this.el.dataset.open === "true"
+
+                if (dy < -this.threshold && !open) {
+                  this.pushEvent("open_summary", {})
+                } else if (dy > this.threshold && open) {
+                  // só fecha se a lista interna já estiver no topo,
+                  // para não conflitar com a rolagem do conteúdo
+                  const body = this.el.querySelector("#summary-sheet-body")
+                  if (!body || body.scrollTop <= 0) {
+                    this.pushEvent("close_summary", {})
+                  }
+                }
+              }
+
+              this.el.addEventListener("touchstart", this.onStart, {passive: true})
+              this.el.addEventListener("touchend", this.onEnd, {passive: true})
+            },
+
+            destroyed() {
+              this.el.removeEventListener("touchstart", this.onStart)
+              this.el.removeEventListener("touchend", this.onEnd)
+            }
+          }
+        </script>
         <div class="bg-base-200 border-t-2 border-base-300 rounded-t-2xl shadow-[0_-10px_32px_rgba(0,0,0,0.28)]">
           <button
             phx-click="toggle_summary"
@@ -413,6 +469,14 @@ defmodule QuizProjectWeb.ResultLive do
 
   def handle_event("toggle_summary", _params, socket) do
     {:noreply, update(socket, :show_summary, &(!&1))}
+  end
+
+  def handle_event("open_summary", _params, socket) do
+    {:noreply, assign(socket, :show_summary, true)}
+  end
+
+  def handle_event("close_summary", _params, socket) do
+    {:noreply, assign(socket, :show_summary, false)}
   end
 
   @per_page 10

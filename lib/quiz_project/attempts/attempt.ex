@@ -48,6 +48,12 @@ defmodule QuizProject.Attempts.Attempt do
       change set_attribute(:status, :finished)
       change set_attribute(:finished_at, &DateTime.utc_now/0)
     end
+
+    # Recalcula a nota sem mexer em status/finished_at — usado na anulação
+    # retroativa de uma questão sobre tentativas já finalizadas.
+    update :set_totals do
+      accept [:score, :max_score, :percent]
+    end
   end
 
   attributes do

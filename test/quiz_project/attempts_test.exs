@@ -77,6 +77,31 @@ defmodule QuizProject.AttemptsTest do
     Quizzes.get_version_full!(published.id)
   end
 
+  # Quiz publicado com duas V/F (corretas "verdadeiro"), 50 pontos cada.
+  defp two_tf_published(owner) do
+    {:ok, version} = Quizzes.create_draft_quiz(owner)
+    {:ok, version} = Quizzes.update_draft(version, %{name: "VF duplo"}, owner)
+
+    {:ok, _} =
+      Quizzes.upsert_question(
+        version,
+        %{statement: "Q1?", type: :true_false, true_false_answer: true},
+        [],
+        owner
+      )
+
+    {:ok, _} =
+      Quizzes.upsert_question(
+        version,
+        %{statement: "Q2?", type: :true_false, true_false_answer: true},
+        [],
+        owner
+      )
+
+    {:ok, published} = Quizzes.publish(Quizzes.get_version!(version.id), owner)
+    Quizzes.get_version_full!(published.id)
+  end
+
   defp question_by_type(attempt, type) do
     Enum.find(attempt.quiz_version.questions, &(&1.type == type))
   end
@@ -598,6 +623,41 @@ defmodule QuizProject.AttemptsTest do
       assert Attempts.page_status([ctx.unanswered, ctx.answered], true) == :red
       # vermelho tem prioridade sobre amarelo depois de validado
       assert Attempts.page_status([ctx.unanswered, ctx.later], true) == :red
+    end
+  end
+
+  describe "anulação retroativa" do
+    test "anular pelo editor (rascunho) re-corrige tentativa da versão publicada",
+         %{owner: owner, anonymous: anon} do
+      v1 = two_tf_published(owner)
+      [q1, q2] = Enum.sort_by(v1.questions, & &1.position)
+
+      {:ok, attempt} = Attempts.start_attempt(v1, anon, "Fulano")
+      {:ok, _} = Attempts.save_answer(attempt, answer_for(attempt, q1), q1, %{"value" => false})
+      {:ok, _} = Attempts.save_answer(attempt, answer_for(attempt, q2), q2, %{"value" => true})
+      {:ok, finished} = Attempts.finalize(attempt)
+
+      # errou uma das duas → 50%
+      assert Decimal.equal?(finished.percent, Decimal.new("50.0"))
+
+      # cria rascunho v2 e anula Q1 PELO EDITOR (set_question_annulment)
+      quiz = Quizzes.get_quiz!(v1.quiz_id)
+      {:ok, draft} = Quizzes.ensure_draft(quiz, owner)
+      draft = Quizzes.get_version_full!(draft.id)
+      draft_q1 = Enum.find(draft.questions, &(&1.identity_key == q1.identity_key))
+
+      {:ok, _} = Quizzes.set_question_annulment(draft_q1, true, "Pergunta furada", owner)
+
+      # a questão da v1 ficou anulada e a tentativa subiu para 100%
+      annulled_v1 = Quizzes.get_question!(q1.id)
+      assert annulled_v1.annulled
+      assert annulled_v1.annulled_reason == "Pergunta furada"
+      assert Decimal.equal?(Attempts.get_attempt_full!(finished.id).percent, Decimal.new("100.0"))
+
+      # reverter é igualmente retroativo: volta para 50%
+      {:ok, _} = Quizzes.set_question_annulment(draft_q1, false, nil, owner)
+      refute Quizzes.get_question!(q1.id).annulled
+      assert Decimal.equal?(Attempts.get_attempt_full!(finished.id).percent, Decimal.new("50.0"))
     end
   end
 end

@@ -17,7 +17,8 @@ defmodule QuizProject.Quizzes do
     Publisher,
     Question,
     Quiz,
-    QuizVersion
+    QuizVersion,
+    Scoring
   }
 
   resources do
@@ -338,8 +339,11 @@ defmodule QuizProject.Quizzes do
   end
 
   @doc """
-  Anula uma questão de uma versão publicada, registrando o motivo e uma
-  entrada no changelog. A anulação é permanente para aquela versão.
+  Anula uma questão de forma retroativa: a anulação corrige algo que não
+  deveria existir, então vale para a mesma questão (casada por `identity_key`)
+  em todas as versões do quiz e re-corrige as tentativas já finalizadas,
+  concedendo pontuação integral. Registra o motivo e uma entrada no changelog
+  da versão em que a ação foi disparada.
   """
   def annul_question(question, reason, actor) do
     version = get_version!(question.quiz_version_id)
@@ -348,12 +352,10 @@ defmodule QuizProject.Quizzes do
       if version.status != :published do
         {:error, :not_published}
       else
-        question =
-          question
-          |> Ash.Changeset.for_update(:annul, %{reason: reason}, authorize?: false)
-          |> Ash.update!()
+        annul_across_versions(version.quiz_id, question.identity_key, true, reason)
 
-        entry = QuizProject.Quizzes.Changelog.annulment_entry(question)
+        annulled = Ash.get!(Question, question.id, authorize?: false)
+        entry = QuizProject.Quizzes.Changelog.annulment_entry(annulled)
 
         version
         |> Ash.Changeset.for_update(:set_changelog, %{changelog: version.changelog ++ [entry]},
@@ -361,8 +363,66 @@ defmodule QuizProject.Quizzes do
         )
         |> Ash.update!()
 
-        {:ok, question}
+        {:ok, annulled}
       end
+    end
+  end
+
+  @doc """
+  Anula ou reverte a anulação de uma questão a partir do editor. Assim como
+  `annul_question/3`, a anulação é retroativa: propaga para a mesma questão
+  (por `identity_key`) em todas as versões e re-corrige as tentativas
+  finalizadas. Reverter volta a nota ao valor corrigido original.
+  """
+  def set_question_annulment(question, annulled?, reason, actor) do
+    version = get_version!(question.quiz_version_id)
+
+    with :ok <- authorize_owner(version, actor),
+         :ok <- ensure_draft(version) do
+      annul_across_versions(version.quiz_id, question.identity_key, annulled?, reason)
+      {:ok, Ash.get!(Question, question.id, authorize?: false)}
+    end
+  end
+
+  # Aplica (ou reverte) a anulação da questão `identity_key` em todas as versões
+  # do quiz e re-corrige as tentativas finalizadas afetadas. A re-correção passa
+  # pelo `Grader`, que dá pontuação integral quando anulada e recalcula a nota
+  # normal quando revertida.
+  defp annul_across_versions(quiz_id, identity_key, annulled?, reason) do
+    version_ids =
+      QuizVersion
+      |> Ash.Query.filter(quiz_id == ^quiz_id)
+      |> Ash.read!(authorize?: false)
+      |> Enum.map(& &1.id)
+
+    Enum.each(version_ids, fn version_id ->
+      full = get_version_full!(version_id)
+
+      case Enum.find(full.questions, &(&1.identity_key == identity_key)) do
+        nil ->
+          :ok
+
+        question ->
+          question
+          |> Ash.Changeset.for_update(:set_annulment, %{annulled: annulled?, reason: reason},
+            authorize?: false
+          )
+          |> Ash.update!()
+
+          points = Scoring.question_points(full, full.questions)[question.id]
+          regraded = %{question | annulled: annulled?, annulled_reason: if(annulled?, do: reason)}
+
+          if points, do: QuizProject.Attempts.regrade_question(regraded, points)
+      end
+    end)
+  end
+
+  @doc "Ativa ou desativa o quiz. Desativado não aceita novas respostas."
+  def set_quiz_active(quiz_record, active?, actor) do
+    with :ok <- authorize_owner(quiz_record, actor) do
+      quiz_record
+      |> Ash.Changeset.for_update(:set_active, %{active: active?}, authorize?: false)
+      |> Ash.update()
     end
   end
 

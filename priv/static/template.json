@@ -1,0 +1,43 @@
+{
+  "nome": "Título do quiz",
+  "descricao": "Descrição opcional exibida ao participante",
+  "nota_total": 100,
+  "pesos_desiguais": false,
+  "modo_ordem": "fixa",
+  "questoes": [
+    {
+      "enunciado": "Pergunta de verdadeiro ou falso?",
+      "tipo": "verdadeiro_falso",
+      "resposta_verdadeiro_falso": true,
+      "resposta_referencia": "Opcional: explica a resposta esperada.",
+      "peso": 10
+    },
+    {
+      "enunciado": "Pergunta com uma única alternativa correta?",
+      "tipo": "unica",
+      "alternativas": [
+        { "texto": "Alternativa correta", "correta": true },
+        { "texto": "Alternativa incorreta", "correta": false },
+        { "texto": "Outra alternativa", "correta": false }
+      ],
+      "peso": 10
+    },
+    {
+      "enunciado": "Pergunta com múltiplas alternativas corretas?",
+      "tipo": "multipla",
+      "nota_parcial": true,
+      "alternativas": [
+        { "texto": "Correta 1", "correta": true },
+        { "texto": "Correta 2", "correta": true },
+        { "texto": "Incorreta", "correta": false }
+      ],
+      "peso": 10
+    },
+    {
+      "enunciado": "Pergunta discursiva de resposta aberta?",
+      "tipo": "discursiva",
+      "resposta_referencia": "Resposta de referência usada pela IA para corrigir.",
+      "peso": 10
+    }
+  ]
+}

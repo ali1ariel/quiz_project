@@ -61,7 +61,19 @@ defmodule QuizProjectWeb.DashboardLive do
                 :if={published_version(quiz)}
                 class="badge badge-success badge-sm rounded-full"
               >
-                publicado v{published_version(quiz).version_number}
+                publicado
+              </span>
+              <span
+                :if={published_version(quiz) && version_suffix(published_version(quiz).version_number)}
+                class="badge badge-ghost badge-sm rounded-full"
+              >
+                {version_suffix(published_version(quiz).version_number)}
+              </span>
+              <span
+                :if={published_version(quiz) && !quiz.active}
+                class="badge badge-neutral badge-sm rounded-full"
+              >
+                desativado
               </span>
               <span :if={draft_version(quiz)} class="badge badge-warning badge-sm rounded-full">
                 rascunho
@@ -89,9 +101,23 @@ defmodule QuizProjectWeb.DashboardLive do
             >
               Respostas e versões
             </.link>
-            <.link
+            <button
               :if={published_version(quiz)}
-              navigate={~p"/q/#{quiz.public_slug}"}
+              id={"toggle-active-#{quiz.id}"}
+              phx-click="toggle_active"
+              phx-value-quiz-id={quiz.id}
+              data-confirm={
+                quiz.active && "Desativar o quiz? Ninguém poderá enviar novas respostas até reativar."
+              }
+              class="btn btn-sm btn-ghost rounded-full"
+            >
+              {if quiz.active, do: "Desativar", else: "Reativar"}
+            </button>
+            <.link
+              :if={published_version(quiz) && quiz.active}
+              href={~p"/q/#{quiz.public_slug}"}
+              target="_blank"
+              rel="noopener"
               class="btn btn-sm btn-ghost rounded-full"
             >
               Abrir link
@@ -113,8 +139,11 @@ defmodule QuizProjectWeb.DashboardLive do
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2 flex-wrap">
               <span class="font-semibold truncate">{attempt.quiz_version.name}</span>
-              <span class="badge badge-sm badge-ghost rounded-full">
-                v{attempt.quiz_version.version_number}
+              <span
+                :if={version_suffix(attempt.quiz_version.version_number)}
+                class="badge badge-sm badge-ghost rounded-full"
+              >
+                {version_suffix(attempt.quiz_version.version_number)}
               </span>
               <span
                 :if={attempt.status == :finished}
@@ -162,9 +191,21 @@ defmodule QuizProjectWeb.DashboardLive do
       >
         <div class="modal-box rounded-2xl max-w-2xl">
           <h3 class="font-bold text-lg mb-2">Importar quiz via JSON</h3>
-          <p class="text-sm opacity-70 mb-4">
+          <p class="text-sm opacity-70 mb-3">
             Envie um arquivo .json ou cole o conteúdo abaixo. O quiz importado
             entra como rascunho para revisão antes da publicação.
+          </p>
+
+          <a
+            href={~p"/template.json"}
+            download="template-quiz.json"
+            class="btn btn-sm btn-outline rounded-full mb-4"
+            id="download-template"
+          >
+            <.icon name="hero-arrow-down-tray" class="size-4" /> Baixar template.json
+          </a>
+          <p class="text-xs opacity-60 mb-4 -mt-2">
+            Baixe o modelo e envie para a IA de sua preferência gerar o quiz no formato aceito.
           </p>
 
           <div :if={@import_errors != []} class="alert alert-error rounded-xl mb-3 text-sm">
@@ -250,6 +291,23 @@ defmodule QuizProjectWeb.DashboardLive do
   def handle_event("create_quiz", _params, socket) do
     {:ok, version} = Quizzes.create_draft_quiz(socket.assigns.current_user)
     {:noreply, push_navigate(socket, to: ~p"/quiz/#{version.id}/editar")}
+  end
+
+  def handle_event("toggle_active", %{"quiz-id" => quiz_id}, socket) do
+    quiz = Quizzes.get_quiz!(quiz_id)
+
+    case Quizzes.set_quiz_active(quiz, !quiz.active, socket.assigns.current_user) do
+      {:ok, _} ->
+        message =
+          if quiz.active,
+            do: "Quiz desativado. Novas respostas estão bloqueadas.",
+            else: "Quiz reativado. Já aceita respostas."
+
+        {:noreply, socket |> put_flash(:info, message) |> load_lists()}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Não foi possível alterar o status do quiz.")}
+    end
   end
 
   def handle_event("edit_quiz", %{"quiz-id" => quiz_id}, socket) do

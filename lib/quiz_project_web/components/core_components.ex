@@ -502,4 +502,11 @@ defmodule QuizProjectWeb.CoreComponents do
   def translate_errors(errors, field) when is_list(errors) do
     for {^field, {msg, opts}} <- errors, do: translate_error({msg, opts})
   end
+
+  @doc """
+  Rótulo de versão. A primeira versão é implícita, então retorna `nil`; da
+  segunda em diante retorna "versão N". Use com `:if` para omitir a v1.
+  """
+  def version_suffix(1), do: nil
+  def version_suffix(number) when is_integer(number), do: "versão #{number}"
 end

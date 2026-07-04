@@ -33,7 +33,10 @@ defmodule QuizProjectWeb.QuizEditorLive do
           <h1 class="text-2xl font-bold">
             {if @version.version_number == 1, do: "Criar quiz", else: "Editar quiz"}
           </h1>
-          <span class="badge badge-warning rounded-full">rascunho v{@version.version_number}</span>
+          <span class="badge badge-warning rounded-full">
+            rascunho<span :if={version_suffix(@version.version_number)}>
+              · {version_suffix(@version.version_number)}</span>
+          </span>
           <span :if={@saved_at} class="text-xs opacity-50" id="autosave-indicator">
             salvo automaticamente
           </span>
@@ -41,12 +44,23 @@ defmodule QuizProjectWeb.QuizEditorLive do
 
         <div class="flex gap-2">
           <button
-            id="delete-quiz"
+            id="cancel-quiz"
             phx-click="delete_draft"
-            data-confirm="Tem certeza? O rascunho será apagado."
+            data-confirm="Descartar este rascunho? As alterações não publicadas serão perdidas."
             class="btn btn-ghost text-error rounded-full"
           >
-            Deletar
+            Cancelar
+          </button>
+          <button
+            :if={@has_published}
+            id="toggle-active"
+            phx-click="toggle_active"
+            data-confirm={
+              @quiz.active && "Desativar o quiz? Ninguém poderá enviar novas respostas até reativar."
+            }
+            class="btn btn-ghost rounded-full"
+          >
+            {if @quiz.active, do: "Desativar quiz", else: "Reativar quiz"}
           </button>
           <button id="save-quiz" phx-click="save" class="btn btn-outline rounded-full">
             Salvar
@@ -185,6 +199,9 @@ defmodule QuizProjectWeb.QuizEditorLive do
                 {length(question.options)} alternativas
               </span>
             </div>
+            <p :if={question.annulled && question.annulled_reason} class="text-xs opacity-60 mt-1">
+              Motivo da anulação: {question.annulled_reason}
+            </p>
           </div>
           <div class="flex gap-1">
             <button
@@ -217,13 +234,24 @@ defmodule QuizProjectWeb.QuizEditorLive do
               <.icon name="hero-pencil" class="size-4" />
             </button>
             <button
-              phx-click="delete_question"
+              :if={!question.annulled}
+              id={"annul-question-#{question.id}"}
+              phx-click="open_annul"
               phx-value-id={question.id}
-              data-confirm="Remover esta pergunta?"
-              class="btn btn-ghost btn-xs btn-circle text-error"
-              title="Remover"
+              class="btn btn-ghost btn-xs btn-circle text-warning"
+              title="Anular questão"
             >
-              <.icon name="hero-trash" class="size-4" />
+              <.icon name="hero-no-symbol" class="size-4" />
+            </button>
+            <button
+              :if={question.annulled}
+              id={"revert-annul-#{question.id}"}
+              phx-click="revert_annul"
+              phx-value-id={question.id}
+              class="btn btn-ghost btn-xs btn-circle text-success"
+              title="Reverter anulação"
+            >
+              <.icon name="hero-arrow-uturn-left" class="size-4" />
             </button>
           </div>
         </div>
@@ -406,6 +434,36 @@ defmodule QuizProjectWeb.QuizEditorLive do
           </form>
         </div>
       </dialog>
+
+      <dialog :if={@annul_question} id="annul-modal" class="modal modal-open">
+        <div class="modal-box rounded-2xl">
+          <h3 class="font-bold text-lg mb-2">Anular questão</h3>
+          <p class="text-sm opacity-70 mb-3">"{@annul_question.statement}"</p>
+          <p class="text-sm mb-3">
+            A questão fica marcada como anulada: permanece visível no resultado com selo de
+            anulada e concede pontuação integral a todos, independentemente da resposta. Você
+            pode reverter enquanto o rascunho não é publicado.
+          </p>
+          <form phx-submit="confirm_annul" id="annul-form">
+            <textarea
+              name="reason"
+              id="annul-reason"
+              rows="3"
+              required
+              class="textarea textarea-bordered w-full rounded-xl"
+              placeholder="Explique o motivo da anulação (será exibido aos participantes)"
+            ></textarea>
+            <div class="modal-action">
+              <button type="button" phx-click="close_annul" class="btn btn-ghost rounded-full">
+                Cancelar
+              </button>
+              <button type="submit" id="confirm-annul" class="btn btn-warning rounded-full">
+                Anular questão
+              </button>
+            </div>
+          </form>
+        </div>
+      </dialog>
     </Layouts.app>
     """
   end
@@ -419,9 +477,12 @@ defmodule QuizProjectWeb.QuizEditorLive do
        socket
        |> assign(
          version: version,
+         quiz: version.quiz,
+         has_published: not is_nil(Quizzes.latest_published_version(version.quiz)),
          questions: Enum.sort_by(version.questions, & &1.position),
          question_form: nil,
          question_options: [],
+         annul_question: nil,
          publish_errors: [],
          saved_at: nil
        )}
@@ -482,11 +543,70 @@ defmodule QuizProjectWeb.QuizEditorLive do
       {:ok, _} ->
         {:noreply,
          socket
-         |> put_flash(:info, "Rascunho deletado.")
+         |> put_flash(:info, "Rascunho descartado.")
          |> push_navigate(to: ~p"/painel")}
 
       {:error, _} ->
-        {:noreply, put_flash(socket, :error, "Não foi possível deletar.")}
+        {:noreply, put_flash(socket, :error, "Não foi possível descartar o rascunho.")}
+    end
+  end
+
+  def handle_event("toggle_active", _params, socket) do
+    quiz = socket.assigns.quiz
+
+    case Quizzes.set_quiz_active(quiz, !quiz.active, socket.assigns.current_user) do
+      {:ok, updated} ->
+        message =
+          if quiz.active,
+            do: "Quiz desativado. Novas respostas estão bloqueadas.",
+            else: "Quiz reativado. Já aceita respostas."
+
+        {:noreply, socket |> assign(quiz: updated) |> put_flash(:info, message)}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Não foi possível alterar o status do quiz.")}
+    end
+  end
+
+  ## Anulação de questão
+
+  def handle_event("open_annul", %{"id" => id}, socket) do
+    question = Enum.find(socket.assigns.questions, &(&1.id == id))
+    {:noreply, assign(socket, annul_question: question)}
+  end
+
+  def handle_event("close_annul", _params, socket) do
+    {:noreply, assign(socket, annul_question: nil)}
+  end
+
+  def handle_event("confirm_annul", %{"reason" => reason}, socket) do
+    case Quizzes.set_question_annulment(
+           socket.assigns.annul_question,
+           true,
+           reason,
+           socket.assigns.current_user
+         ) do
+      {:ok, _} ->
+        {:noreply,
+         socket
+         |> assign(annul_question: nil)
+         |> reload_version()
+         |> put_flash(:info, "Questão anulada. Todos recebem a pontuação integral.")}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Não foi possível anular a questão.")}
+    end
+  end
+
+  def handle_event("revert_annul", %{"id" => id}, socket) do
+    question = Enum.find(socket.assigns.questions, &(&1.id == id))
+
+    case Quizzes.set_question_annulment(question, false, nil, socket.assigns.current_user) do
+      {:ok, _} ->
+        {:noreply, socket |> reload_version() |> put_flash(:info, "Anulação revertida.")}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Não foi possível reverter a anulação.")}
     end
   end
 
@@ -595,15 +715,6 @@ defmodule QuizProjectWeb.QuizEditorLive do
 
       {:error, _} ->
         {:noreply, put_flash(socket, :error, "Não foi possível salvar a pergunta.")}
-    end
-  end
-
-  def handle_event("delete_question", %{"id" => id}, socket) do
-    question = Enum.find(socket.assigns.questions, &(&1.id == id))
-
-    case Quizzes.delete_question(question, socket.assigns.current_user) do
-      :ok -> {:noreply, reload_version(socket)}
-      {:error, _} -> {:noreply, put_flash(socket, :error, "Não foi possível remover.")}
     end
   end
 

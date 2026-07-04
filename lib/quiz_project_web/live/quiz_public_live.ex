@@ -23,11 +23,21 @@ defmodule QuizProjectWeb.QuizPublicLive do
               <span class="badge badge-ghost rounded-full">
                 nota máxima {format_decimal(@version.total_points)}
               </span>
-              <span class="badge badge-ghost rounded-full">v{@version.version_number}</span>
+              <span
+                :if={version_suffix(@version.version_number)}
+                class="badge badge-ghost rounded-full"
+              >
+                {version_suffix(@version.version_number)}
+              </span>
             </div>
           </div>
 
-          <div :if={@in_progress} class="alert rounded-2xl text-sm" id="resume-box">
+          <div :if={!@quiz.active} class="alert alert-warning rounded-2xl text-sm" id="closed-box">
+            <.icon name="hero-lock-closed" class="size-5" />
+            <span>As respostas para este quiz foram encerradas pelo criador.</span>
+          </div>
+
+          <div :if={@quiz.active && @in_progress} class="alert rounded-2xl text-sm" id="resume-box">
             <.icon name="hero-arrow-path" class="size-5" />
             <span>Você tem uma tentativa em andamento neste quiz.</span>
             <.link
@@ -38,7 +48,12 @@ defmodule QuizProjectWeb.QuizPublicLive do
             </.link>
           </div>
 
-          <form :if={!@in_progress} phx-submit="start" id="start-form" class="space-y-3">
+          <form
+            :if={@quiz.active && !@in_progress}
+            phx-submit="start"
+            id="start-form"
+            class="space-y-3"
+          >
             <div>
               <label class="label text-sm mb-1" for="display-identity">
                 Como prefere se identificar?
@@ -94,6 +109,10 @@ defmodule QuizProjectWeb.QuizPublicLive do
          |> put_flash(:error, "Quiz não encontrado ou ainda não publicado.")
          |> push_navigate(to: ~p"/")}
     end
+  end
+
+  def handle_event("start", _params, %{assigns: %{quiz: %{active: false}}} = socket) do
+    {:noreply, assign(socket, start_error: "As respostas para este quiz foram encerradas.")}
   end
 
   def handle_event("start", %{"display_identity" => identity}, socket) do
