@@ -4,8 +4,8 @@ defmodule QuizProject.Quizzes.Compatibility do
 
   O hash cobre exatamente os campos que afetam a estrutura da resposta:
   enunciado, tipo, alternativas (identidade, texto e quais são corretas),
-  regra de nota parcial em múltiplas corretas, resposta de referência e a
-  nota do editor quando usada como referência de correção (discursivas).
+  regra de nota parcial em múltiplas corretas e a resposta de referência
+  quando usada como referência de correção (discursivas).
 
   Fora do hash (não quebram compatibilidade): peso, nota total, descrição,
   ordem das perguntas, tags de IA e metadados. Anulação é verificada à parte
@@ -23,7 +23,6 @@ defmodule QuizProject.Quizzes.Compatibility do
       type: question.type,
       allow_partial_credit: question.allow_partial_credit,
       true_false_answer: question.true_false_answer,
-      reference_answer: question.reference_answer,
       editor_note: if(question.type == :text, do: question.editor_note),
       options: options
     }

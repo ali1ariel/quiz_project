@@ -296,7 +296,6 @@ defmodule QuizProject.Quizzes do
             type: question.type,
             allow_partial_credit: question.allow_partial_credit,
             true_false_answer: question.true_false_answer,
-            reference_answer: question.reference_answer,
             editor_note: question.editor_note,
             weight: question.weight,
             annulled: question.annulled,

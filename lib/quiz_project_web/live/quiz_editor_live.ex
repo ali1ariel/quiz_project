@@ -361,21 +361,10 @@ defmodule QuizProjectWeb.QuizEditorLive do
               </label>
             </div>
 
-            <div :if={@question_form["type"] == "text"}>
-              <label class="label text-sm mb-1" for="question-reference">
-                Resposta de referência (para correção por IA)
-              </label>
-              <textarea
-                name="reference_answer"
-                id="question-reference"
-                rows="2"
-                class="textarea textarea-bordered w-full rounded-xl"
-                placeholder="Resposta esperada usada pela IA para calcular a porcentagem de acerto"
-              >{@question_form["reference_answer"]}</textarea>
-            </div>
-
             <div>
-              <label class="label text-sm mb-1" for="question-editor-note">Nota do editor (opcional)</label>
+              <label class="label text-sm mb-1" for="question-editor-note">
+                Resposta de referência (opcional)
+              </label>
               <textarea
                 name="editor_note"
                 id="question-editor-note"
@@ -512,7 +501,6 @@ defmodule QuizProjectWeb.QuizEditorLive do
          "type" => "single",
          "true_false_answer" => "true",
          "allow_partial_credit" => "false",
-         "reference_answer" => "",
          "editor_note" => "",
          "weight" => ""
        },
@@ -538,7 +526,6 @@ defmodule QuizProjectWeb.QuizEditorLive do
          "type" => to_string(question.type),
          "true_false_answer" => to_string(question.true_false_answer || true),
          "allow_partial_credit" => to_string(question.allow_partial_credit),
-         "reference_answer" => question.reference_answer || "",
          "editor_note" => question.editor_note || "",
          "weight" => if(question.weight, do: format_decimal(question.weight), else: "")
        },
@@ -578,7 +565,6 @@ defmodule QuizProjectWeb.QuizEditorLive do
         type: type,
         true_false_answer: if(type == :true_false, do: form["true_false_answer"] == "true"),
         allow_partial_credit: type == :multiple and form["allow_partial_credit"] == "true",
-        reference_answer: if(type == :text, do: presence(form["reference_answer"])),
         editor_note: presence(form["editor_note"]),
         weight: parse_decimal(form["weight"])
       }
@@ -643,7 +629,6 @@ defmodule QuizProjectWeb.QuizEditorLive do
           "statement",
           "type",
           "true_false_answer",
-          "reference_answer",
           "editor_note",
           "weight"
         ])

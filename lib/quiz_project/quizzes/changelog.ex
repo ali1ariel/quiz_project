@@ -68,12 +68,8 @@ defmodule QuizProject.Quizzes.Changelog do
         do: ["Resposta da questão #{label(new_q)} alterada"],
         else: []
       ),
-      if(old_q.reference_answer != new_q.reference_answer,
-        do: ["Referência de correção da questão #{label(new_q)} alterada"],
-        else: []
-      ),
       if(old_q.editor_note != new_q.editor_note,
-        do: ["Nota do editor da questão #{label(new_q)} alterada"],
+        do: ["Resposta de referência da questão #{label(new_q)} alterada"],
         else: []
       ),
       if(not old_q.annulled and new_q.annulled,

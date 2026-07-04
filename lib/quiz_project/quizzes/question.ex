@@ -33,7 +33,6 @@ defmodule QuizProject.Quizzes.Question do
         :type,
         :allow_partial_credit,
         :true_false_answer,
-        :reference_answer,
         :editor_note,
         :weight,
         :annulled,
@@ -60,7 +59,6 @@ defmodule QuizProject.Quizzes.Question do
         :type,
         :allow_partial_credit,
         :true_false_answer,
-        :reference_answer,
         :editor_note,
         :weight,
         :annulled,
@@ -122,9 +120,8 @@ defmodule QuizProject.Quizzes.Question do
     # Somente para :true_false
     attribute :true_false_answer, :boolean
 
-    # Somente para :text — resposta de referência para correção por IA
-    attribute :reference_answer, :string
-
+    # Resposta de referência: explica a resposta esperada, aparece no
+    # resultado e é a referência principal da correção por IA em discursivas
     attribute :editor_note, :string
 
     attribute :weight, :decimal

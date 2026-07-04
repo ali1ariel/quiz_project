@@ -121,7 +121,7 @@ defmodule QuizProjectWeb.AttemptFlowTest do
     {:ok, result_view, result_html} = live(conn, result_path)
 
     assert has_element?(result_view, "#final-score")
-    assert result_html =~ "Nota do editor"
+    assert result_html =~ "Resposta de referência"
     assert result_html =~ "O sol é uma estrela de tipo espectral G."
     assert result_html =~ "Não sei a resposta"
     assert result_html =~ "50%"

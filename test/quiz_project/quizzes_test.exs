@@ -302,8 +302,7 @@ defmodule QuizProject.QuizzesTest do
           {
             "enunciado": "Explique a fotossíntese",
             "tipo": "discursiva",
-            "resposta_referencia": "Processo de conversão de luz em energia química",
-            "nota_editor": "Deve citar luz, clorofila e glicose"
+            "resposta_referencia": "Processo de conversão de luz em energia química"
           }
         ]
       }

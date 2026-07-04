@@ -22,8 +22,10 @@ Requisitos: Elixir 1.18+, PostgreSQL 16+ (usuário/senha `postgres` em dev).
   modo de ordem das questões (definida, aleatória, aleatória por IA). Rascunho com
   autosave contínuo; publicação valida e congela a versão.
 - **Tipos de questão**: verdadeiro/falso, uma correta, múltiplas corretas (com nota
-  parcial opcional) e discursiva. Cada questão tem nota do editor (opcional) e peso
-  (ativo só com pesos desiguais; sem peso, a nota restante é distribuída).
+  parcial opcional) e discursiva. Cada questão tem uma resposta de referência
+  (opcional — explica a resposta esperada, aparece no resultado e é a referência da
+  IA em discursivas) e peso (ativo só com pesos desiguais; sem peso, a nota restante
+  é distribuída).
 - **Importação JSON**: quiz completo entra como rascunho para revisão (formato abaixo).
 - **Versionamento**: alterações estruturais geram nova versão; a anterior fica
   intacta e as tentativas antigas apontam para a versão respondida. Histórico com
@@ -39,9 +41,9 @@ Requisitos: Elixir 1.18+, PostgreSQL 16+ (usuário/senha `postgres` em dev).
   "Limpar respostas" e "Restaurar" com janela de 10 segundos. Estado salvo a cada
   interação. Confirmação com pendências converte tudo em "não sei" após modal.
 - **Correção**: só após finalizar. Objetivas mostram resposta, gabarito e nota.
-  Discursivas são avaliadas por IA contra a referência do criador (resposta de
-  referência ou nota do editor); sem referência, a IA gera a própria e isso fica
-  sinalizado. A nota é a porcentagem × peso da questão.
+  Discursivas são avaliadas por IA contra a resposta de referência do criador;
+  sem referência, a IA gera a própria e isso fica sinalizado. A nota é a
+  porcentagem × peso da questão.
 - **Privacidade**: o criador vê as respostas de cada tentativa na mesma tela do
   participante (somente leitura), mas apenas com a identificação escolhida no campo
   "Como prefere se identificar?" — nunca nome real, e-mail ou dados da conta.
@@ -77,8 +79,7 @@ discursiva e gerar referência quando o criador não forneceu.
       "resposta_verdadeiro_falso": true,
       "alternativas": [{ "texto": "...", "correta": true }],
       "nota_parcial": true,
-      "resposta_referencia": "Só para discursivas",
-      "nota_editor": "Opcional",
+      "resposta_referencia": "Opcional; explica a resposta esperada e serve de referência para a IA",
       "peso": 10
     }
   ]
@@ -108,6 +109,6 @@ fazem as checagens de autorização (dono do quiz, participante da tentativa)
 explicitamente; as ações Ash internas rodam com `authorize?: false`.
 
 Regras de compatibilidade entre versões: quebram — enunciado, tipo, alternativas
-(texto/corretas/identidade), regra de nota parcial, resposta de referência, nota do
-editor em discursivas, anulação, remoção. Não quebram — peso, nota total, descrição,
-ordem, tags de IA e metadados.
+(texto/corretas/identidade), regra de nota parcial, resposta de referência em
+discursivas, anulação, remoção. Não quebram — peso, nota total, descrição, ordem,
+tags de IA e metadados.

@@ -102,7 +102,7 @@ defmodule QuizProjectWeb.ResultLive do
               </div>
 
               <div :if={question.editor_note} class="bg-base-100 rounded-xl p-3">
-                <p class="text-xs uppercase opacity-50 mb-1">Nota do editor</p>
+                <p class="text-xs uppercase opacity-50 mb-1">Resposta de referência</p>
                 <p class="whitespace-pre-wrap">{question.editor_note}</p>
               </div>
 

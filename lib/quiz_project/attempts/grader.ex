@@ -10,8 +10,8 @@ defmodule QuizProject.Attempts.Grader do
     * múltiplas — marcou qualquer incorreta: zero. Só corretas, mas não
       todas: proporcional se a questão permite nota parcial, senão zero.
       Todas as corretas e nenhuma incorreta: nota total;
-    * discursiva — IA compara com a referência do criador (resposta de
-      referência ou nota do editor). Sem referência, a IA gera a própria e
+    * discursiva — IA compara com a resposta de referência do criador
+      (campo único, opcional). Sem referência, a IA gera a própria e
       isso fica sinalizado. A nota é percent × pontos da questão.
 
   Se o provider de IA falhar, cai na heurística local (`Fake`) para a
@@ -109,12 +109,14 @@ defmodule QuizProject.Attempts.Grader do
     end
   end
 
-  # A referência principal é a resposta de referência do criador; na ausência,
-  # a nota do editor. Sem nenhuma das duas, a IA gera uma referência própria.
+  # A referência do criador é a resposta de referência (nota do editor).
+  # Sem ela, a IA gera uma referência própria e isso fica sinalizado.
   defp resolve_reference(question) do
     creator_reference =
-      [question.reference_answer, question.editor_note]
-      |> Enum.find(fn value -> is_binary(value) and String.trim(value) != "" end)
+      case question.editor_note do
+        value when is_binary(value) -> if String.trim(value) == "", do: nil, else: value
+        _ -> nil
+      end
 
     case creator_reference do
       nil ->

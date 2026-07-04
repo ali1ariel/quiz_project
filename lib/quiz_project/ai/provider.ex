@@ -23,7 +23,7 @@ defmodule QuizProject.AI.Provider do
 
   @doc """
   Gera uma resposta de referência a partir do enunciado, usada quando o
-  criador não forneceu referência nem nota do editor.
+  criador não forneceu resposta de referência.
   """
   @callback generate_reference(statement :: String.t()) ::
               {:ok, String.t()} | {:error, term()}

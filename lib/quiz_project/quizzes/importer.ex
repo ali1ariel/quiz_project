@@ -18,8 +18,7 @@ defmodule QuizProject.Quizzes.Importer do
             "resposta_verdadeiro_falso": true,
             "alternativas": [{"texto": "...", "correta": true}],
             "nota_parcial": true,
-            "resposta_referencia": "Só para discursivas",
-            "nota_editor": "Opcional",
+            "resposta_referencia": "Opcional; explica a resposta esperada e serve de referência para a IA",
             "peso": 10
           }
         ]
@@ -182,8 +181,8 @@ defmodule QuizProject.Quizzes.Importer do
             type: type,
             true_false_answer: if(type == :true_false, do: question["resposta_verdadeiro_falso"]),
             allow_partial_credit: type == :multiple and question["nota_parcial"] == true,
-            reference_answer: if(type == :text, do: question["resposta_referencia"]),
-            editor_note: question["nota_editor"],
+            # "nota_editor" é aceito como sinônimo legado de "resposta_referencia"
+            editor_note: question["resposta_referencia"] || question["nota_editor"],
             weight: if(question["peso"], do: Decimal.new(to_string(question["peso"]))),
             options:
               (question["alternativas"] || [])
