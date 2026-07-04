@@ -57,6 +57,12 @@
 
         setSkin(localStorage.getItem("phx:skin") || "tatil");
 
+        // o setSkin acima roda no <head>, antes de os <select> existirem no DOM;
+        // sincroniza o valor deles assim que a página for parseada.
+        document.addEventListener("DOMContentLoaded", () => {
+          syncSkinSelects(localStorage.getItem("phx:skin") || "tatil");
+        });
+
         document.addEventListener("change", (e) => {
           if (e.target && e.target.matches && e.target.matches("[data-skin-select]")) {
             setSkin(e.target.value);
