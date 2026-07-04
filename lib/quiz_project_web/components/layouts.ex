@@ -191,8 +191,8 @@ defmodule QuizProjectWeb.Layouts do
               phx-update="ignore"
               class="select select-sm rounded-full w-auto"
             >
-              <option value="tatil">Tátil 3D</option>
               <option value="sobrio">Sóbrio</option>
+              <option value="aurora">Aurora</option>
               <option value="classico">Clássico</option>
             </select>
           </div>
@@ -242,8 +242,8 @@ defmodule QuizProjectWeb.Layouts do
             class="h-8 w-24 rounded-full border border-base-300 bg-base-100 px-2 text-xs font-medium outline-none transition focus:border-primary"
             title="Estilo visual"
           >
-            <option value="tatil">Tátil 3D</option>
             <option value="sobrio">Sóbrio</option>
+            <option value="aurora">Aurora</option>
             <option value="classico">Clássico</option>
           </select>
           <span class="h-5 w-px bg-base-300"></span>
@@ -306,7 +306,7 @@ defmodule QuizProjectWeb.Layouts do
   @doc """
   Provides dark vs light theme toggle based on themes defined in app.css.
 
-  See <head> in root.html.heex which applies the theme before page load.
+  The appearance preferences are applied by assets/js/app.js.
   """
   def theme_toggle(assigns) do
     ~H"""

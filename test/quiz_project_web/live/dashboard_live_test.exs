@@ -17,6 +17,10 @@ defmodule QuizProjectWeb.DashboardLiveTest do
     assert has_element?(view, "span#desktop-nav-quizzes[aria-current=page]")
     assert has_element?(view, "a#desktop-nav-account")
     assert has_element?(view, "#appearance-control")
+    assert has_element?(view, "#skin-select option[value=sobrio]")
+    assert has_element?(view, "#skin-select option[value=aurora]")
+    assert has_element?(view, "#skin-select option[value=classico]")
+    refute has_element?(view, "#skin-select option[value=tatil]")
   end
 
   test "criar quiz navega para o editor do rascunho", %{conn: conn} do

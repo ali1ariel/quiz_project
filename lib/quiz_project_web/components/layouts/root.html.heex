@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="pt-BR" data-skin="tatil">
+<html lang="pt-BR" data-skin="sobrio">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -12,70 +12,6 @@
     <.live_title default="Quizzes" suffix="" phx-no-format>{assigns[:page_title]}</.live_title>
     <link phx-track-static rel="stylesheet" href={~p"/assets/css/app.css"} />
     <script defer phx-track-static type="text/javascript" src={~p"/assets/js/app.js"}>
-    </script>
-    <script>
-      (() => {
-        const systemTheme = () => matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-
-        const setTheme = (theme) => {
-          if (theme === "system") {
-            localStorage.removeItem("phx:theme");
-            document.documentElement.setAttribute("data-theme", systemTheme());
-            document.documentElement.setAttribute("data-theme-source", "system");
-          } else {
-            localStorage.setItem("phx:theme", theme);
-            document.documentElement.setAttribute("data-theme", theme);
-            document.documentElement.setAttribute("data-theme-source", "user");
-          }
-        };
-        if (!document.documentElement.hasAttribute("data-theme")) {
-          setTheme(localStorage.getItem("phx:theme") || "system");
-        }
-        window.addEventListener("storage", (e) => e.key === "phx:theme" && setTheme(e.newValue || "system"));
-        
-        window.addEventListener("phx:set-theme", (e) => setTheme(e.target.dataset.phxTheme));
-
-        matchMedia("(prefers-color-scheme: dark)").addEventListener("change", (e) => {
-          if (document.documentElement.getAttribute("data-theme-source") === "system") {
-            document.documentElement.setAttribute("data-theme", systemTheme());
-          }
-        });
-
-        // Skins (direções de design): tatil | sobrio | classico
-        const skins = ["tatil", "sobrio", "classico"];
-
-        const syncSkinSelects = (skin) => {
-          document.querySelectorAll("[data-skin-select]").forEach((el) => { el.value = skin; });
-        };
-
-        const setSkin = (skin) => {
-          if (!skins.includes(skin)) skin = "tatil";
-          localStorage.setItem("phx:skin", skin);
-          document.documentElement.setAttribute("data-skin", skin);
-          syncSkinSelects(skin);
-        };
-
-        setSkin(localStorage.getItem("phx:skin") || "tatil");
-
-        // o setSkin acima roda no <head>, antes de os <select> existirem no DOM;
-        // sincroniza o valor deles assim que a página for parseada.
-        document.addEventListener("DOMContentLoaded", () => {
-          syncSkinSelects(localStorage.getItem("phx:skin") || "tatil");
-        });
-
-        document.addEventListener("change", (e) => {
-          if (e.target && e.target.matches && e.target.matches("[data-skin-select]")) {
-            setSkin(e.target.value);
-          }
-        });
-
-        // re-sincroniza o select após navegações do LiveView
-        window.addEventListener("phx:page-loading-stop", () => {
-          syncSkinSelects(localStorage.getItem("phx:skin") || "tatil");
-        });
-
-        window.addEventListener("storage", (e) => e.key === "phx:skin" && setSkin(e.newValue || "tatil"));
-      })();
     </script>
   </head>
   <body>

@@ -25,6 +25,56 @@ import {LiveSocket} from "phoenix_live_view"
 import {hooks as colocatedHooks} from "phoenix-colocated/quiz_project"
 import topbar from "../vendor/topbar"
 
+const colorScheme = window.matchMedia("(prefers-color-scheme: dark)")
+const availableSkins = ["sobrio", "aurora", "classico"]
+const defaultSkin = "sobrio"
+
+const systemTheme = () => colorScheme.matches ? "dark" : "light"
+
+const setTheme = theme => {
+  if (theme === "light" || theme === "dark") {
+    localStorage.setItem("phx:theme", theme)
+    document.documentElement.setAttribute("data-theme", theme)
+    document.documentElement.setAttribute("data-theme-source", "user")
+  } else {
+    localStorage.removeItem("phx:theme")
+    document.documentElement.setAttribute("data-theme", systemTheme())
+    document.documentElement.setAttribute("data-theme-source", "system")
+  }
+}
+
+const syncSkinSelects = skin => {
+  document.querySelectorAll("[data-skin-select]").forEach(select => select.value = skin)
+}
+
+const setSkin = requestedSkin => {
+  const skin = availableSkins.includes(requestedSkin) ? requestedSkin : defaultSkin
+
+  localStorage.setItem("phx:skin", skin)
+  document.documentElement.setAttribute("data-skin", skin)
+  syncSkinSelects(skin)
+}
+
+setTheme(localStorage.getItem("phx:theme") || "system")
+setSkin(localStorage.getItem("phx:skin") || defaultSkin)
+
+window.addEventListener("phx:set-theme", event => setTheme(event.target.dataset.phxTheme))
+
+colorScheme.addEventListener("change", () => {
+  if (document.documentElement.getAttribute("data-theme-source") === "system") {
+    document.documentElement.setAttribute("data-theme", systemTheme())
+  }
+})
+
+document.addEventListener("change", event => {
+  if (event.target.matches?.("[data-skin-select]")) setSkin(event.target.value)
+})
+
+window.addEventListener("storage", event => {
+  if (event.key === "phx:theme") setTheme(event.newValue || "system")
+  if (event.key === "phx:skin") setSkin(event.newValue || defaultSkin)
+})
+
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
@@ -35,7 +85,10 @@ const liveSocket = new LiveSocket("/live", Socket, {
 // Show progress bar on live navigation and form submits
 topbar.config({barColors: {0: "#29d"}, shadowColor: "rgba(0, 0, 0, .3)"})
 window.addEventListener("phx:page-loading-start", _info => topbar.show(300))
-window.addEventListener("phx:page-loading-stop", _info => topbar.hide())
+window.addEventListener("phx:page-loading-stop", _info => {
+  topbar.hide()
+  syncSkinSelects(document.documentElement.getAttribute("data-skin") || defaultSkin)
+})
 
 // connect if there are any LiveViews on the page
 liveSocket.connect()
@@ -80,4 +133,3 @@ if (process.env.NODE_ENV === "development") {
     window.liveReloader = reloader
   })
 }
-
