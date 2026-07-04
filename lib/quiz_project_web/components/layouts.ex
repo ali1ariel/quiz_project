@@ -35,19 +35,23 @@ defmodule QuizProjectWeb.Layouts do
 
   def app(assigns) do
     ~H"""
-    <header class="navbar px-4 sm:px-6 lg:px-8 border-b border-base-300 min-h-14">
-      <div class="flex-1">
+    <header class="navbar px-4 sm:px-6 lg:px-8 border-b border-base-300 min-h-14 gap-2">
+      <div class="flex-1 min-w-0">
         <.link navigate={~p"/"} class="flex w-fit items-center gap-2 font-bold text-lg">
-          <span class="inline-flex items-center justify-center size-8 rounded-full bg-primary text-primary-content text-sm">
+          <span class="inline-flex items-center justify-center size-8 rounded-full bg-primary text-primary-content text-sm shrink-0">
             Q
           </span>
           Quizzes
         </.link>
       </div>
-      <nav class="flex-none">
+
+      <%!-- navegação completa (desktop) --%>
+      <nav class="hidden md:block flex-none">
         <ul class="flex px-1 gap-2 items-center">
           <%= if @current_user do %>
-            <li class="hidden sm:block text-sm opacity-70 mr-1">{@current_user.email}</li>
+            <li class="hidden lg:block text-sm opacity-70 mr-1 max-w-48 truncate">
+              {@current_user.email}
+            </li>
             <li>
               <.link navigate={~p"/painel"} class="btn btn-ghost btn-sm rounded-full">Painel</.link>
             </li>
@@ -71,6 +75,7 @@ defmodule QuizProjectWeb.Layouts do
             <select
               id="skin-select"
               data-skin-select
+              phx-update="ignore"
               class="select select-sm rounded-full w-auto"
               title="Estilo visual"
             >
@@ -82,6 +87,59 @@ defmodule QuizProjectWeb.Layouts do
           <li><.theme_toggle /></li>
         </ul>
       </nav>
+
+      <%!-- menu compacto (mobile) --%>
+      <details class="dropdown dropdown-end md:hidden flex-none" id="mobile-menu">
+        <summary class="btn btn-ghost btn-circle" aria-label="Abrir menu">
+          <.icon name="hero-bars-3" class="size-6" />
+        </summary>
+        <div class="dropdown-content z-40 mt-3 w-64 max-w-[calc(100vw-2rem)] card qcard bg-base-200 p-4 space-y-4">
+          <div class="space-y-2">
+            <%= if @current_user do %>
+              <p class="text-xs opacity-60 truncate px-1">{@current_user.email}</p>
+              <.link navigate={~p"/painel"} class="btn btn-outline btn-sm w-full rounded-full">
+                Painel
+              </.link>
+              <.link
+                href={~p"/sair"}
+                method="delete"
+                class="btn btn-ghost btn-sm w-full rounded-full"
+              >
+                Sair
+              </.link>
+            <% else %>
+              <.link navigate={~p"/entrar"} class="btn btn-outline btn-sm w-full rounded-full">
+                Entrar
+              </.link>
+              <.link
+                navigate={~p"/criar-conta"}
+                class="btn btn-primary btn-sm w-full rounded-full"
+              >
+                Criar conta
+              </.link>
+            <% end %>
+          </div>
+
+          <div class="flex items-center justify-between gap-3">
+            <label class="text-xs opacity-60" for="skin-select-mobile">Estilo</label>
+            <select
+              id="skin-select-mobile"
+              data-skin-select
+              phx-update="ignore"
+              class="select select-sm rounded-full w-auto"
+            >
+              <option value="tatil">Tátil 3D</option>
+              <option value="sobrio">Sóbrio</option>
+              <option value="classico">Clássico</option>
+            </select>
+          </div>
+
+          <div class="flex items-center justify-between gap-3">
+            <span class="text-xs opacity-60">Tema</span>
+            <.theme_toggle />
+          </div>
+        </div>
+      </details>
     </header>
 
     <main class="px-4 py-8 sm:px-6 lg:px-8">

@@ -143,28 +143,49 @@ defmodule QuizProjectWeb.ResultLive do
 
         <%!-- resumo lateral (desktop) --%>
         <aside class="hidden lg:block sticky top-4" id="summary-desktop">
-          <.summary attempt={@attempt} stats={@stats} />
+          <div class="card qcard bg-base-200 p-5 space-y-3">
+            <h2 class="font-semibold text-base">Resumo do quiz</h2>
+            <.summary attempt={@attempt} stats={@stats} />
+          </div>
         </aside>
       </div>
 
-      <%!-- resumo em gaveta (mobile) --%>
-      <div class="lg:hidden fixed bottom-0 inset-x-0 z-20" id="summary-mobile">
-        <div class="bg-base-200 border-t border-base-300 rounded-t-2xl shadow-lg">
+      <%!-- cortina de resumo (mobile): sobe do rodapé por cima das questões --%>
+      <div class="lg:hidden fixed bottom-0 inset-x-0 z-30" id="summary-mobile">
+        <div class="bg-base-200 border-t-2 border-base-300 rounded-t-2xl shadow-[0_-10px_32px_rgba(0,0,0,0.28)]">
           <button
             phx-click="toggle_summary"
-            class="w-full flex items-center justify-between px-5 py-3"
+            class="w-full px-5 pt-2.5 pb-3 cursor-pointer"
             id="toggle-summary"
+            aria-expanded={to_string(@show_summary)}
+            aria-controls="summary-sheet-body"
           >
-            <span class="font-semibold text-sm">
-              Resumo — {format_decimal(@attempt.score)}/{format_decimal(@attempt.max_score)} pts
+            <span class="block mx-auto w-10 h-1 rounded-full bg-base-content/25 mb-2.5"></span>
+            <span class="flex items-center justify-between gap-3">
+              <span class="font-semibold text-sm text-left">
+                Resumo — {format_decimal(@attempt.score)}/{format_decimal(@attempt.max_score)} pts
+                · {format_decimal(@attempt.percent)}%
+              </span>
+              <span class="flex items-center gap-1 text-xs opacity-60 shrink-0">
+                {if @show_summary, do: "fechar", else: "expandir"}
+                <.icon
+                  name={if @show_summary, do: "hero-chevron-down", else: "hero-chevron-up"}
+                  class="size-4"
+                />
+              </span>
             </span>
-            <.icon
-              name={if @show_summary, do: "hero-chevron-down", else: "hero-chevron-up"}
-              class="size-5"
-            />
           </button>
-          <div :if={@show_summary} class="px-5 pb-5">
-            <.summary attempt={@attempt} stats={@stats} />
+
+          <div
+            id="summary-sheet-body"
+            class={[
+              "overflow-y-auto transition-[max-height] duration-300 ease-out",
+              if(@show_summary, do: "max-h-[55vh]", else: "max-h-0")
+            ]}
+          >
+            <div class="px-5 pb-8 pt-1">
+              <.summary attempt={@attempt} stats={@stats} />
+            </div>
           </div>
         </div>
       </div>
@@ -201,41 +222,38 @@ defmodule QuizProjectWeb.ResultLive do
 
   defp summary(assigns) do
     ~H"""
-    <div class="card bg-base-200 lg:bg-base-200 rounded-2xl lg:p-5 space-y-3">
-      <h2 class="font-semibold hidden lg:block">Resumo do quiz</h2>
-      <ul class="text-sm space-y-2">
-        <li class="flex justify-between">
-          <span class="opacity-70">Nota total</span>
-          <span class="font-semibold">
-            {format_decimal(@attempt.score)}/{format_decimal(@attempt.max_score)}
-          </span>
-        </li>
-        <li class="flex justify-between">
-          <span class="opacity-70">Percentual</span>
-          <span class="font-semibold">{format_decimal(@attempt.percent)}%</span>
-        </li>
-        <li class="flex justify-between">
-          <span class="opacity-70">Respondidas</span>
-          <span class="font-semibold">{@stats.answered}/{@stats.total}</span>
-        </li>
-        <li class="flex justify-between">
-          <span class="opacity-70">"Não sei"</span>
-          <span class="font-semibold">{@stats.dont_know}</span>
-        </li>
-        <li class="flex justify-between">
-          <span class="opacity-70">Questões anuladas</span>
-          <span class="font-semibold">{@stats.annulled}</span>
-        </li>
-        <li class="flex justify-between">
-          <span class="opacity-70">Discursivas avaliadas por IA</span>
-          <span class="font-semibold">{@stats.ai_graded}</span>
-        </li>
-        <li class="flex justify-between">
-          <span class="opacity-70">Respostas importadas</span>
-          <span class="font-semibold">{@stats.imported}</span>
-        </li>
-      </ul>
-    </div>
+    <ul class="text-sm space-y-2">
+      <li class="flex justify-between">
+        <span class="opacity-70">Nota total</span>
+        <span class="font-semibold">
+          {format_decimal(@attempt.score)}/{format_decimal(@attempt.max_score)}
+        </span>
+      </li>
+      <li class="flex justify-between">
+        <span class="opacity-70">Percentual</span>
+        <span class="font-semibold">{format_decimal(@attempt.percent)}%</span>
+      </li>
+      <li class="flex justify-between">
+        <span class="opacity-70">Respondidas</span>
+        <span class="font-semibold">{@stats.answered}/{@stats.total}</span>
+      </li>
+      <li class="flex justify-between">
+        <span class="opacity-70">"Não sei"</span>
+        <span class="font-semibold">{@stats.dont_know}</span>
+      </li>
+      <li class="flex justify-between">
+        <span class="opacity-70">Questões anuladas</span>
+        <span class="font-semibold">{@stats.annulled}</span>
+      </li>
+      <li class="flex justify-between">
+        <span class="opacity-70">Discursivas avaliadas por IA</span>
+        <span class="font-semibold">{@stats.ai_graded}</span>
+      </li>
+      <li class="flex justify-between">
+        <span class="opacity-70">Respostas importadas</span>
+        <span class="font-semibold">{@stats.imported}</span>
+      </li>
+    </ul>
     """
   end
 
