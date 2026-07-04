@@ -191,30 +191,92 @@ defmodule QuizProjectWeb.DashboardLive do
       >
         <div class="modal-box rounded-2xl max-w-2xl">
           <h3 class="font-bold text-lg mb-2">Importar quiz via JSON</h3>
-          <p class="text-sm opacity-70 mb-3">
-            Envie um arquivo .json ou cole o conteúdo abaixo. O quiz importado
-            entra como rascunho para revisão antes da publicação.
-          </p>
+          <div :if={@import_preview} id="import-preview" class="space-y-3">
+            <p class="text-sm opacity-70">
+              Confira o que foi reconhecido antes de importar. O quiz entra como
+              rascunho para revisão antes da publicação.
+            </p>
 
-          <a
-            href={~p"/template.json"}
-            download="template-quiz.json"
-            class="btn btn-sm btn-outline rounded-full mb-4"
-            id="download-template"
-          >
-            <.icon name="hero-arrow-down-tray" class="size-4" /> Baixar template.json
-          </a>
-          <p class="text-xs opacity-60 mb-4 -mt-2">
-            Baixe o modelo e envie para a IA de sua preferência gerar o quiz no formato aceito.
-          </p>
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="font-semibold">
+                {if @import_preview.attrs.name == "",
+                  do: "Quiz sem nome",
+                  else: @import_preview.attrs.name}
+              </span>
+              <span class="badge badge-sm badge-ghost rounded-full">
+                {length(@import_preview.attrs.questions)} questões
+              </span>
+              <span class="badge badge-sm badge-ghost rounded-full">
+                nota {format_decimal(@import_preview.attrs.total_points)}
+              </span>
+            </div>
+            <p
+              :if={@import_preview.attrs.description not in [nil, ""]}
+              class="text-sm opacity-70"
+            >
+              {@import_preview.attrs.description}
+            </p>
 
-          <div :if={@import_errors != []} class="alert alert-error rounded-xl mb-3 text-sm">
-            <ul class="list-disc list-inside">
-              <li :for={error <- @import_errors}>{error}</li>
+            <ul class="max-h-72 overflow-y-auto space-y-2 pr-1">
+              <li
+                :for={{question, index} <- Enum.with_index(@import_preview.attrs.questions)}
+                class="text-sm border border-base-300 rounded-xl p-2"
+              >
+                <div class="flex items-start gap-2">
+                  <span class="badge badge-neutral badge-sm rounded-full mt-0.5">{index + 1}</span>
+                  <div class="min-w-0">
+                    <p class="break-words">
+                      {if question.statement == "", do: "(sem enunciado)", else: question.statement}
+                    </p>
+                    <p class="text-xs opacity-60 mt-0.5">
+                      {type_label(question.type)} · {preview_detail(question)}
+                    </p>
+                  </div>
+                </div>
+              </li>
             </ul>
+
+            <div class="modal-action">
+              <button type="button" phx-click="cancel_preview" class="btn btn-ghost rounded-full">
+                Voltar
+              </button>
+              <button
+                type="button"
+                phx-click="confirm_import"
+                id="confirm-import"
+                class="btn btn-primary rounded-full"
+              >
+                Confirmar importação
+              </button>
+            </div>
           </div>
 
-          <form phx-change="validate_import" phx-submit="import_quiz" id="import-form">
+          <div :if={!@import_preview}>
+            <p class="text-sm opacity-70 mb-3">
+              Envie um arquivo .json ou cole o conteúdo abaixo. O quiz importado
+              entra como rascunho para revisão antes da publicação.
+            </p>
+
+            <a
+              href={~p"/formato-importacao.md"}
+              download="formato-importacao.md"
+              class="btn btn-sm btn-outline rounded-full mb-4"
+              id="download-format"
+            >
+              <.icon name="hero-arrow-down-tray" class="size-4" /> Baixar formato para IA
+            </a>
+            <p class="text-xs opacity-60 mb-4 -mt-2">
+              Baixe a documentação do formato e envie para a IA de sua preferência: ela contém
+              todas as regras e um exemplo para gerar o quiz já no formato aceito.
+            </p>
+
+            <div :if={@import_errors != []} class="alert alert-error rounded-xl mb-3 text-sm">
+              <ul class="list-disc list-inside">
+                <li :for={error <- @import_errors}>{error}</li>
+              </ul>
+            </div>
+
+            <form phx-change="validate_import" phx-submit="preview_import" id="import-form">
             <div
               class="border-2 border-dashed border-base-300 rounded-xl p-4 mb-3 text-center"
               phx-drop-target={@uploads.json_file.ref}
@@ -253,10 +315,11 @@ defmodule QuizProjectWeb.DashboardLive do
                 Cancelar
               </button>
               <button type="submit" id="import-submit" class="btn btn-primary rounded-full">
-                Importar como rascunho
+                Revisar importação
               </button>
             </div>
-          </form>
+            </form>
+          </div>
         </div>
       </dialog>
     </Layouts.app>
@@ -266,7 +329,13 @@ defmodule QuizProjectWeb.DashboardLive do
   def mount(_params, _session, socket) do
     {:ok,
      socket
-     |> assign(tab: :created, show_import: false, import_errors: [], import_json: "")
+     |> assign(
+       tab: :created,
+       show_import: false,
+       import_errors: [],
+       import_json: "",
+       import_preview: nil
+     )
      |> allow_upload(:json_file,
        accept: ~w(.json application/json),
        max_entries: 1,
@@ -323,18 +392,19 @@ defmodule QuizProjectWeb.DashboardLive do
   end
 
   def handle_event("open_import", _params, socket) do
-    {:noreply, assign(socket, show_import: true, import_errors: [], import_json: "")}
+    {:noreply,
+     assign(socket, show_import: true, import_errors: [], import_json: "", import_preview: nil)}
   end
 
   def handle_event("close_import", _params, socket) do
-    {:noreply, assign(socket, show_import: false)}
+    {:noreply, assign(socket, show_import: false, import_preview: nil)}
   end
 
   def handle_event("validate_import", params, socket) do
     {:noreply, assign(socket, import_json: params["json"] || socket.assigns.import_json)}
   end
 
-  def handle_event("import_quiz", params, socket) do
+  def handle_event("preview_import", params, socket) do
     # arquivo enviado tem prioridade sobre o texto colado
     json =
       case consume_uploaded_entries(socket, :json_file, fn %{path: path}, _entry ->
@@ -344,12 +414,10 @@ defmodule QuizProjectWeb.DashboardLive do
         [] -> params["json"] || ""
       end
 
-    case Quizzes.import_quiz(socket.assigns.current_user, json) do
-      {:ok, version} ->
+    case Quizzes.preview_import(json) do
+      {:ok, attrs} ->
         {:noreply,
-         socket
-         |> put_flash(:info, "Quiz importado como rascunho. Revise antes de publicar.")
-         |> push_navigate(to: ~p"/quiz/#{version.id}/editar")}
+         assign(socket, import_preview: %{json: json, attrs: attrs}, import_errors: [])}
 
       {:error, errors} when is_list(errors) ->
         {:noreply, assign(socket, import_errors: errors, import_json: json)}
@@ -357,6 +425,27 @@ defmodule QuizProjectWeb.DashboardLive do
       {:error, _} ->
         {:noreply,
          assign(socket, import_errors: ["Erro inesperado na importação"], import_json: json)}
+    end
+  end
+
+  def handle_event("cancel_preview", _params, socket) do
+    {:noreply, assign(socket, import_preview: nil)}
+  end
+
+  def handle_event("confirm_import", _params, socket) do
+    case Quizzes.import_quiz(socket.assigns.current_user, socket.assigns.import_preview.json) do
+      {:ok, version} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "Quiz importado como rascunho. Revise antes de publicar.")
+         |> push_navigate(to: ~p"/quiz/#{version.id}/editar")}
+
+      {:error, errors} when is_list(errors) ->
+        {:noreply, assign(socket, import_preview: nil, import_errors: errors)}
+
+      {:error, _} ->
+        {:noreply,
+         assign(socket, import_preview: nil, import_errors: ["Erro inesperado na importação"])}
     end
   end
 
@@ -369,6 +458,30 @@ defmodule QuizProjectWeb.DashboardLive do
 
   defp published_version(quiz), do: Enum.find(quiz.versions, &(&1.status == :published))
   defp draft_version(quiz), do: Enum.find(quiz.versions, &(&1.status == :draft))
+
+  defp type_label(:true_false), do: "Verdadeiro ou falso"
+  defp type_label(:single), do: "Uma correta"
+  defp type_label(:multiple), do: "Múltiplas corretas"
+  defp type_label(:text), do: "Discursiva"
+
+  # Resumo da questão na pré-visualização da importação.
+  defp preview_detail(%{type: :true_false, true_false_answer: answer}) do
+    "resposta: " <> if(answer, do: "Verdadeiro", else: "Falso")
+  end
+
+  defp preview_detail(%{type: :single, options: options}) do
+    "#{length(options)} alternativas · 1 correta"
+  end
+
+  defp preview_detail(%{type: :multiple, options: options} = question) do
+    corretas = Enum.count(options, & &1.correct)
+    parcial = if question.allow_partial_credit, do: " · nota parcial", else: ""
+    "#{length(options)} alternativas · #{corretas} corretas#{parcial}"
+  end
+
+  defp preview_detail(%{type: :text, editor_note: note}) do
+    if note in [nil, ""], do: "sem resposta de referência", else: "com resposta de referência"
+  end
 
   defp format_decimal(nil), do: "0"
 

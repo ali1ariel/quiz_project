@@ -34,7 +34,14 @@ defmodule QuizProjectWeb.DashboardLiveTest do
     json =
       ~s({"nome": "Importado", "questoes": [{"enunciado": "2+2=4?", "tipo": "verdadeiro_falso", "resposta_verdadeiro_falso": true}]})
 
-    view |> form("#import-form", %{"json" => json}) |> render_submit()
+    # revisar: mostra a pré-visualização antes de importar
+    html = view |> form("#import-form", %{"json" => json}) |> render_submit()
+    assert has_element?(view, "#import-preview")
+    assert html =~ "Importado"
+    assert html =~ "1 questões"
+
+    # confirmar: cria o rascunho e navega para o editor
+    view |> element("#confirm-import") |> render_click()
 
     {path, _flash} = assert_redirect(view)
     assert path =~ ~r{^/quiz/.+/editar$}
@@ -55,6 +62,9 @@ defmodule QuizProjectWeb.DashboardLiveTest do
     |> render_upload("quiz.json")
 
     view |> form("#import-form", %{"json" => ""}) |> render_submit()
+    assert has_element?(view, "#import-preview")
+
+    view |> element("#confirm-import") |> render_click()
 
     {path, _flash} = assert_redirect(view)
     assert path =~ ~r{^/quiz/.+/editar$}

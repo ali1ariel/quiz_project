@@ -49,6 +49,12 @@ defmodule QuizProject.Quizzes do
     {:ok, %{version | quiz: quiz}}
   end
 
+  @doc """
+  Valida um JSON de importação sem criar nada. Retorna `{:ok, attrs}` com os
+  dados normalizados (para pré-visualização) ou `{:error, mensagens}`.
+  """
+  def preview_import(json), do: Importer.parse(json)
+
   @doc "Importa um quiz de JSON. Entra como rascunho para revisão."
   def import_quiz(owner, json) do
     with {:ok, attrs} <- Importer.parse(json) do
