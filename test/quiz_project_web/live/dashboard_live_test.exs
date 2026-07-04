@@ -40,6 +40,26 @@ defmodule QuizProjectWeb.DashboardLiveTest do
     assert path =~ ~r{^/quiz/.+/editar$}
   end
 
+  test "importa quiz por upload de arquivo JSON", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/painel")
+
+    view |> element("#open-import") |> render_click()
+
+    json =
+      ~s({"nome": "Via arquivo", "questoes": [{"enunciado": "2+2=4?", "tipo": "verdadeiro_falso", "resposta_verdadeiro_falso": true}]})
+
+    view
+    |> file_input("#import-form", :json_file, [
+      %{name: "quiz.json", content: json, type: "application/json"}
+    ])
+    |> render_upload("quiz.json")
+
+    view |> form("#import-form", %{"json" => ""}) |> render_submit()
+
+    {path, _flash} = assert_redirect(view)
+    assert path =~ ~r{^/quiz/.+/editar$}
+  end
+
   test "JSON inválido mostra erros no modal", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/painel")
 

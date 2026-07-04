@@ -107,10 +107,12 @@ defmodule QuizProjectWeb.AttemptFlowTest do
     view |> element("#confirm-attempt") |> render_click()
     assert has_element?(view, "#confirm-anyway")
 
-    # abre o modal, mostra contagens e finaliza mesmo assim
+    # abre o modal, mostra contagens com intervalos e finaliza mesmo assim
     view |> element("#confirm-anyway") |> render_click()
     assert has_element?(view, "#confirm-modal")
     assert render(view) =~ "marcada(s) para responder depois"
+    # a single é a questão 2 na ordem fixa
+    assert has_element?(view, "#pending-later", "2")
 
     view |> element("#finalize-forced") |> render_click()
 
@@ -132,7 +134,33 @@ defmodule QuizProjectWeb.AttemptFlowTest do
 
     assert has_element?(creator_view, "#creator-banner")
     assert creator_html =~ "Participante X"
+    assert creator_html =~ "Resposta do participante"
+    refute creator_html =~ "Sua resposta"
     refute creator_html =~ "participante-real@teste.com"
+  end
+
+  test "responder questão marcada para depois desmarca na interface", %{
+    quiz: quiz,
+    version: version
+  } do
+    {_conn, view, _path} = start_anonymous_attempt(quiz)
+
+    tf = Enum.find(version.questions, &(&1.type == :true_false))
+
+    view |> element("#later-#{tf.id}") |> render_click()
+    assert has_element?(view, "#later-#{tf.id}", "Desmarcar")
+
+    view |> element("#tf-#{tf.id}-true") |> render_click()
+    assert has_element?(view, "#later-#{tf.id}", "Responder depois")
+  end
+
+  test "formata intervalos de questões pendentes" do
+    assert QuizProjectWeb.AttemptLive.format_ranges([3, 7, 8, 9, 30, 31, 32]) ==
+             "3, 7 a 9, 30 a 32"
+
+    assert QuizProjectWeb.AttemptLive.format_ranges([5]) == "5"
+    assert QuizProjectWeb.AttemptLive.format_ranges([2, 1]) == "1 a 2"
+    assert QuizProjectWeb.AttemptLive.format_ranges([]) == ""
   end
 
   test "limpar resposta oferece restauração", %{quiz: quiz, version: version} do

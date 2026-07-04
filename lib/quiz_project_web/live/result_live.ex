@@ -44,8 +44,10 @@ defmodule QuizProjectWeb.ResultLive do
 
       <div class="grid lg:grid-cols-[1fr_280px] gap-6 items-start pb-24 lg:pb-4">
         <div class="space-y-4 min-w-0">
+          <.pagination page={@page} page_count={@page_count} id="result-pagination-top" />
+
           <div
-            :for={{question, index} <- Enum.with_index(@ordered_questions)}
+            :for={{question, index} <- @page_questions}
             id={"result-question-#{question.id}"}
             class="card bg-base-200 rounded-2xl p-5"
           >
@@ -77,7 +79,9 @@ defmodule QuizProjectWeb.ResultLive do
 
             <div class="mt-4 space-y-3 text-sm">
               <div>
-                <p class="text-xs uppercase opacity-50 mb-1">Sua resposta</p>
+                <p class="text-xs uppercase opacity-50 mb-1">
+                  {if @role == :creator, do: "Resposta do participante", else: "Sua resposta"}
+                </p>
                 <.user_answer question={question} answer={answer(@answers, question)} />
               </div>
 
@@ -130,6 +134,8 @@ defmodule QuizProjectWeb.ResultLive do
               </div>
             </div>
           </div>
+
+          <.pagination page={@page} page_count={@page_count} id="result-pagination-bottom" />
         </div>
 
         <%!-- resumo lateral (desktop) --%>
@@ -160,6 +166,30 @@ defmodule QuizProjectWeb.ResultLive do
         </div>
       </div>
     </Layouts.app>
+    """
+  end
+
+  attr :page, :integer, required: true
+  attr :page_count, :integer, required: true
+  attr :id, :string, required: true
+
+  defp pagination(assigns) do
+    ~H"""
+    <nav :if={@page_count > 1} class="flex flex-wrap gap-2 items-center" id={@id}>
+      <button
+        :for={index <- 1..@page_count}
+        phx-click="goto_page"
+        phx-value-page={index}
+        class={[
+          "btn btn-sm btn-circle",
+          if(index == @page, do: "btn-primary", else: "btn-outline")
+        ]}
+        id={"#{@id}-page-#{index}"}
+        title={"Página #{index}"}
+      >
+        {index}
+      </button>
+    </nav>
     """
   end
 
@@ -329,7 +359,8 @@ defmodule QuizProjectWeb.ResultLive do
           |> Enum.reject(&is_nil/1)
 
         {:ok,
-         assign(socket,
+         socket
+         |> assign(
            attempt: attempt,
            version: version,
            role: role,
@@ -338,12 +369,37 @@ defmodule QuizProjectWeb.ResultLive do
            points: Scoring.question_points(version, version.questions),
            stats: stats(version, attempt, answers),
            show_summary: false
-         )}
+         )
+         |> paginate(1)}
     end
+  end
+
+  def handle_event("goto_page", %{"page" => page}, socket) do
+    {:noreply, paginate(socket, String.to_integer(page))}
   end
 
   def handle_event("toggle_summary", _params, socket) do
     {:noreply, update(socket, :show_summary, &(!&1))}
+  end
+
+  @per_page 10
+
+  # Mesma paginação da tela de resposta: 10 questões por página, com a
+  # numeração global preservada.
+  defp paginate(socket, page) do
+    ordered = socket.assigns.ordered_questions
+    pages = Enum.chunk_every(ordered, @per_page)
+    page_count = max(length(pages), 1)
+    page = min(max(page, 1), page_count)
+
+    page_questions =
+      pages
+      |> Enum.at(page - 1, [])
+      |> Enum.map(fn question ->
+        {question, Enum.find_index(ordered, &(&1.id == question.id))}
+      end)
+
+    assign(socket, page: page, page_count: page_count, page_questions: page_questions)
   end
 
   defp viewer_role(attempt, version, socket) do

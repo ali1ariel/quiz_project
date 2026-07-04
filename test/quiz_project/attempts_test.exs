@@ -223,6 +223,27 @@ defmodule QuizProject.AttemptsTest do
       {:ok, answer} = Attempts.toggle_marked_later(attempt, answer)
       refute answer.marked_later
     end
+
+    test "responder desmarca 'responder depois'; remarcar mantém a resposta", %{
+      attempt: attempt
+    } do
+      tf = question_by_type(attempt, :true_false)
+      answer = answer_for(attempt, tf)
+
+      {:ok, answer} = Attempts.toggle_marked_later(attempt, answer)
+      assert answer.marked_later
+
+      # responder desmarca automaticamente
+      {:ok, answer} = Attempts.save_answer(attempt, answer, tf, %{"value" => true})
+      refute answer.marked_later
+      assert answer.state == :answered
+
+      # remarcar não apaga a resposta já dada
+      {:ok, answer} = Attempts.toggle_marked_later(attempt, answer)
+      assert answer.marked_later
+      assert answer.state == :answered
+      assert answer.payload == %{"value" => true}
+    end
   end
 
   describe "finalização e correção" do
@@ -545,16 +566,38 @@ defmodule QuizProject.AttemptsTest do
   end
 
   describe "status de página" do
-    test "vermelho tem prioridade sobre amarelo" do
-      red = %{state: :unanswered, marked_later: false}
-      yellow = %{state: :unanswered, marked_later: true}
-      green = %{state: :answered, marked_later: false}
-      dont_know = %{state: :dont_know, marked_later: false}
+    setup do
+      %{
+        unanswered: %{state: :unanswered, marked_later: false},
+        later: %{state: :unanswered, marked_later: true},
+        answered: %{state: :answered, marked_later: false},
+        answered_later: %{state: :answered, marked_later: true},
+        dont_know: %{state: :dont_know, marked_later: false}
+      }
+    end
 
-      assert Attempts.page_status([green, yellow, red]) == :red
-      assert Attempts.page_status([green, yellow]) == :yellow
-      assert Attempts.page_status([green, dont_know]) == :green
+    test "antes da validação: neutro para incompleta, sem vermelho", ctx do
+      assert Attempts.page_status([ctx.unanswered, ctx.answered]) == :neutral
+      assert Attempts.page_status([ctx.unanswered]) == :neutral
+    end
+
+    test "qualquer questão marcada para depois deixa a página amarela", ctx do
+      # mesmo com outras sem resposta, uma única marca já basta
+      assert Attempts.page_status([ctx.later, ctx.unanswered, ctx.answered]) == :yellow
+      assert Attempts.page_status([ctx.later, ctx.answered], true) == :yellow
+    end
+
+    test "página completa fica verde", ctx do
+      assert Attempts.page_status([ctx.answered, ctx.dont_know]) == :green
+      # respondida ainda marcada para depois conta como completa
+      assert Attempts.page_status([ctx.answered_later, ctx.answered]) == :green
       assert Attempts.page_status([]) == :green
+    end
+
+    test "vermelho só após a validação da confirmação", ctx do
+      assert Attempts.page_status([ctx.unanswered, ctx.answered], true) == :red
+      # vermelho tem prioridade sobre amarelo depois de validado
+      assert Attempts.page_status([ctx.unanswered, ctx.later], true) == :red
     end
   end
 end

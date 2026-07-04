@@ -71,14 +71,18 @@ defmodule QuizProjectWeb.AttemptLive do
               phx-click="toggle_later"
               phx-value-question-id={question.id}
               class={[
-                "btn btn-xs rounded-full",
-                if(answer(@answers, question).marked_later, do: "btn-warning", else: "btn-ghost")
+                "btn btn-sm rounded-full",
+                if(answer(@answers, question).marked_later,
+                  do: "btn-warning",
+                  else: "btn-outline btn-warning"
+                )
               ]}
+              id={"later-#{question.id}"}
             >
-              <.icon name="hero-bookmark" class="size-3" />
+              <.icon name="hero-bookmark" class="size-4" />
               {if answer(@answers, question).marked_later,
                 do: "Desmarcar",
-                else: "Marcar para responder depois"}
+                else: "Responder depois"}
             </button>
 
             <button
@@ -86,14 +90,15 @@ defmodule QuizProjectWeb.AttemptLive do
               phx-click="toggle_dont_know"
               phx-value-question-id={question.id}
               class={[
-                "btn btn-xs rounded-full",
+                "btn btn-sm rounded-full",
                 if(answer(@answers, question).state == :dont_know,
                   do: "btn-neutral",
-                  else: "btn-ghost"
+                  else: "btn-outline"
                 )
               ]}
               id={"dont-know-#{question.id}"}
             >
+              <.icon name="hero-question-mark-circle" class="size-4" />
               {if answer(@answers, question).state == :dont_know,
                 do: "Desfazer não sei",
                 else: "Não sei a resposta"}
@@ -103,20 +108,20 @@ defmodule QuizProjectWeb.AttemptLive do
               :if={answer(@answers, question).state == :answered}
               phx-click="clear_answer"
               phx-value-question-id={question.id}
-              class="btn btn-xs btn-ghost text-error rounded-full"
+              class="btn btn-sm btn-outline btn-error rounded-full"
               id={"clear-#{question.id}"}
             >
-              <.icon name="hero-backspace" class="size-3" /> Limpar respostas
+              <.icon name="hero-backspace" class="size-4" /> Limpar respostas
             </button>
 
             <button
               :if={@restore_timers[answer(@answers, question).id]}
               phx-click="restore_answer"
               phx-value-question-id={question.id}
-              class="btn btn-xs btn-info rounded-full"
+              class="btn btn-sm btn-info rounded-full"
               id={"restore-#{question.id}"}
             >
-              <.icon name="hero-arrow-uturn-left" class="size-3" />
+              <.icon name="hero-arrow-uturn-left" class="size-4" />
               Restaurar respostas ({@restore_timers[answer(@answers, question).id]}s)
             </button>
           </div>
@@ -151,14 +156,16 @@ defmodule QuizProjectWeb.AttemptLive do
       <dialog :if={@show_confirm_modal} id="confirm-modal" class="modal modal-open">
         <div class="modal-box rounded-2xl">
           <h3 class="font-bold text-lg mb-2">Existem questões pendentes</h3>
-          <ul class="text-sm space-y-1 mb-2">
-            <li :if={@pending.unanswered > 0}>
+          <ul class="text-sm space-y-2 mb-2">
+            <li :if={@pending.unanswered > 0} id="pending-unanswered">
               <span class="badge badge-error badge-xs rounded-full mr-1"></span>
-              {@pending.unanswered} questão(ões) sem resposta
+              {@pending.unanswered} questão(ões) sem resposta:
+              <span class="font-semibold">{format_ranges(@pending_unanswered_numbers)}</span>
             </li>
-            <li :if={@pending.later > 0}>
+            <li :if={@pending.later > 0} id="pending-later">
               <span class="badge badge-warning badge-xs rounded-full mr-1"></span>
-              {@pending.later} questão(ões) marcada(s) para responder depois
+              {@pending.later} questão(ões) marcada(s) para responder depois:
+              <span class="font-semibold">{format_ranges(@pending_later_numbers)}</span>
             </li>
           </ul>
           <p class="text-sm opacity-70">
@@ -212,6 +219,7 @@ defmodule QuizProjectWeb.AttemptLive do
   defp status_class(:red), do: "btn-error"
   defp status_class(:yellow), do: "btn-warning"
   defp status_class(:green), do: "btn-success"
+  defp status_class(:neutral), do: "btn-outline"
 
   attr :question, :map, required: true
   attr :answer, :map, required: true
@@ -320,8 +328,9 @@ defmodule QuizProjectWeb.AttemptLive do
         {:ok,
          socket
          |> assign(attempt: attempt, version: attempt.quiz_version)
-         |> assign(page: 1, restore_timers: %{}, confirm_anyway: false)
+         |> assign(page: 1, restore_timers: %{}, confirm_anyway: false, validated: false)
          |> assign(show_confirm_modal: false, pending: %{unanswered: 0, later: 0})
+         |> assign(pending_unanswered_numbers: [], pending_later_numbers: [])
          |> rebuild()}
       end
     else
@@ -425,7 +434,9 @@ defmodule QuizProjectWeb.AttemptLive do
       {:error, {:pending, pending}} ->
         {:noreply,
          socket
-         |> assign(confirm_anyway: true, pending: pending)
+         |> assign(confirm_anyway: true, pending: pending, validated: true)
+         |> assign_pending_numbers()
+         |> rebuild()
          |> put_flash(
            :error,
            "Há questões pendentes. Verifique as páginas em vermelho/amarelo ou confirme mesmo assim."
@@ -438,10 +449,12 @@ defmodule QuizProjectWeb.AttemptLive do
 
   def handle_event("confirm_anyway", _params, socket) do
     {:noreply,
-     assign(socket,
+     socket
+     |> assign(
        show_confirm_modal: true,
        pending: Attempts.pending_summary(socket.assigns.attempt)
-     )}
+     )
+     |> assign_pending_numbers()}
   end
 
   def handle_event("cancel_confirm", _params, socket) do
@@ -535,7 +548,7 @@ defmodule QuizProjectWeb.AttemptLive do
       Enum.map(pages, fn page_questions ->
         page_questions
         |> Enum.map(&answers[&1.id])
-        |> Attempts.page_status()
+        |> Attempts.page_status(socket.assigns[:validated] || false)
       end)
 
     page = min(max(socket.assigns[:page] || 1, 1), max(length(pages), 1))
@@ -561,6 +574,42 @@ defmodule QuizProjectWeb.AttemptLive do
   end
 
   defp answer(answers, question), do: answers[question.id]
+
+  # Números (1-based, na ordem da tentativa) das questões pendentes,
+  # separados entre sem resposta e marcadas para responder depois.
+  defp assign_pending_numbers(socket) do
+    numbered =
+      socket.assigns.ordered_questions
+      |> Enum.with_index(1)
+      |> Enum.map(fn {question, number} -> {socket.assigns.answers[question.id], number} end)
+      |> Enum.filter(fn {answer, _} -> answer.state == :unanswered end)
+
+    {later, unanswered} = Enum.split_with(numbered, fn {answer, _} -> answer.marked_later end)
+
+    assign(socket,
+      pending_unanswered_numbers: Enum.map(unanswered, &elem(&1, 1)),
+      pending_later_numbers: Enum.map(later, &elem(&1, 1))
+    )
+  end
+
+  @doc false
+  # Compacta números consecutivos em intervalos: [3, 7, 8, 9, 30..40] →
+  # "3, 7 a 9, 30 a 40"
+  def format_ranges(numbers) do
+    numbers
+    |> Enum.sort()
+    |> Enum.reduce([], fn number, acc ->
+      case acc do
+        [{first, last} | rest] when number == last + 1 -> [{first, number} | rest]
+        _ -> [{number, number} | acc]
+      end
+    end)
+    |> Enum.reverse()
+    |> Enum.map_join(", ", fn
+      {same, same} -> "#{same}"
+      {first, last} -> "#{first} a #{last}"
+    end)
+  end
 
   defp participant(socket) do
     %{user: socket.assigns.current_user, token: socket.assigns.participant_token}

@@ -175,6 +175,9 @@ defmodule QuizProject.Attempts do
         %{
           state: :answered,
           payload: normalized,
+          # responder desmarca automaticamente o "responder depois";
+          # o participante pode remarcar sem perder a resposta
+          marked_later: false,
           imported_from_previous: false,
           cleared_backup: nil,
           cleared_at: nil
@@ -447,15 +450,28 @@ defmodule QuizProject.Attempts do
   end
 
   @doc """
-  Status visual de uma página de questões: vermelho se há questão sem
-  resposta (prioridade), amarelo se há marcadas para depois, verde se tudo
-  respondido.
+  Status visual de uma página de questões.
+
+    * `:green` — todas as questões finalizadas (respondidas ou "não sei");
+    * `:yellow` — alguma questão marcada para responder depois;
+    * `:red` — só após a tentativa de confirmação (`validated?`), quando
+      restam questões sem resposta e sem marca de "depois";
+    * `:neutral` — página incompleta ainda não validada (não mexida ou em
+      andamento).
   """
-  def page_status(answers) do
+  def page_status(answers, validated? \\ false) do
     cond do
-      Enum.any?(answers, &(&1.state == :unanswered and not &1.marked_later)) -> :red
-      Enum.any?(answers, &(&1.state == :unanswered and &1.marked_later)) -> :yellow
-      true -> :green
+      Enum.all?(answers, &(&1.state in [:answered, :dont_know])) ->
+        :green
+
+      validated? and Enum.any?(answers, &(&1.state == :unanswered and not &1.marked_later)) ->
+        :red
+
+      Enum.any?(answers, & &1.marked_later) ->
+        :yellow
+
+      true ->
+        :neutral
     end
   end
 end

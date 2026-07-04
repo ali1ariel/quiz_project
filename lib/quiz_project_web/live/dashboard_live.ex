@@ -163,8 +163,8 @@ defmodule QuizProjectWeb.DashboardLive do
         <div class="modal-box rounded-2xl max-w-2xl">
           <h3 class="font-bold text-lg mb-2">Importar quiz via JSON</h3>
           <p class="text-sm opacity-70 mb-4">
-            Cole o JSON do quiz abaixo. O quiz importado entra como rascunho
-            para revisão antes da publicação.
+            Envie um arquivo .json ou cole o conteúdo abaixo. O quiz importado
+            entra como rascunho para revisão antes da publicação.
           </p>
 
           <div :if={@import_errors != []} class="alert alert-error rounded-xl mb-3 text-sm">
@@ -173,11 +173,37 @@ defmodule QuizProjectWeb.DashboardLive do
             </ul>
           </div>
 
-          <form phx-submit="import_quiz" id="import-form">
+          <form phx-change="validate_import" phx-submit="import_quiz" id="import-form">
+            <div
+              class="border-2 border-dashed border-base-300 rounded-xl p-4 mb-3 text-center"
+              phx-drop-target={@uploads.json_file.ref}
+            >
+              <.live_file_input
+                upload={@uploads.json_file}
+                class="file-input file-input-bordered file-input-sm w-full max-w-xs rounded-full"
+              />
+              <p class="text-xs opacity-60 mt-2">Arquivo .json (máx. 1 MB)</p>
+              <p
+                :for={entry <- @uploads.json_file.entries}
+                class="text-xs mt-1 font-mono"
+                id={"upload-entry-#{entry.ref}"}
+              >
+                {entry.client_name}
+              </p>
+              <p
+                :for={error <- upload_errors(@uploads.json_file)}
+                class="text-xs text-error mt-1"
+              >
+                {upload_error_message(error)}
+              </p>
+            </div>
+
+            <div class="divider text-xs opacity-60 my-2">ou cole o JSON</div>
+
             <textarea
               name="json"
               id="import-json"
-              rows="12"
+              rows="8"
               class="textarea textarea-bordered w-full rounded-xl font-mono text-xs"
               placeholder={import_placeholder()}
             >{@import_json}</textarea>
@@ -200,6 +226,11 @@ defmodule QuizProjectWeb.DashboardLive do
     {:ok,
      socket
      |> assign(tab: :created, show_import: false, import_errors: [], import_json: "")
+     |> allow_upload(:json_file,
+       accept: ~w(.json application/json),
+       max_entries: 1,
+       max_file_size: 1_000_000
+     )
      |> load_lists()}
   end
 
@@ -241,7 +272,20 @@ defmodule QuizProjectWeb.DashboardLive do
     {:noreply, assign(socket, show_import: false)}
   end
 
-  def handle_event("import_quiz", %{"json" => json}, socket) do
+  def handle_event("validate_import", params, socket) do
+    {:noreply, assign(socket, import_json: params["json"] || socket.assigns.import_json)}
+  end
+
+  def handle_event("import_quiz", params, socket) do
+    # arquivo enviado tem prioridade sobre o texto colado
+    json =
+      case consume_uploaded_entries(socket, :json_file, fn %{path: path}, _entry ->
+             {:ok, File.read!(path)}
+           end) do
+        [content | _] -> content
+        [] -> params["json"] || ""
+      end
+
     case Quizzes.import_quiz(socket.assigns.current_user, json) do
       {:ok, version} ->
         {:noreply,
@@ -273,6 +317,11 @@ defmodule QuizProjectWeb.DashboardLive do
   defp format_decimal(decimal) do
     decimal |> Decimal.round(1) |> Decimal.normalize() |> Decimal.to_string(:normal)
   end
+
+  defp upload_error_message(:too_large), do: "Arquivo grande demais (máx. 1 MB)"
+  defp upload_error_message(:not_accepted), do: "Envie um arquivo .json"
+  defp upload_error_message(:too_many_files), do: "Envie apenas um arquivo"
+  defp upload_error_message(_), do: "Erro no upload do arquivo"
 
   defp import_placeholder do
     ~s({"nome": "Meu quiz", "questoes": [{"enunciado": "...", "tipo": "unica", "alternativas": [{"texto": "A", "correta": true}, {"texto": "B"}]}]})
