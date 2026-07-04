@@ -25,6 +25,7 @@ defmodule QuizProjectWeb.Endpoint do
     from: :quiz_project,
     gzip: not code_reloading?,
     only: QuizProjectWeb.static_paths(),
+    only_matching: ~w(favicon),
     raise_on_missing_only: code_reloading?
 
   # Code reloading can be explicitly enabled under the
