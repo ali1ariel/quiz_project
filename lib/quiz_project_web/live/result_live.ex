@@ -32,7 +32,7 @@ defmodule QuizProjectWeb.ResultLive do
             Resultado de "{@attempt.display_identity}" — versão v{@version.version_number}
           </p>
         </div>
-        <div class="text-right">
+        <div class="text-right hidden md:block">
           <p class="text-3xl font-bold text-primary" id="final-score">
             {format_decimal(@attempt.score)}<span class="text-lg opacity-60">/{format_decimal(
               @attempt.max_score
