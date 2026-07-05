@@ -63,7 +63,7 @@ defmodule QuizProjectWeb.SettingsLive do
           <section
             :if={@tab == "profile"}
             id="profile-settings"
-            class="rounded-3xl border border-base-300 bg-base-100 p-6 shadow-sm sm:p-8"
+            class="rounded-3xl border border-base-300 bg-base-200 p-6 shadow-sm sm:p-8"
           >
             <div class="mb-7 flex items-start gap-4">
               <span class="grid size-12 shrink-0 place-items-center rounded-2xl bg-primary/10 text-primary">
@@ -71,7 +71,7 @@ defmodule QuizProjectWeb.SettingsLive do
               </span>
               <div>
                 <h2 class="text-xl font-bold">Dados do perfil</h2>
-                <p class="mt-1 text-sm leading-6 opacity-60">
+                <p class="mt-1 text-sm text-gray-900 leading-6 opacity-60">
                   Seu e-mail é usado para entrar. Esses dados nunca são revelados aos criadores dos
                   quizzes que você responde.
                 </p>
@@ -110,7 +110,7 @@ defmodule QuizProjectWeb.SettingsLive do
           <section
             :if={@tab == "security"}
             id="security-settings"
-            class="rounded-3xl border border-base-300 bg-base-100 p-6 shadow-sm sm:p-8"
+            class="rounded-3xl border border-base-300 bg-base-200 p-6 shadow-sm sm:p-8"
           >
             <div class="mb-7 flex items-start gap-4">
               <span class="grid size-12 shrink-0 place-items-center rounded-2xl bg-primary/10 text-primary">
@@ -169,7 +169,7 @@ defmodule QuizProjectWeb.SettingsLive do
           </section>
 
           <section :if={@tab == "tokens"} id="token-settings" class="space-y-5">
-            <div class="rounded-3xl border border-base-300 bg-base-100 p-6 shadow-sm sm:p-8">
+            <div class="rounded-3xl border border-base-300 bg-base-200 p-6 shadow-sm sm:p-8">
               <div class="flex flex-col justify-between gap-5 sm:flex-row sm:items-start">
                 <div class="flex items-start gap-4">
                   <span class="grid size-12 shrink-0 place-items-center rounded-2xl bg-primary/10 text-primary">
@@ -264,7 +264,7 @@ defmodule QuizProjectWeb.SettingsLive do
               </div>
             </div>
 
-            <div class="rounded-3xl border border-base-300 bg-base-100 p-3 shadow-sm sm:p-5">
+            <div class="rounded-3xl border border-base-300 bg-base-200 p-3 shadow-sm sm:p-5">
               <div id="api-token-list" phx-update="stream" class="space-y-2">
                 <div
                   id="tokens-empty"

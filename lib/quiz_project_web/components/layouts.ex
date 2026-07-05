@@ -97,6 +97,17 @@ defmodule QuizProjectWeb.Layouts do
             <.icon name="hero-user-circle" class="size-4" /> Conta e API
           </.link>
         <% end %>
+
+        <.link
+            id="desktop-nav-api-docs-link"
+            href={~p"/api/docs"}
+            target="_blank"
+            rel="noreferrer"
+            class="inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold opacity-65 transition hover:bg-base-200 hover:opacity-100"
+            title="Documentação da API"
+          >
+            Documentação da API <.icon name="hero-arrow-right" class="size-4" />
+          </.link>
       </nav>
 
       <%!-- cronômetro da tentativa (todas as larguras) --%>

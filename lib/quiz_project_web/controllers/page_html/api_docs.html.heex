@@ -22,16 +22,16 @@
             Começar pela autenticação
           </a>
           <a
-            href="#endpoints"
-            class="rounded-full border border-base-300 px-5 py-2.5 font-semibold transition hover:border-primary hover:text-primary"
-          >
-            Ver endpoints
-          </a>
-          <a
             href="#usar-com-ia"
             class="rounded-full border border-base-300 px-5 py-2.5 font-semibold transition hover:border-primary hover:text-primary"
           >
             Usar com IA
+          </a>
+          <a
+            href="#endpoints"
+            class="rounded-full border border-base-300 px-5 py-2.5 font-semibold transition hover:border-primary hover:text-primary"
+          >
+            Ver endpoints
           </a>
         </div>
       </div>
@@ -50,6 +50,89 @@
         <p class="text-xs font-semibold uppercase tracking-[0.18em] text-primary">Autorização</p>
         <code class="mt-3 block break-all text-sm">Bearer quiz_...</code>
       </div>
+    </section>
+
+    <section id="autenticacao" class="scroll-mt-6 space-y-5">
+      <div>
+        <p class="text-sm font-semibold text-primary">01 · Autenticação</p>
+        <h2 class="mt-1 text-2xl font-bold">Gere um token de acesso</h2>
+        <p class="mt-2 max-w-3xl leading-7 opacity-70">
+          A forma recomendada é gerar o token pela sua conta. Ele é exibido uma única vez:
+          copie-o, guarde-o como segredo e envie-o no header Authorization das chamadas seguintes.
+        </p>
+      </div>
+      <div
+        id="token-via-settings"
+        class="flex flex-col gap-4 rounded-2xl border border-primary/30 bg-primary/5 p-5 sm:flex-row sm:items-center sm:justify-between"
+      >
+        <div>
+          <h3 class="font-bold">Pela interface da conta — recomendado</h3>
+          <p class="mt-1 text-sm leading-6 opacity-70">
+            Entre na sua conta, abra Configurações, selecione Tokens e crie uma credencial para
+            sua integração ou agente de IA.
+          </p>
+        </div>
+        <.link
+          id="api-docs-open-token-settings"
+          href={~p"/configuracoes?tab=tokens"}
+          class="inline-flex shrink-0 items-center justify-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-primary-content transition hover:-translate-y-0.5"
+        >
+          Abrir configurações <.icon name="hero-arrow-right" class="size-4" />
+        </.link>
+      </div>
+      <div>
+        <h3 class="font-bold">Alternativa programática</h3>
+        <p class="mt-1 text-sm leading-6 opacity-70">
+          Em um cliente sob seu controle, também é possível emitir o token diretamente pela API.
+        </p>
+      </div>
+      <div class="overflow-hidden rounded-2xl border border-base-300 bg-neutral text-neutral-content">
+        <div class="flex items-center justify-between border-b border-white/10 px-5 py-3 text-xs opacity-70">
+          <span>Emitir token</span><span>POST /api/v1/auth/tokens</span>
+        </div>
+        <pre class="overflow-x-auto p-5 text-sm leading-6"><code phx-no-curly-interpolation>curl -X POST <%= url(~p"/api/v1/auth/tokens") %> \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "email": "voce@exemplo.com",
+    "password": "sua-senha",
+    "name": "Meu agente"
+  }'</code></pre>
+      </div>
+      <div class="overflow-hidden rounded-2xl border border-base-300 bg-neutral text-neutral-content">
+        <div class="border-b border-white/10 px-5 py-3 text-xs opacity-70">
+          Resposta · 201 Created
+        </div>
+        <pre class="overflow-x-auto p-5 text-sm leading-6"><code phx-no-curly-interpolation>{
+  "data": {
+    "id": "UUID_DO_TOKEN",
+    "name": "Meu agente",
+    "token": "quiz_SEGREDO_EXIBIDO_UMA_VEZ",
+    "token_type": "Bearer",
+    "scopes": ["quizzes:read", "quizzes:write", "quizzes:publish"],
+    "expires_at": null
+  }
+}</code></pre>
+      </div>
+      <div class="overflow-hidden rounded-2xl border border-base-300 bg-neutral text-neutral-content">
+        <div class="border-b border-white/10 px-5 py-3 text-xs opacity-70">Usar o token</div>
+        <pre class="overflow-x-auto p-5 text-sm leading-6"><code phx-no-curly-interpolation>curl <%= url(~p"/api/v1/quizzes") %> \
+  -H 'Authorization: Bearer quiz_SEU_TOKEN'</code></pre>
+      </div>
+      <.api_fields title="Escopos emitidos por padrão">
+        <:field name="quizzes:read" type="scope" presence="Leitura">
+          Consulta quizzes, versões e valida rascunhos.
+        </:field>
+        <:field name="quizzes:write" type="scope" presence="Escrita">
+          Cria, importa e altera quizzes, rascunhos, questões e alternativas.
+        </:field>
+        <:field name="quizzes:publish" type="scope" presence="Publicação">
+          Publica uma versão validada. Todos os tokens criados atualmente recebem os três escopos.
+        </:field>
+      </.api_fields>
+      <p class="rounded-2xl border border-warning/40 bg-warning/10 p-4 text-sm leading-6">
+        Revogue tokens pela tela de Configurações ou envie <code>DELETE /api/v1/auth/token</code>
+        com o mesmo header Authorization.
+      </p>
     </section>
 
     <section
@@ -394,89 +477,6 @@
           </div>
         </div>
       </div>
-    </section>
-
-    <section id="autenticacao" class="scroll-mt-6 space-y-5">
-      <div>
-        <p class="text-sm font-semibold text-primary">01 · Autenticação</p>
-        <h2 class="mt-1 text-2xl font-bold">Gere um token de acesso</h2>
-        <p class="mt-2 max-w-3xl leading-7 opacity-70">
-          A forma recomendada é gerar o token pela sua conta. Ele é exibido uma única vez:
-          copie-o, guarde-o como segredo e envie-o no header Authorization das chamadas seguintes.
-        </p>
-      </div>
-      <div
-        id="token-via-settings"
-        class="flex flex-col gap-4 rounded-2xl border border-primary/30 bg-primary/5 p-5 sm:flex-row sm:items-center sm:justify-between"
-      >
-        <div>
-          <h3 class="font-bold">Pela interface da conta — recomendado</h3>
-          <p class="mt-1 text-sm leading-6 opacity-70">
-            Entre na sua conta, abra Configurações, selecione Tokens e crie uma credencial para
-            sua integração ou agente de IA.
-          </p>
-        </div>
-        <.link
-          id="api-docs-open-token-settings"
-          href={~p"/configuracoes?tab=tokens"}
-          class="inline-flex shrink-0 items-center justify-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-primary-content transition hover:-translate-y-0.5"
-        >
-          Abrir configurações <.icon name="hero-arrow-right" class="size-4" />
-        </.link>
-      </div>
-      <div>
-        <h3 class="font-bold">Alternativa programática</h3>
-        <p class="mt-1 text-sm leading-6 opacity-70">
-          Em um cliente sob seu controle, também é possível emitir o token diretamente pela API.
-        </p>
-      </div>
-      <div class="overflow-hidden rounded-2xl border border-base-300 bg-neutral text-neutral-content">
-        <div class="flex items-center justify-between border-b border-white/10 px-5 py-3 text-xs opacity-70">
-          <span>Emitir token</span><span>POST /api/v1/auth/tokens</span>
-        </div>
-        <pre class="overflow-x-auto p-5 text-sm leading-6"><code phx-no-curly-interpolation>curl -X POST <%= url(~p"/api/v1/auth/tokens") %> \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "email": "voce@exemplo.com",
-    "password": "sua-senha",
-    "name": "Meu agente"
-  }'</code></pre>
-      </div>
-      <div class="overflow-hidden rounded-2xl border border-base-300 bg-neutral text-neutral-content">
-        <div class="border-b border-white/10 px-5 py-3 text-xs opacity-70">
-          Resposta · 201 Created
-        </div>
-        <pre class="overflow-x-auto p-5 text-sm leading-6"><code phx-no-curly-interpolation>{
-  "data": {
-    "id": "UUID_DO_TOKEN",
-    "name": "Meu agente",
-    "token": "quiz_SEGREDO_EXIBIDO_UMA_VEZ",
-    "token_type": "Bearer",
-    "scopes": ["quizzes:read", "quizzes:write", "quizzes:publish"],
-    "expires_at": null
-  }
-}</code></pre>
-      </div>
-      <div class="overflow-hidden rounded-2xl border border-base-300 bg-neutral text-neutral-content">
-        <div class="border-b border-white/10 px-5 py-3 text-xs opacity-70">Usar o token</div>
-        <pre class="overflow-x-auto p-5 text-sm leading-6"><code phx-no-curly-interpolation>curl <%= url(~p"/api/v1/quizzes") %> \
-  -H 'Authorization: Bearer quiz_SEU_TOKEN'</code></pre>
-      </div>
-      <.api_fields title="Escopos emitidos por padrão">
-        <:field name="quizzes:read" type="scope" presence="Leitura">
-          Consulta quizzes, versões e valida rascunhos.
-        </:field>
-        <:field name="quizzes:write" type="scope" presence="Escrita">
-          Cria, importa e altera quizzes, rascunhos, questões e alternativas.
-        </:field>
-        <:field name="quizzes:publish" type="scope" presence="Publicação">
-          Publica uma versão validada. Todos os tokens criados atualmente recebem os três escopos.
-        </:field>
-      </.api_fields>
-      <p class="rounded-2xl border border-warning/40 bg-warning/10 p-4 text-sm leading-6">
-        Revogue tokens pela tela de Configurações ou envie <code>DELETE /api/v1/auth/token</code>
-        com o mesmo header Authorization.
-      </p>
     </section>
 
     <section id="contratos" class="scroll-mt-6 space-y-6">
