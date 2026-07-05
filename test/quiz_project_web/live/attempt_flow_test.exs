@@ -76,6 +76,19 @@ defmodule QuizProjectWeb.AttemptFlowTest do
     assert {:error, {:live_redirect, %{to: "/"}}} = live(conn, ~p"/q/nao-existe")
   end
 
+  test "avisa sobre o cronômetro antes de iniciar e o exibe na tentativa", %{quiz: quiz} do
+    conn = anonymous_session(build_conn())
+
+    {:ok, public_view, _html} = live(conn, ~p"/q/#{quiz.public_slug}")
+    assert has_element?(public_view, "#timer-notice")
+
+    {_conn, attempt_view, _path} = start_attempt_with(conn, quiz)
+
+    assert has_element?(attempt_view, "#attempt-timer[data-elapsed]")
+    assert has_element?(attempt_view, "#attempt-timer button[aria-pressed='false']")
+    assert has_element?(attempt_view, "#attempt-timer [data-timer-value].hidden")
+  end
+
   test "fluxo completo com pendência e confirmação forçada", %{
     quiz: quiz,
     version: version,
@@ -123,6 +136,7 @@ defmodule QuizProjectWeb.AttemptFlowTest do
     {:ok, result_view, result_html} = live(conn, result_path)
 
     assert has_element?(result_view, "#final-score")
+    assert has_element?(result_view, "#attempt-duration")
     assert result_html =~ "Resposta de referência"
     assert result_html =~ "O sol é uma estrela de tipo espectral G."
     assert result_html =~ "Não sei a resposta"

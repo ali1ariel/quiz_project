@@ -13,7 +13,12 @@ defmodule QuizProjectWeb.AttemptLive do
 
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_user={@current_user} wide>
+    <Layouts.app
+      flash={@flash}
+      current_user={@current_user}
+      attempt_started_at={@attempt.started_at}
+      wide
+    >
       <div class="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h1 class="text-xl font-bold">{@version.name}</h1>

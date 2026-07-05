@@ -74,6 +74,7 @@ defmodule QuizProjectWeb.QuizManageLiveTest do
 
     assert render(view) =~ "Visitante Anônimo"
     assert has_element?(view, "#view-attempt-#{attempt.id}")
+    assert has_element?(view, "#manage-attempt-duration-#{attempt.id}")
   end
 
   test "histórico mostra changelog", %{conn: conn, quiz: quiz} do

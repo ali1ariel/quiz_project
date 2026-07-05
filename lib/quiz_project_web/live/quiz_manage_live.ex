@@ -94,6 +94,9 @@ defmodule QuizProjectWeb.QuizManageLive do
                 {version_suffix(attempt.quiz_version.version_number)} ·
               </span>
               finalizada em {format_datetime(attempt.finished_at)}
+              <span :if={attempt.finished_at} id={"manage-attempt-duration-#{attempt.id}"}>
+                · tempo: {format_duration(attempt.started_at, attempt.finished_at)}
+              </span>
             </p>
           </div>
           <span class="badge badge-success rounded-full">

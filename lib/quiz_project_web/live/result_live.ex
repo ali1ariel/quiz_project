@@ -41,6 +41,9 @@ defmodule QuizProjectWeb.ResultLive do
             )}</span>
           </p>
           <p class="text-sm opacity-60">{format_decimal(@attempt.percent)}% de aproveitamento</p>
+          <p :if={@attempt.finished_at} class="text-sm opacity-60" id="attempt-duration">
+            tempo utilizado: {format_duration(@attempt.started_at, @attempt.finished_at)}
+          </p>
         </div>
       </div>
 
@@ -288,6 +291,12 @@ defmodule QuizProjectWeb.ResultLive do
       <li class="flex justify-between">
         <span class="opacity-70">Percentual</span>
         <span class="font-semibold">{format_decimal(@attempt.percent)}%</span>
+      </li>
+      <li :if={@attempt.finished_at} class="flex justify-between">
+        <span class="opacity-70">Tempo utilizado</span>
+        <span class="font-semibold">
+          {format_duration(@attempt.started_at, @attempt.finished_at)}
+        </span>
       </li>
       <li class="flex justify-between">
         <span class="opacity-70">Respondidas</span>

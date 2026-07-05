@@ -74,6 +74,15 @@ defmodule QuizProjectWeb.QuizPublicLive do
 
             <div :if={@start_error} class="alert alert-error rounded-xl text-sm">{@start_error}</div>
 
+            <div class="alert rounded-2xl text-sm" id="timer-notice">
+              <.icon name="hero-clock" class="size-5 shrink-0" />
+              <span>
+                O tempo de resposta é cronometrado do início ao envio e não pausa — nem ao
+                recarregar a página ou sair dela. Durante a tentativa, toque no relógio da
+                barra superior para ver ou esconder o tempo decorrido.
+              </span>
+            </div>
+
             <button type="submit" id="start-attempt" class="btn btn-primary w-full rounded-full">
               Começar a responder
             </button>

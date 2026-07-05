@@ -35,16 +35,18 @@ defmodule QuizProjectWeb.Layouts do
     default: nil,
     doc: "destino principal ativo: :quizzes ou :account"
 
+  attr :attempt_started_at, :any,
+    default: nil,
+    doc: "início da tentativa em andamento; quando presente, exibe o cronômetro na navbar"
+
   slot :inner_block, required: true
 
   def app(assigns) do
     ~H"""
-    <header class="navbar relative px-4 sm:px-6 lg:px-8 border-b border-base-300 min-h-14 gap-2">
+    <header class="navbar sticky top-0 z-50 px-4 sm:px-6 lg:px-8 border-b border-base-300 bg-base-100/95 backdrop-blur min-h-14 gap-2">
       <div class="flex-1 min-w-0">
         <.link navigate={~p"/"} class="flex w-fit items-center gap-2 font-bold text-lg">
-          <span class="inline-flex items-center justify-center size-8 rounded-full bg-primary text-primary-content text-sm shrink-0">
-            Q
-          </span>
+          <img src={~p"/images/logo.png"} alt="Quizzes" class="size-8 shrink-0 rounded-full" />
           <span class="md:hidden lg:inline">Quizzes</span>
         </.link>
       </div>
@@ -96,6 +98,57 @@ defmodule QuizProjectWeb.Layouts do
           </.link>
         <% end %>
       </nav>
+
+      <%!-- cronômetro da tentativa (todas as larguras) --%>
+      <div
+        :if={@attempt_started_at}
+        id="attempt-timer"
+        phx-hook=".AttemptTimer"
+        phx-update="ignore"
+        data-elapsed={DateTime.diff(DateTime.utc_now(), @attempt_started_at)}
+        class="flex-none"
+      >
+        <button
+          type="button"
+          data-timer-toggle
+          class="inline-flex h-10 items-center gap-2 rounded-full border border-base-300 px-3 text-sm font-semibold transition hover:border-primary hover:text-primary"
+          aria-pressed="false"
+          aria-label="Mostrar ou ocultar o cronômetro da tentativa"
+          title="Cronômetro da tentativa"
+        >
+          <.icon name="hero-clock" class="size-5" />
+          <span data-timer-value class="hidden font-mono tabular-nums">00:00</span>
+        </button>
+      </div>
+      <script :type={Phoenix.LiveView.ColocatedHook} name=".AttemptTimer">
+        export default {
+          mounted() {
+            // Âncora no relógio local a partir do tempo decorrido calculado no
+            // servidor, imune a fuso/desvio de relógio do participante.
+            this.base = Date.now() - parseInt(this.el.dataset.elapsed, 10) * 1000
+            this.value = this.el.querySelector("[data-timer-value]")
+            this.toggle = this.el.querySelector("[data-timer-toggle]")
+            this.toggle.addEventListener("click", () => {
+              const hidden = this.value.classList.toggle("hidden")
+              this.toggle.setAttribute("aria-pressed", String(!hidden))
+            })
+            this.tick()
+            this.interval = setInterval(() => this.tick(), 1000)
+          },
+          destroyed() {
+            clearInterval(this.interval)
+          },
+          tick() {
+            const total = Math.max(0, Math.floor((Date.now() - this.base) / 1000))
+            const h = Math.floor(total / 3600)
+            const m = Math.floor((total % 3600) / 60)
+            const s = total % 60
+            const pad = (n) => String(n).padStart(2, "0")
+            this.value.textContent =
+              h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`
+          }
+        }
+      </script>
 
       <%!-- conta e aparência (desktop) --%>
       <div class="hidden flex-none items-center justify-end gap-2 md:flex">

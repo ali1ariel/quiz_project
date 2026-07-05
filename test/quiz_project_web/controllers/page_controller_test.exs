@@ -3,7 +3,10 @@ defmodule QuizProjectWeb.PageControllerTest do
 
   test "GET /", %{conn: conn} do
     conn = get(conn, ~p"/")
-    assert html_response(conn, 200) =~ "Crie e responda quizzes"
+    html = html_response(conn, 200)
+
+    assert html =~ "Crie e responda quizzes"
+    assert html =~ "images/logo.png"
   end
 
   test "GET /api/docs", %{conn: conn} do

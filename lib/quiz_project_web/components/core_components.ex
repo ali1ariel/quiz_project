@@ -523,4 +523,25 @@ defmodule QuizProjectWeb.CoreComponents do
 
   @doc "Nome do quiz para exibição, com fallback quando ainda não tem nome."
   def title_name(name), do: if(name in [nil, ""], do: "Quiz sem nome", else: name)
+
+  @doc """
+  Formata a duração entre dois instantes de forma compacta: "42s",
+  "4min 07s" ou "1h 04min". Retorna nil se algum instante faltar.
+  """
+  def format_duration(%DateTime{} = started_at, %DateTime{} = finished_at) do
+    total = finished_at |> DateTime.diff(started_at, :second) |> max(0)
+    hours = div(total, 3600)
+    minutes = div(rem(total, 3600), 60)
+    seconds = rem(total, 60)
+
+    cond do
+      hours > 0 -> "#{hours}h #{pad2(minutes)}min"
+      minutes > 0 -> "#{minutes}min #{pad2(seconds)}s"
+      true -> "#{seconds}s"
+    end
+  end
+
+  def format_duration(_started_at, _finished_at), do: nil
+
+  defp pad2(number), do: String.pad_leading(Integer.to_string(number), 2, "0")
 end
