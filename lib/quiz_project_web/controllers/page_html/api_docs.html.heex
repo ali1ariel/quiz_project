@@ -319,11 +319,30 @@
                 criado em Configurações → Tokens.
               </li>
               <li>
-                Salve e converse com o GPT: ele passa a listar, criar, validar e publicar
-                quizzes pela API REST. Ações de escrita pedem sua confirmação antes de
-                executar.
+                Em <strong>Compartilhar</strong>, mantenha o acesso como <strong>Somente eu</strong>. Salve e converse com o GPT: ele passa a listar,
+                criar, validar e publicar quizzes pela API REST. Ações de escrita pedem sua
+                confirmação antes de executar.
               </li>
             </ol>
+          </div>
+          <div class="rounded-2xl border border-warning/40 bg-warning/10 p-5">
+            <h4 class="font-bold">Por que o GPT deve ficar privado</h4>
+            <p class="mt-1 text-sm leading-6">
+              O token fica embutido na Action e é usado em todas as chamadas, seja quem for
+              que estiver conversando com o GPT. Como todo token desta API carrega hoje os
+              três escopos — leitura, escrita e publicação —, compartilhar o GPT por link ou
+              na GPT Store entrega sua conta junto: qualquer pessoa poderia criar, alterar e
+              publicar quizzes em seu nome, e os registros mostrariam você como autor, sem
+              como distinguir quem realmente fez cada chamada. Compartilhar também exige
+              publicar uma política de privacidade para o domínio da Action — mais um sinal
+              de que esse fluxo foi pensado para expor um serviço ao público, não uma conta
+              pessoal.
+            </p>
+            <p class="mt-2 text-sm leading-6">
+              Se suspeitar que o token vazou, revogue-o em Configurações → Tokens: o acesso
+              do GPT morre na hora. Enquanto não houver tokens de escopo reduzido, trate
+              qualquer GPT com Action desta API como estritamente pessoal.
+            </p>
           </div>
           <p class="rounded-2xl border border-info/30 bg-info/10 p-4 text-sm leading-6">
             Em aplicações próprias, a Responses API da OpenAI também aceita servidores MCP
