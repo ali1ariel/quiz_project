@@ -43,7 +43,7 @@ defmodule QuizProjectWeb.QuizEditorLive do
           </span>
         </div>
 
-        <div class="flex gap-2">
+        <div class="flex flex-wrap justify-end gap-2">
           <button
             id="cancel-quiz"
             phx-click="delete_draft"
@@ -160,15 +160,20 @@ defmodule QuizProjectWeb.QuizEditorLive do
             </p>
           </div>
 
-          <label class="label cursor-pointer justify-start gap-3 pb-2" for="quiz-unequal-weights">
+          <label
+            class="label cursor-pointer items-start justify-start gap-3 whitespace-normal pb-2"
+            for="quiz-unequal-weights"
+          >
             <input
               type="checkbox"
               name="unequal_weights"
               id="quiz-unequal-weights"
-              class="toggle toggle-primary"
+              class="toggle toggle-primary mt-0.5 shrink-0"
               checked={@version.unequal_weights}
             />
-            <span class="label-text">Permitir notas/pesos desiguais entre questões</span>
+            <span class="label-text whitespace-normal">
+              Permitir notas/pesos desiguais entre questões
+            </span>
           </label>
         </div>
       </form>
@@ -337,8 +342,8 @@ defmodule QuizProjectWeb.QuizEditorLive do
             </div>
 
             <div :if={@question_form["type"] in ["single", "multiple"]}>
-              <div class="flex items-center justify-between mb-1">
-                <span class="label text-sm">
+              <div class="flex items-center justify-between gap-2 mb-1">
+                <span class="label whitespace-normal text-sm">
                   Alternativas — marque {if @question_form["type"] == "single",
                     do: "a correta",
                     else: "as corretas"}
@@ -388,15 +393,15 @@ defmodule QuizProjectWeb.QuizEditorLive do
 
               <label
                 :if={@question_form["type"] == "multiple"}
-                class="label cursor-pointer justify-start gap-3 mt-2"
+                class="label cursor-pointer items-start justify-start gap-3 whitespace-normal mt-2"
               >
                 <input
                   type="checkbox"
                   name="allow_partial_credit"
-                  class="toggle toggle-sm toggle-primary"
+                  class="toggle toggle-sm toggle-primary mt-0.5 shrink-0"
                   checked={@question_form["allow_partial_credit"] == "true"}
                 />
-                <span class="label-text text-sm">
+                <span class="label-text whitespace-normal text-sm">
                   Nota parcial: só corretas (sem todas) vale proporcional; qualquer incorreta zera
                 </span>
               </label>

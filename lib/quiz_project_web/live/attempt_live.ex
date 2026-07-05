@@ -265,6 +265,7 @@ defmodule QuizProjectWeb.AttemptLive do
         phx-value-option={option.identity_key}
         class={[
           "btn btn-block justify-start text-left rounded-full font-normal",
+          "h-auto min-h-10 py-2.5 whitespace-normal break-words",
           if(@answer.payload && @answer.payload["option"] == option.identity_key,
             do: "btn-primary",
             else: "btn-outline"
@@ -288,6 +289,7 @@ defmodule QuizProjectWeb.AttemptLive do
         phx-value-option={option.identity_key}
         class={[
           "btn btn-block justify-start text-left rounded-full font-normal",
+          "h-auto min-h-10 py-2.5 whitespace-normal break-words",
           if(@answer.payload && option.identity_key in (@answer.payload["options"] || []),
             do: "btn-primary",
             else: "btn-outline"
@@ -301,7 +303,7 @@ defmodule QuizProjectWeb.AttemptLive do
               do: "hero-check-circle",
               else: "hero-plus-circle"
           }
-          class="size-4"
+          class="size-4 shrink-0"
         /> {option.text}
       </button>
       <p class="text-xs opacity-60">Selecione todas as alternativas corretas.</p>
