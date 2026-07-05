@@ -54,12 +54,12 @@
 
     <section
       id="usar-com-ia"
-      class="scroll-mt-6 overflow-hidden rounded-3xl border border-primary/25 bg-primary/5 p-6 sm:p-8"
+      class="scroll-mt-6 space-y-6 overflow-hidden rounded-3xl border border-primary/25 bg-primary/5 p-6 sm:p-8"
     >
       <div class="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
         <div class="max-w-2xl">
           <p class="text-sm font-semibold text-primary">Usar com IA</p>
-          <h2 class="mt-1 text-2xl font-bold">Envie esta documentação para sua IA</h2>
+          <h2 class="mt-1 text-2xl font-bold">Conecte um assistente de IA</h2>
           <p class="mt-3 leading-7 opacity-75">
             Ao pedir que uma IA crie ou importe quizzes, envie o link desta página e peça que
             ela consulte os endpoints, a autenticação e o contrato JSON antes de agir.
@@ -75,7 +75,7 @@
           </code>
         </div>
       </div>
-      <div id="api-ai-prompt" class="mt-6 rounded-2xl border border-base-300 bg-base-100 p-5">
+      <div id="api-ai-prompt" class="rounded-2xl border border-base-300 bg-base-100 p-5">
         <p class="text-xs font-semibold uppercase tracking-[0.16em] opacity-55">
           Prompt sugerido
         </p>
@@ -83,6 +83,297 @@
           Consulte <code>{url(~p"/api/docs")}</code> antes de continuar. Siga a API v1 e use o
           endpoint de importação descrito na documentação.
         </p>
+      </div>
+
+      <div class="grid gap-4 md:grid-cols-2">
+        <div class="rounded-2xl border border-base-300 bg-base-100 p-5">
+          <p class="text-xs font-semibold uppercase tracking-[0.16em] text-primary">
+            API REST direta
+          </p>
+          <p class="mt-2 text-sm leading-6 opacity-75">
+            Funciona quando o assistente consegue fazer requisições HTTP para este domínio. As
+            versões web dos serviços de IA, porém, navegam por proxies com restrições próprias:
+            a chamada pode falhar com erros como <code>Failed to fetch</code>, sem nem retornar
+            um status HTTP.
+          </p>
+        </div>
+        <div class="rounded-2xl border border-base-300 bg-base-100 p-5">
+          <p class="text-xs font-semibold uppercase tracking-[0.16em] text-primary">
+            Servidor MCP
+          </p>
+          <p class="mt-2 text-sm leading-6 opacity-75">
+            O Model Context Protocol contorna essas restrições: o cliente de IA conecta o
+            servidor como ferramenta nativa e chama a aplicação por conta própria, com o mesmo
+            Bearer token e as mesmas regras de escopo e propriedade da API REST.
+          </p>
+        </div>
+      </div>
+
+      <.api_endpoint
+        id="endpoint-mcp"
+        method="POST"
+        path="/api/mcp"
+        scope="Bearer token"
+        response="JSON-RPC 2.0"
+      >
+        <p class="text-sm leading-6 opacity-75">
+          Servidor MCP stateless sobre o transporte Streamable HTTP. Aceita as mensagens <code>initialize</code>, <code>ping</code>,
+          <code>tools/list</code>
+          e <code>tools/call</code>; notificações respondem <code>202</code>. GET e DELETE
+          retornam <code>405</code>
+          — não há sessões nem streams SSE. Erros de domínio chegam
+          como resultado da ferramenta com <code>isError: true</code>
+          e o mesmo objeto <code>error</code>
+          da API REST em <code>structuredContent</code>.
+        </p>
+        <.api_fields
+          title="Ferramentas disponíveis"
+          name_label="Ferramenta"
+          type_label="Equivalente REST"
+          presence_label="Escopo"
+        >
+          <:field name="list_quizzes" type="GET /quizzes" presence="token válido">
+            Lista os quizzes da conta com resumo das versões.
+          </:field>
+          <:field name="get_quiz" type="GET /quizzes/:id" presence="token válido">
+            Busca um quiz pelo ID.
+          </:field>
+          <:field name="create_quiz" type="POST /quizzes" presence="quizzes:write">
+            Cria um quiz em rascunho.
+          </:field>
+          <:field name="import_quiz" type="POST /quizzes/import" presence="quizzes:write">
+            Importa um quiz completo; o argumento <code>data</code> usa o formato de importação.
+          </:field>
+          <:field name="set_quiz_active" type="PATCH /quizzes/:id" presence="quizzes:write">
+            Ativa ou desativa um quiz.
+          </:field>
+          <:field
+            name="create_quiz_draft"
+            type="POST /quizzes/:id/drafts"
+            presence="quizzes:write"
+          >
+            Garante um rascunho editável.
+          </:field>
+          <:field name="get_quiz_version" type="GET /quiz-versions/:id" presence="token válido">
+            Busca uma versão completa, com questões e alternativas.
+          </:field>
+          <:field
+            name="update_quiz_version"
+            type="PATCH /quiz-versions/:id"
+            presence="quizzes:write"
+          >
+            Atualiza metadados de um rascunho.
+          </:field>
+          <:field
+            name="validate_quiz_version"
+            type="POST /quiz-versions/:id/validate"
+            presence="token válido"
+          >
+            Valida um rascunho sem alterar nada.
+          </:field>
+          <:field
+            name="publish_quiz_version"
+            type="POST /quiz-versions/:id/publish"
+            presence="quizzes:publish"
+          >
+            Publica um rascunho validado.
+          </:field>
+          <:field
+            name="create_question"
+            type="POST /quiz-versions/:id/questions"
+            presence="quizzes:write"
+          >
+            Cria uma questão no rascunho.
+          </:field>
+          <:field name="update_question" type="PATCH /questions/:id" presence="quizzes:write">
+            Atualiza uma questão; <code>options</code> omitido preserva as alternativas.
+          </:field>
+          <:field name="delete_question" type="DELETE /questions/:id" presence="quizzes:write">
+            Remove uma questão do rascunho.
+          </:field>
+        </.api_fields>
+        <div class="overflow-hidden rounded-xl bg-neutral text-neutral-content">
+          <div class="border-b border-white/10 px-5 py-3 text-xs opacity-70">
+            Exemplo · chamada de ferramenta
+          </div>
+          <pre class="overflow-x-auto p-5 text-sm leading-6"><code phx-no-curly-interpolation>curl -X POST <%= url(~p"/api/mcp") %> \
+  -H 'Authorization: Bearer quiz_SEU_TOKEN' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {"name": "list_quizzes", "arguments": {}}
+  }'</code></pre>
+        </div>
+      </.api_endpoint>
+
+      <div class="group/ai space-y-4">
+        <input type="radio" name="ai-tabs" id="ai-tab-claude" class="hidden" checked />
+        <input type="radio" name="ai-tabs" id="ai-tab-chatgpt" class="hidden" />
+        <input type="radio" name="ai-tabs" id="ai-tab-gemini" class="hidden" />
+
+        <div>
+          <h3 class="text-xl font-bold">Como conectar em cada assistente</h3>
+          <div class="mt-3 flex flex-wrap gap-2" role="tablist">
+            <label
+              for="ai-tab-claude"
+              class="cursor-pointer rounded-full border border-base-300 bg-base-100 px-4 py-2 text-sm font-semibold transition hover:border-primary hover:text-primary group-has-[#ai-tab-claude:checked]/ai:border-primary group-has-[#ai-tab-claude:checked]/ai:bg-primary group-has-[#ai-tab-claude:checked]/ai:text-primary-content"
+            >
+              Claude
+            </label>
+            <label
+              for="ai-tab-chatgpt"
+              class="cursor-pointer rounded-full border border-base-300 bg-base-100 px-4 py-2 text-sm font-semibold transition hover:border-primary hover:text-primary group-has-[#ai-tab-chatgpt:checked]/ai:border-primary group-has-[#ai-tab-chatgpt:checked]/ai:bg-primary group-has-[#ai-tab-chatgpt:checked]/ai:text-primary-content"
+            >
+              ChatGPT
+            </label>
+            <label
+              for="ai-tab-gemini"
+              class="cursor-pointer rounded-full border border-base-300 bg-base-100 px-4 py-2 text-sm font-semibold transition hover:border-primary hover:text-primary group-has-[#ai-tab-gemini:checked]/ai:border-primary group-has-[#ai-tab-gemini:checked]/ai:bg-primary group-has-[#ai-tab-gemini:checked]/ai:text-primary-content"
+            >
+              Gemini
+            </label>
+          </div>
+        </div>
+
+        <div
+          id="ai-panel-claude"
+          class="hidden space-y-4 group-has-[#ai-tab-claude:checked]/ai:block"
+        >
+          <div class="rounded-2xl border border-base-300 bg-base-100 p-5">
+            <h4 class="font-bold">Na interface web (claude.ai)</h4>
+            <p class="mt-1 text-sm leading-6 opacity-75">
+              O caminho mais simples é liberar este domínio para chamadas diretas:
+            </p>
+            <ol class="mt-3 list-decimal space-y-2 pl-5 text-sm leading-6">
+              <li>
+                Abra <strong>Configurações → Conexões de rede</strong>
+                e adicione <code>{@conn.host}</code>
+                aos domínios permitidos.
+              </li>
+              <li>Abra uma conversa nova — a permissão não vale para conversas já iniciadas.</li>
+              <li>
+                Envie o link desta documentação e um token; o Claude passa a chamar a API REST
+                diretamente.
+              </li>
+            </ol>
+          </div>
+          <div class="rounded-2xl border border-base-300 bg-base-100 p-5">
+            <h4 class="font-bold">No Claude Code (terminal, desktop ou claude.ai/code)</h4>
+            <p class="mt-1 text-sm leading-6 opacity-75">
+              Conecte o servidor MCP com o token no header:
+            </p>
+            <pre class="mt-3 overflow-x-auto rounded-xl bg-neutral p-4 text-sm leading-6 text-neutral-content"><code phx-no-curly-interpolation>claude mcp add --transport http quizzes <%= url(~p"/api/mcp") %> \
+  --header "Authorization: Bearer quiz_SEU_TOKEN"</code></pre>
+          </div>
+          <p class="rounded-2xl border border-info/30 bg-info/10 p-4 text-sm leading-6">
+            Os conectores personalizados de Configurações → Conectores autenticam por OAuth e
+            não aceitam um header Bearer próprio; para esta API, use as duas opções acima.
+          </p>
+        </div>
+
+        <div
+          id="ai-panel-chatgpt"
+          class="hidden space-y-4 group-has-[#ai-tab-chatgpt:checked]/ai:block"
+        >
+          <div class="rounded-2xl border border-base-300 bg-base-100 p-5">
+            <h4 class="font-bold">Sem suporte a MCP na interface web</h4>
+            <p class="mt-1 text-sm leading-6 opacity-75">
+              O chat do ChatGPT não permite liberar domínios para acesso direto nem conectar
+              servidores MCP autenticados por Bearer token. A navegação passa por um proxy
+              próprio, então chamadas a esta API tendem a falhar sem retornar um status HTTP.
+              O caminho que funciona é um GPT personalizado com Actions: as chamadas partem
+              dos servidores da OpenAI, fora do proxy de navegação.
+            </p>
+          </div>
+          <div class="rounded-2xl border border-base-300 bg-base-100 p-5">
+            <h4 class="font-bold">GPT personalizado com Actions — schema pronto para importar</h4>
+            <p class="mt-1 text-sm leading-6 opacity-75">
+              Esta aplicação publica o schema OpenAPI da API v1, então não é preciso
+              escrever nada à mão:
+            </p>
+            <div class="mt-3 rounded-xl bg-neutral p-4">
+              <p class="text-xs font-semibold uppercase tracking-[0.16em] text-neutral-content/60">
+                URL do schema
+              </p>
+              <code
+                id="openapi-schema-url"
+                class="mt-1 block break-all text-sm text-neutral-content"
+              >
+                {url(~p"/api/openapi.json")}
+              </code>
+            </div>
+            <ol class="mt-4 list-decimal space-y-2 pl-5 text-sm leading-6">
+              <li>
+                No ChatGPT (recurso de planos pagos), abra <strong>GPTs → Criar</strong>
+                e vá à aba <strong>Configurar → Ações → Criar nova ação</strong>.
+              </li>
+              <li>
+                Escolha <strong>Importar de URL</strong> e cole o endereço do schema acima.
+              </li>
+              <li>
+                Em <strong>Autenticação</strong>, selecione <strong>Chave de API</strong>
+                com tipo <strong>Bearer</strong>
+                e cole um token <code>quiz_...</code>
+                criado em Configurações → Tokens.
+              </li>
+              <li>
+                Salve e converse com o GPT: ele passa a listar, criar, validar e publicar
+                quizzes pela API REST. Ações de escrita pedem sua confirmação antes de
+                executar.
+              </li>
+            </ol>
+          </div>
+          <p class="rounded-2xl border border-info/30 bg-info/10 p-4 text-sm leading-6">
+            Em aplicações próprias, a Responses API da OpenAI também aceita servidores MCP
+            remotos com headers personalizados — aponte para <code>{url(~p"/api/mcp")}</code>.
+          </p>
+        </div>
+
+        <div
+          id="ai-panel-gemini"
+          class="hidden space-y-4 group-has-[#ai-tab-gemini:checked]/ai:block"
+        >
+          <div class="rounded-2xl border border-base-300 bg-base-100 p-5">
+            <h4 class="font-bold">Sem conectores no app web</h4>
+            <p class="mt-1 text-sm leading-6 opacity-75">
+              O app web do Gemini não oferece conectores MCP personalizados nem liberação de
+              domínios para chamadas diretas.
+            </p>
+          </div>
+          <div class="rounded-2xl border border-base-300 bg-base-100 p-5">
+            <h4 class="font-bold">Gemini CLI</h4>
+            <p class="mt-1 text-sm leading-6 opacity-75">
+              O
+              <a
+                href="https://github.com/google-gemini/gemini-cli"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="font-semibold text-primary hover:underline"
+              >
+                Gemini CLI
+              </a>
+              — agente oficial do Google para o terminal, lançado em 2025 — conecta servidores
+              MCP. Adicione ao <code>~/.gemini/settings.json</code>:
+            </p>
+            <pre class="mt-3 overflow-x-auto rounded-xl bg-neutral p-4 text-sm leading-6 text-neutral-content"><code phx-no-curly-interpolation>{
+  "mcpServers": {
+    "quizzes": {
+      "httpUrl": "<%= url(~p"/api/mcp") %>",
+      "headers": {
+        "Authorization": "Bearer quiz_SEU_TOKEN"
+      }
+    }
+  }
+}</code></pre>
+            <p class="mt-3 text-sm leading-6 opacity-75">
+              Depois abra o <code>gemini</code>
+              e rode <code>/mcp</code>
+              para confirmar que as ferramentas foram carregadas.
+            </p>
+          </div>
+        </div>
       </div>
     </section>
 

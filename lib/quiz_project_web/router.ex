@@ -37,6 +37,12 @@ defmodule QuizProjectWeb.Router do
     end
   end
 
+  scope "/api", QuizProjectWeb.Api do
+    pipe_through :api
+
+    get "/openapi.json", OpenApiController, :show
+  end
+
   scope "/api/v1", QuizProjectWeb.Api do
     pipe_through :api
 
@@ -63,6 +69,14 @@ defmodule QuizProjectWeb.Router do
 
     patch "/questions/:id", QuestionController, :update
     delete "/questions/:id", QuestionController, :delete
+  end
+
+  scope "/api", QuizProjectWeb do
+    pipe_through [:api, :api_authenticated]
+
+    post "/mcp", McpController, :handle
+    get "/mcp", McpController, :method_not_allowed
+    delete "/mcp", McpController, :method_not_allowed
   end
 
   scope "/", QuizProjectWeb do

@@ -43,6 +43,9 @@ defmodule QuizProjectWeb.PageHTML do
   end
 
   attr :title, :string, required: true
+  attr :name_label, :string, default: "Campo"
+  attr :type_label, :string, default: "Tipo"
+  attr :presence_label, :string, default: "Presença"
 
   slot :field, required: true do
     attr :name, :string, required: true
@@ -60,9 +63,9 @@ defmodule QuizProjectWeb.PageHTML do
         <table class="w-full min-w-[640px] text-left text-sm">
           <thead class="bg-base-200 text-xs opacity-60">
             <tr>
-              <th class="px-4 py-3 font-semibold">Campo</th>
-              <th class="px-4 py-3 font-semibold">Tipo</th>
-              <th class="px-4 py-3 font-semibold">Presença</th>
+              <th class="px-4 py-3 font-semibold">{@name_label}</th>
+              <th class="px-4 py-3 font-semibold">{@type_label}</th>
+              <th class="px-4 py-3 font-semibold">{@presence_label}</th>
               <th class="px-4 py-3 font-semibold">Descrição</th>
             </tr>
           </thead>

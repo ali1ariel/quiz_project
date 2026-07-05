@@ -18,6 +18,12 @@ defmodule QuizProjectWeb.PageControllerTest do
            |> Enum.any?()
 
     assert document |> LazyHTML.query("#api-ai-prompt") |> Enum.any?()
+    assert document |> LazyHTML.query("#endpoint-mcp table") |> Enum.any?()
+    assert document |> LazyHTML.query("#ai-panel-claude") |> Enum.any?()
+    assert document |> LazyHTML.query("#ai-panel-chatgpt") |> Enum.any?()
+    assert document |> LazyHTML.query("#openapi-schema-url") |> Enum.any?()
+    assert document |> LazyHTML.query("#ai-panel-gemini") |> Enum.any?()
+    assert document |> LazyHTML.query("input#ai-tab-claude[checked]") |> Enum.any?()
     assert document |> LazyHTML.query("#contratos table") |> Enum.any?()
     assert document |> LazyHTML.query("#endpoint-create-quiz table") |> Enum.any?()
     assert document |> LazyHTML.query("#endpoint-import-quiz table") |> Enum.any?()

@@ -26,6 +26,27 @@ defmodule QuizProjectWeb.ApiControllerTest do
     }
   end
 
+  test "expõe o schema OpenAPI publicamente", %{anonymous_conn: conn} do
+    spec = conn |> get(~p"/api/openapi.json") |> json_response(200)
+
+    assert spec["openapi"] == "3.1.0"
+    assert [%{"url" => server_url}] = spec["servers"]
+    assert String.ends_with?(server_url, "/api/v1")
+    assert get_in(spec, ["components", "securitySchemes", "bearerAuth", "scheme"]) == "bearer"
+
+    operation_ids =
+      for {_path, operations} <- spec["paths"], {_verb, operation} <- operations do
+        operation["operationId"]
+      end
+
+    assert length(operation_ids) == 13
+    assert "importQuiz" in operation_ids
+    assert "publishQuizVersion" in operation_ids
+
+    # Emissão e revogação de token ficam fora do schema de propósito.
+    refute Enum.any?(Map.keys(spec["paths"]), &String.contains?(&1, "auth"))
+  end
+
   test "exige Bearer token nos endpoints protegidos", %{anonymous_conn: conn} do
     conn = get(conn, ~p"/api/v1/quizzes")
     assert %{"error" => %{"code" => "unauthorized"}} = json_response(conn, 401)
