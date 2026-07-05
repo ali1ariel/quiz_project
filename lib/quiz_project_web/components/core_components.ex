@@ -85,7 +85,7 @@ defmodule QuizProjectWeb.CoreComponents do
         </div>
         <button
           type="button"
-          class="btn btn-ghost btn-xs btn-circle shrink-0 opacity-50 hover:opacity-100"
+          class="btn btn-ghost btn-xs btn-circle shrink-0 opacity-60 hover:opacity-100"
           aria-label={gettext("close")}
         >
           <.icon name="hero-x-mark" class="size-4" />

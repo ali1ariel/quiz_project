@@ -22,7 +22,7 @@ defmodule QuizProjectWeb.AttemptLive do
       <div class="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h1 class="text-xl font-bold">{@version.name}</h1>
-          <p class="text-xs opacity-60">Respondendo como "{@attempt.display_identity}"</p>
+          <p class="text-xs opacity-70">Respondendo como "{@attempt.display_identity}"</p>
         </div>
         <span class="badge badge-ghost rounded-full">
           {@answered_count}/{length(@ordered_questions)} respondidas
@@ -306,7 +306,7 @@ defmodule QuizProjectWeb.AttemptLive do
           class="size-4 shrink-0"
         /> {option.text}
       </button>
-      <p class="text-xs opacity-60">Selecione todas as alternativas corretas.</p>
+      <p class="text-xs opacity-70">Selecione todas as alternativas corretas.</p>
     </div>
     """
   end

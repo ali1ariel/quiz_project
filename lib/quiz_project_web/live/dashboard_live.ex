@@ -45,7 +45,7 @@ defmodule QuizProjectWeb.DashboardLive do
       </div>
 
       <div :if={@tab == :created} id="created-list" class="space-y-3">
-        <p :if={@created == []} class="opacity-60 text-sm py-8 text-center">
+        <p :if={@created == []} class="opacity-70 text-sm py-8 text-center">
           Você ainda não criou nenhum quiz. Clique em "Criar quiz" para começar.
         </p>
 
@@ -81,7 +81,7 @@ defmodule QuizProjectWeb.DashboardLive do
                 rascunho
               </span>
             </div>
-            <p :if={published_version(quiz)} class="text-xs opacity-60 mt-1 truncate">
+            <p :if={published_version(quiz)} class="text-xs opacity-70 mt-1 truncate">
               Link público: {url(~p"/q/#{quiz.public_slug}")}
             </p>
           </div>
@@ -129,7 +129,7 @@ defmodule QuizProjectWeb.DashboardLive do
       </div>
 
       <div :if={@tab == :answered} id="answered-list" class="space-y-3">
-        <p :if={@answered == []} class="opacity-60 text-sm py-8 text-center">
+        <p :if={@answered == []} class="opacity-70 text-sm py-8 text-center">
           Você ainda não respondeu nenhum quiz.
         </p>
 
@@ -160,7 +160,7 @@ defmodule QuizProjectWeb.DashboardLive do
                 em andamento
               </span>
             </div>
-            <p class="text-xs opacity-60 mt-1">
+            <p class="text-xs opacity-70 mt-1">
               Identificado como "{attempt.display_identity}"
             </p>
           </div>
@@ -230,7 +230,7 @@ defmodule QuizProjectWeb.DashboardLive do
                     <p class="break-words">
                       {if question.statement == "", do: "(sem enunciado)", else: question.statement}
                     </p>
-                    <p class="text-xs opacity-60 mt-0.5">
+                    <p class="text-xs opacity-70 mt-0.5">
                       {type_label(question.type)} · {preview_detail(question)}
                     </p>
                   </div>
@@ -267,7 +267,7 @@ defmodule QuizProjectWeb.DashboardLive do
             >
               <.icon name="hero-arrow-down-tray" class="size-4" /> Baixar formato para IA
             </a>
-            <p class="text-xs opacity-60 mb-4 -mt-2">
+            <p class="text-xs opacity-70 mb-4 -mt-2">
               Baixe a documentação do formato e envie para a IA de sua preferência: ela contém
               todas as regras e um exemplo para gerar o quiz já no formato aceito.
             </p>
@@ -307,7 +307,7 @@ defmodule QuizProjectWeb.DashboardLive do
                   upload={@uploads.json_file}
                   class="file-input file-input-bordered file-input-sm w-full max-w-xs rounded-full"
                 />
-                <p class="text-xs opacity-60 mt-2">Arquivo .json (máx. 1 MB)</p>
+                <p class="text-xs opacity-70 mt-2">Arquivo .json (máx. 1 MB)</p>
                 <p
                   :for={entry <- @uploads.json_file.entries}
                   class="text-xs mt-1 font-mono"
@@ -323,7 +323,7 @@ defmodule QuizProjectWeb.DashboardLive do
                 </p>
               </div>
 
-              <div class="divider text-xs opacity-60 my-2">ou cole o JSON</div>
+              <div class="divider text-xs opacity-70 my-2">ou cole o JSON</div>
 
               <textarea
                 name="json"
@@ -443,11 +443,11 @@ defmodule QuizProjectWeb.DashboardLive do
 
       {:error, errors} when is_list(errors) ->
         {:noreply, assign(socket, import_errors: errors, import_json: json)}
-
-      {:error, _} ->
-        {:noreply,
-         assign(socket, import_errors: ["Erro inesperado na importação"], import_json: json)}
     end
+
+  rescue
+    _ in [Jason.DecodeError, File.Error] ->
+      {:noreply, assign(socket, import_errors: ["Erro ao ler o arquivo JSON"], import_json: nil)}
   end
 
   def handle_event("cancel_preview", _params, socket) do

@@ -28,7 +28,7 @@ defmodule QuizProjectWeb.ResultLive do
       <div class="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h1 class="text-2xl font-bold">{@version.name}</h1>
-          <p class="text-sm opacity-60">
+          <p class="text-sm opacity-70">
             Resultado de "{@attempt.display_identity}"<span :if={
               version_suffix(@version.version_number)
             }> — {version_suffix(@version.version_number)}</span>
@@ -36,12 +36,12 @@ defmodule QuizProjectWeb.ResultLive do
         </div>
         <div class="text-right hidden md:block">
           <p class="text-3xl font-bold text-primary" id="final-score">
-            {format_decimal(@attempt.score)}<span class="text-lg opacity-60">/{format_decimal(
+            {format_decimal(@attempt.score)}<span class="text-lg opacity-70">/{format_decimal(
               @attempt.max_score
             )}</span>
           </p>
-          <p class="text-sm opacity-60">{format_decimal(@attempt.percent)}% de aproveitamento</p>
-          <p :if={@attempt.finished_at} class="text-sm opacity-60" id="attempt-duration">
+          <p class="text-sm opacity-70">{format_decimal(@attempt.percent)}% de aproveitamento</p>
+          <p :if={@attempt.finished_at} class="text-sm opacity-70" id="attempt-duration">
             tempo utilizado: {format_duration(@attempt.started_at, @attempt.finished_at)}
           </p>
         </div>
@@ -87,19 +87,19 @@ defmodule QuizProjectWeb.ResultLive do
 
             <div class="mt-4 space-y-3 text-sm">
               <div>
-                <p class="text-xs uppercase opacity-50 mb-1">
+                <p class="text-xs uppercase opacity-70 mb-1">
                   {if @role == :creator, do: "Resposta do participante", else: "Sua resposta"}
                 </p>
                 <.user_answer question={question} answer={answer(@answers, question)} />
               </div>
 
               <div :if={question.type != :text}>
-                <p class="text-xs uppercase opacity-50 mb-1">Resposta correta</p>
+                <p class="text-xs uppercase opacity-70 mb-1">Resposta correta</p>
                 <.correct_answer question={question} />
               </div>
 
               <div class="flex items-center gap-2">
-                <p class="text-xs uppercase opacity-50">Nota obtida:</p>
+                <p class="text-xs uppercase opacity-70">Nota obtida:</p>
                 <span class="font-semibold">
                   {format_decimal(answer(@answers, question).score)} de {format_decimal(
                     @points[question.id]
@@ -114,7 +114,7 @@ defmodule QuizProjectWeb.ResultLive do
               </div>
 
               <div :if={question.editor_note} class="bg-base-100 rounded-xl p-3">
-                <p class="text-xs uppercase opacity-50 mb-1">Resposta de referência</p>
+                <p class="text-xs uppercase opacity-70 mb-1">Resposta de referência</p>
                 <p class="whitespace-pre-wrap">{question.editor_note}</p>
               </div>
 
@@ -123,14 +123,14 @@ defmodule QuizProjectWeb.ResultLive do
                 class="bg-base-100 rounded-xl p-3 border-l-4 border-primary"
                 id={"ai-feedback-#{question.id}"}
               >
-                <p class="text-xs uppercase opacity-50 mb-1">Nota da Inteligência Artificial</p>
+                <p class="text-xs uppercase opacity-70 mb-1">Nota da Inteligência Artificial</p>
                 <p class="whitespace-pre-wrap">{answer(@answers, question).ai_feedback}</p>
 
                 <div
                   :if={answer(@answers, question).ai_reference_generated}
                   class="mt-2 pt-2 border-t border-base-300"
                 >
-                  <p class="text-xs opacity-60 mb-1">
+                  <p class="text-xs opacity-70 mb-1">
                     <.icon name="hero-sparkles" class="size-3 inline" />
                     O criador não forneceu resposta de referência — a referência abaixo foi
                     gerada pela IA a partir do enunciado:
@@ -225,7 +225,7 @@ defmodule QuizProjectWeb.ResultLive do
                 Resumo — {format_decimal(@attempt.score)}/{format_decimal(@attempt.max_score)} pts
                 · {format_decimal(@attempt.percent)}%
               </span>
-              <span class="flex items-center gap-1 text-xs opacity-60 shrink-0">
+              <span class="flex items-center gap-1 text-xs opacity-70 shrink-0">
                 {if @show_summary, do: "fechar", else: "expandir"}
                 <.icon
                   name={if @show_summary, do: "hero-chevron-down", else: "hero-chevron-up"}
@@ -380,9 +380,9 @@ defmodule QuizProjectWeb.ResultLive do
     <div>
       <%= cond do %>
         <% @answer.state == :dont_know -> %>
-          <p class="italic opacity-60">Não sei a resposta</p>
+          <p class="italic opacity-70">Não sei a resposta</p>
         <% @answer.payload in [nil, %{}] -> %>
-          <p class="italic opacity-60">Sem resposta</p>
+          <p class="italic opacity-70">Sem resposta</p>
         <% @question.type == :true_false -> %>
           <p>{if @answer.payload["value"], do: "Verdadeiro", else: "Falso"}</p>
         <% @question.type == :single -> %>
@@ -419,7 +419,7 @@ defmodule QuizProjectWeb.ResultLive do
             <li :for={option <- Enum.filter(@question.options, & &1.correct)}>{option.text}</li>
           </ul>
         <% :text -> %>
-          <p class="opacity-60 italic">Correção por IA com base na referência</p>
+          <p class="opacity-70 italic">Correção por IA com base na referência</p>
       <% end %>
     </div>
     """

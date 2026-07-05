@@ -67,7 +67,7 @@ defmodule QuizProjectWeb.QuizPublicLive do
                 class="input input-bordered w-full rounded-full"
                 placeholder="Nome, apelido ou código — é o que o criador do quiz verá"
               />
-              <p class="text-xs opacity-60 mt-1">
+              <p class="text-xs opacity-70 mt-1">
                 O criador do quiz vê apenas essa identificação, nunca os dados da sua conta.
               </p>
             </div>
@@ -87,7 +87,7 @@ defmodule QuizProjectWeb.QuizPublicLive do
               Começar a responder
             </button>
 
-            <p :if={!@current_user} class="text-xs opacity-60 text-center">
+            <p :if={!@current_user} class="text-xs opacity-70 text-center">
               Você está respondendo como participante anônimo.
               <.link navigate={~p"/entrar"} class="link">Entre na sua conta</.link>
               para poder continuar de outro dispositivo.

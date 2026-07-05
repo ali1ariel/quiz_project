@@ -129,13 +129,13 @@ html[data-skin="sobrio"] {
   --color-accent-content: #ffffff;
   --color-neutral: #1b2430;
   --color-neutral-content: #eef2f7;
-  --color-info: #4a83c0;
+  --color-info: #3f78b5;
   --color-info-content: #ffffff;
-  --color-success: #178a4c;
+  --color-success: #168147;
   --color-success-content: #f0faf4;
-  --color-warning: #b97a10;
+  --color-warning: #9b660d;
   --color-warning-content: #fff8ea;
-  --color-error: #c94141;
+  --color-error: #c83c3c;
   --color-error-content: #fdf2f2;
   --border: 1px;
 
@@ -204,7 +204,7 @@ html[data-skin="aurora"] {
   --color-info-content: #ffffff;
   --color-success: #16815b;
   --color-success-content: #f0faf6;
-  --color-warning: #a96700;
+  --color-warning: #a26300;
   --color-warning-content: #fff8eb;
   --color-error: #bd3f5c;
   --color-error-content: #fff4f6;
@@ -275,7 +275,7 @@ html[data-skin="classico"] {
   --color-info-content: #f6f9fb;
   --color-success: #23744a;
   --color-success-content: #f1faf4;
-  --color-warning: #a8720e;
+  --color-warning: #97660d;
   --color-warning-content: #fdf7ea;
   --color-error: #b34a3d;
   --color-error-content: #fdf3f1;
@@ -359,6 +359,36 @@ h1, h2, h3 {
 
 .modal-box, .alert {
   border-radius: var(--skin-radius-box) !important;
+}
+
+/* O .label do daisyUI mistura currentColor a 60% com transparent (equivale
+   a alpha simples: mistura com transparent não interpola matiz, só reduz
+   opacidade). A 60%, falha WCAG AA (4.5:1) nos 3 skins claros — chega a
+   4.15:1 em legendas de campo (<.input label=".."/> e <label class="label">
+   avulsos). .label-text herda esta cor por herança normal de `color`, então
+   também cobre os textos de toggle. 75% é o piso seguro nas 6 combinações
+   de skin/modo (pior caso ~5.5:1). */
+.label {
+  color: color-mix(in oklab, currentcolor 75%, transparent);
+}
+
+/* Mesma história do .label: o .tab do daisyUI mistura base-content a
+   apenas 50% no estado inativo, o que falha AA em 4 das 6 combinações de
+   skin/modo (pior caso 3.04:1 — nem o piso frouxo de "texto grande" 3:1
+   sobra folga). Usa o mesmo piso de 75% do .label, e precisa repetir o
+   seletor :not(...) exato do daisyUI para vencer a regra original nesse
+   estado específico (fora de qualquer @layer, então prevalece de todo
+   jeito sobre a versão do daisyUI). */
+.tab:not(
+  :checked,
+  label:has(:checked),
+  :hover,
+  .tab-active,
+  [aria-selected="true"],
+  [aria-current="true"],
+  [aria-current="page"]
+) {
+  color: color-mix(in oklab, var(--color-base-content) 75%, transparent);
 }
 
 /* Feedback de estado no elemento inteiro (tingido a partir dos tokens,

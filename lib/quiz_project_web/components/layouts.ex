@@ -197,7 +197,7 @@ defmodule QuizProjectWeb.Layouts do
         <div class="dropdown-content z-40 mt-3 w-64 max-w-[calc(100vw-2rem)] card qcard bg-base-200 p-4 space-y-4">
           <div class="space-y-2">
             <%= if @current_user do %>
-              <p class="text-xs opacity-60 truncate px-1">{@current_user.email}</p>
+              <p class="text-xs opacity-70 truncate px-1">{@current_user.email}</p>
               <.link
                 navigate={~p"/painel"}
                 class="flex items-center gap-3 rounded-2xl border border-base-300 px-3 py-2.5 transition hover:border-primary hover:bg-base-100"
@@ -207,7 +207,7 @@ defmodule QuizProjectWeb.Layouts do
                 </span>
                 <span class="min-w-0 text-left">
                   <span class="block text-sm font-semibold">Meus quizzes</span>
-                  <span class="block truncate text-[0.68rem] opacity-55">
+                  <span class="block truncate text-[0.68rem] opacity-70">
                     Criar, editar e acompanhar
                   </span>
                 </span>
@@ -221,7 +221,7 @@ defmodule QuizProjectWeb.Layouts do
                 </span>
                 <span class="min-w-0 text-left">
                   <span class="block text-sm font-semibold">Conta e API</span>
-                  <span class="block truncate text-[0.68rem] opacity-55">Perfil, senha e tokens</span>
+                  <span class="block truncate text-[0.68rem] opacity-70">Perfil, senha e tokens</span>
                 </span>
               </.link>
               <.link
@@ -248,7 +248,7 @@ defmodule QuizProjectWeb.Layouts do
           </div>
 
           <div class="flex items-center justify-between gap-3">
-            <label class="text-xs opacity-60" for="skin-select-mobile">Estilo</label>
+            <label class="text-xs opacity-70" for="skin-select-mobile">Estilo</label>
             <select
               id="skin-select-mobile"
               data-skin-select
@@ -262,7 +262,7 @@ defmodule QuizProjectWeb.Layouts do
           </div>
 
           <div class="flex items-center justify-between gap-3">
-            <span class="text-xs opacity-60">Tema</span>
+            <span class="text-xs opacity-70">Tema</span>
             <.theme_toggle />
           </div>
         </div>

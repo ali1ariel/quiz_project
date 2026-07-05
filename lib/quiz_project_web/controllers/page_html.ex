@@ -26,7 +26,7 @@ defmodule QuizProjectWeb.PageHTML do
           {@method}
         </span>
         <code class="min-w-0 flex-1 break-all text-sm font-semibold sm:text-base">{@path}</code>
-        <div class="flex items-center gap-2 text-xs opacity-60">
+        <div class="flex items-center gap-2 text-xs opacity-70">
           <span :if={@scope} class="rounded-full border border-base-300 px-2.5 py-1">{@scope}</span>
           <span>{@response}</span>
           <.icon
@@ -56,12 +56,12 @@ defmodule QuizProjectWeb.PageHTML do
   def api_fields(assigns) do
     ~H"""
     <div class="overflow-hidden rounded-xl border border-base-300 bg-base-100">
-      <div class="border-b border-base-300 px-4 py-3 text-xs font-bold uppercase tracking-[0.14em] opacity-60">
+      <div class="border-b border-base-300 px-4 py-3 text-xs font-bold uppercase tracking-[0.14em] opacity-70">
         {@title}
       </div>
       <div class="overflow-x-auto">
         <table class="w-full min-w-[640px] text-left text-sm">
-          <thead class="bg-base-200 text-xs opacity-60">
+          <thead class="bg-base-200 text-xs opacity-70">
             <tr>
               <th class="px-4 py-3 font-semibold">{@name_label}</th>
               <th class="px-4 py-3 font-semibold">{@type_label}</th>

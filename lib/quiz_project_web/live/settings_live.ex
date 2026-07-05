@@ -16,7 +16,7 @@ defmodule QuizProjectWeb.SettingsLive do
           <div>
             <p class="text-xs font-semibold uppercase tracking-[0.18em] text-primary">Área pessoal</p>
             <h1 class="mt-2 text-3xl font-bold tracking-tight">Conta e API</h1>
-            <p class="mt-2 text-sm leading-6 opacity-60">
+            <p class="mt-2 text-sm leading-6 opacity-70">
               Perfil, senha e credenciais para integrações.
             </p>
           </div>
@@ -71,7 +71,7 @@ defmodule QuizProjectWeb.SettingsLive do
               </span>
               <div>
                 <h2 class="text-xl font-bold">Dados do perfil</h2>
-                <p class="mt-1 text-sm text-gray-900 leading-6 opacity-60">
+                <p class="mt-1 text-sm leading-6 opacity-70">
                   Seu e-mail é usado para entrar. Esses dados nunca são revelados aos criadores dos
                   quizzes que você responde.
                 </p>
@@ -118,7 +118,7 @@ defmodule QuizProjectWeb.SettingsLive do
               </span>
               <div>
                 <h2 class="text-xl font-bold">Alterar senha</h2>
-                <p class="mt-1 text-sm leading-6 opacity-60">
+                <p class="mt-1 text-sm leading-6 opacity-70">
                   Confirme sua senha atual antes de definir uma nova senha com pelo menos 8 caracteres.
                 </p>
               </div>
@@ -177,7 +177,7 @@ defmodule QuizProjectWeb.SettingsLive do
                   </span>
                   <div>
                     <h2 class="text-xl font-bold">Tokens de API</h2>
-                    <p class="mt-1 max-w-2xl text-sm leading-6 opacity-60">
+                    <p class="mt-1 max-w-2xl text-sm leading-6 opacity-70">
                       Use tokens em scripts, integrações e futuros servidores MCP. Cada segredo é
                       mostrado uma única vez.
                     </p>
@@ -240,7 +240,7 @@ defmodule QuizProjectWeb.SettingsLive do
                   id="close-new-token"
                   type="button"
                   phx-click="close_new_token"
-                  class="rounded-full p-2 opacity-60 transition hover:bg-base-100 hover:opacity-100"
+                  class="rounded-full p-2 opacity-70 transition hover:bg-base-100 hover:opacity-100"
                   aria-label="Fechar"
                 >
                   <.icon name="hero-x-mark" class="size-5" />
@@ -272,7 +272,7 @@ defmodule QuizProjectWeb.SettingsLive do
                 >
                   <.icon name="hero-key" class="mx-auto size-8 opacity-30" />
                   <p class="mt-3 font-semibold">Nenhum token criado</p>
-                  <p class="mt-1 text-sm opacity-55">Crie um acima quando precisar integrar a API.</p>
+                  <p class="mt-1 text-sm opacity-70">Crie um acima quando precisar integrar a API.</p>
                 </div>
 
                 <article
@@ -285,7 +285,7 @@ defmodule QuizProjectWeb.SettingsLive do
                   </span>
                   <div class="min-w-0 flex-1">
                     <p class="truncate font-semibold">{token.name}</p>
-                    <p class="mt-1 text-xs opacity-55">
+                    <p class="mt-1 text-xs opacity-70">
                       Criado em {format_datetime(token.inserted_at)} · {last_used_label(
                         token.last_used_at
                       )}
@@ -484,7 +484,7 @@ defmodule QuizProjectWeb.SettingsLive do
       "flex items-center justify-center gap-2 rounded-2xl px-3 py-3 text-sm font-semibold transition lg:justify-start",
       if(active?,
         do: "bg-primary text-primary-content shadow-sm",
-        else: "text-base-content/60 hover:bg-base-200 hover:text-base-content"
+        else: "text-base-content/70 hover:bg-base-200 hover:text-base-content"
       )
     ]
   end

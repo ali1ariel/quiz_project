@@ -38,7 +38,7 @@ defmodule QuizProjectWeb.QuizEditorLive do
               · {version_suffix(@version.version_number)}
             </span>
           </span>
-          <span :if={@saved_at} class="text-xs opacity-50" id="autosave-indicator">
+          <span :if={@saved_at} class="text-xs opacity-70" id="autosave-indicator">
             salvo automaticamente
           </span>
         </div>
@@ -154,7 +154,7 @@ defmodule QuizProjectWeb.QuizEditorLive do
                 {label}
               </option>
             </select>
-            <p :if={@version.question_order_mode == :ai} class="text-xs opacity-60 mt-1">
+            <p :if={@version.question_order_mode == :ai} class="text-xs opacity-70 mt-1">
               A IA gera tags internas na publicação e a ordem intercala temas — sem
               chamadas de IA durante a resposta.
             </p>
@@ -190,7 +190,7 @@ defmodule QuizProjectWeb.QuizEditorLive do
         </button>
       </div>
 
-      <p :if={@questions == []} class="opacity-60 text-sm py-6 text-center">
+      <p :if={@questions == []} class="opacity-70 text-sm py-6 text-center">
         Nenhuma pergunta ainda. Use o botão "+" para adicionar.
       </p>
 
@@ -213,11 +213,11 @@ defmodule QuizProjectWeb.QuizEditorLive do
               <span :if={question.annulled} class="badge badge-error badge-sm rounded-full">
                 anulada
               </span>
-              <span :if={question.type in [:single, :multiple]} class="opacity-60">
+              <span :if={question.type in [:single, :multiple]} class="opacity-70">
                 {length(question.options)} alternativas
               </span>
             </div>
-            <p :if={question.annulled && question.annulled_reason} class="text-xs opacity-60 mt-1">
+            <p :if={question.annulled && question.annulled_reason} class="text-xs opacity-70 mt-1">
               Motivo da anulação: {question.annulled_reason}
             </p>
           </div>
@@ -432,7 +432,7 @@ defmodule QuizProjectWeb.QuizEditorLive do
                 disabled={not @version.unequal_weights}
                 class="input input-bordered w-full rounded-full"
               />
-              <p class="text-xs opacity-60 mt-1">
+              <p class="text-xs opacity-70 mt-1">
                 {if @version.unequal_weights,
                   do:
                     "Se o peso não for preenchido, a nota será distribuída automaticamente entre as questões.",

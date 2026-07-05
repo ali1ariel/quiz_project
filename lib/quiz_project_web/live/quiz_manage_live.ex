@@ -15,7 +15,7 @@ defmodule QuizProjectWeb.QuizManageLive do
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 class="text-2xl font-bold">{@published.name}</h1>
-          <p class="text-sm opacity-60">
+          <p class="text-sm opacity-70">
             Versão publicada<span :if={version_suffix(@published.version_number)}>
               · {version_suffix(@published.version_number)}
             </span>
@@ -54,7 +54,7 @@ defmodule QuizProjectWeb.QuizManageLive do
       </div>
 
       <div class="card qcard bg-base-200 p-4 text-sm flex flex-row items-center gap-2">
-        <.icon name="hero-link" class="size-4 opacity-60" />
+        <.icon name="hero-link" class="size-4 opacity-70" />
         <span class="font-mono break-all" id="public-link">{url(~p"/q/#{@quiz.public_slug}")}</span>
       </div>
 
@@ -78,7 +78,7 @@ defmodule QuizProjectWeb.QuizManageLive do
       </div>
 
       <div :if={@tab == :attempts} id="attempts-panel" class="space-y-3">
-        <p :if={@attempts == []} class="opacity-60 text-sm py-8 text-center">
+        <p :if={@attempts == []} class="opacity-70 text-sm py-8 text-center">
           Nenhuma tentativa finalizada ainda. Compartilhe o link público.
         </p>
 
@@ -89,7 +89,7 @@ defmodule QuizProjectWeb.QuizManageLive do
         >
           <div class="flex-1">
             <p class="font-semibold">"{attempt.display_identity}"</p>
-            <p class="text-xs opacity-60">
+            <p class="text-xs opacity-70">
               <span :if={version_suffix(attempt.quiz_version.version_number)}>
                 {version_suffix(attempt.quiz_version.version_number)} ·
               </span>
@@ -135,7 +135,7 @@ defmodule QuizProjectWeb.QuizManageLive do
                   anulada
                 </span>
               </div>
-              <p :if={question.annulled && question.annulled_reason} class="text-xs opacity-60 mt-1">
+              <p :if={question.annulled && question.annulled_reason} class="text-xs opacity-70 mt-1">
                 Motivo da anulação: {question.annulled_reason}
               </p>
             </div>
@@ -160,7 +160,7 @@ defmodule QuizProjectWeb.QuizManageLive do
         >
           <div class="flex items-center gap-2">
             <span class="badge badge-primary rounded-full">versão {version.version_number}</span>
-            <span class="text-sm opacity-60">
+            <span class="text-sm opacity-70">
               publicada em {format_datetime(version.published_at)}
             </span>
           </div>
