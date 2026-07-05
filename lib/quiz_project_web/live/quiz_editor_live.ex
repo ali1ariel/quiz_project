@@ -63,11 +63,23 @@ defmodule QuizProjectWeb.QuizEditorLive do
           >
             {if @quiz.active, do: "Desativar quiz", else: "Reativar quiz"}
           </button>
-          <button id="save-quiz" phx-click="save" class="btn btn-outline rounded-full">
-            Salvar
+          <button
+            id="save-quiz"
+            phx-click="save"
+            class="btn btn-outline rounded-full phx-click-loading:pointer-events-none phx-click-loading:opacity-70"
+          >
+            <span class="loading loading-spinner loading-xs hidden phx-click-loading:inline-block"></span>
+            <span class="phx-click-loading:hidden">Salvar</span>
+            <span class="hidden phx-click-loading:inline">Salvando…</span>
           </button>
-          <button id="publish-quiz" phx-click="publish" class="btn btn-primary rounded-full">
-            Salvar e publicar
+          <button
+            id="publish-quiz"
+            phx-click="publish"
+            class="btn btn-primary rounded-full phx-click-loading:pointer-events-none phx-click-loading:opacity-80"
+          >
+            <span class="loading loading-spinner loading-xs hidden phx-click-loading:inline-block"></span>
+            <span class="phx-click-loading:hidden">Salvar e publicar</span>
+            <span class="hidden phx-click-loading:inline">Publicando…</span>
           </button>
         </div>
       </div>

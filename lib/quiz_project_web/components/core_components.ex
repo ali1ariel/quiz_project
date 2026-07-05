@@ -63,26 +63,53 @@ defmodule QuizProjectWeb.CoreComponents do
       id={@id}
       phx-click={JS.push("lv:clear-flash", value: %{key: @kind}) |> hide("##{@id}")}
       role="alert"
-      class="toast toast-top toast-end z-50"
+      class={[
+        "qflash pointer-events-auto relative w-full cursor-pointer overflow-hidden",
+        @kind == :info && "qflash-info",
+        @kind == :error && "qflash-error"
+      ]}
       {@rest}
     >
-      <div class={[
-        "alert w-80 sm:w-96 max-w-80 sm:max-w-96 text-wrap",
-        @kind == :info && "alert-info",
-        @kind == :error && "alert-error"
-      ]}>
-        <.icon :if={@kind == :info} name="hero-information-circle" class="size-5 shrink-0" />
-        <.icon :if={@kind == :error} name="hero-exclamation-circle" class="size-5 shrink-0" />
-        <div>
+      <div class="flex items-start gap-3 p-3.5 pr-2">
+        <span class={[
+          "mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full",
+          @kind == :info && "bg-info/15 text-info",
+          @kind == :error && "bg-error/15 text-error"
+        ]}>
+          <.icon :if={@kind == :info} name="hero-check-circle" class="size-5" />
+          <.icon :if={@kind == :error} name="hero-exclamation-triangle" class="size-5" />
+        </span>
+        <div class="min-w-0 flex-1 pt-1 text-sm leading-5">
           <p :if={@title} class="font-semibold">{@title}</p>
-          <p>{msg}</p>
+          <p class="text-base-content/85">{msg}</p>
         </div>
-        <div class="flex-1" />
-        <button type="button" class="group self-start cursor-pointer" aria-label={gettext("close")}>
-          <.icon name="hero-x-mark" class="size-5 opacity-40 group-hover:opacity-70" />
+        <button
+          type="button"
+          class="btn btn-ghost btn-xs btn-circle shrink-0 opacity-50 hover:opacity-100"
+          aria-label={gettext("close")}
+        >
+          <.icon name="hero-x-mark" class="size-4" />
         </button>
       </div>
+      <div
+        :if={@kind == :info}
+        id={@id <> "-timer"}
+        phx-hook=".FlashAutoHide"
+        class="qflash-timer"
+        aria-hidden="true"
+      >
+      </div>
     </div>
+    <script :type={Phoenix.LiveView.ColocatedHook} name=".FlashAutoHide">
+      export default {
+        mounted() {
+          this.el.addEventListener("animationend", () => {
+            const flash = this.el.closest(".qflash")
+            if (flash) flash.click()
+          })
+        }
+      }
+    </script>
     """
   end
 

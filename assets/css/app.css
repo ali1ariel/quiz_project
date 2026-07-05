@@ -388,6 +388,56 @@ h1, h2, h3 {
   border-color: var(--color-warning);
 }
 
+.qflash {
+  background-color: color-mix(in oklab, var(--qflash-color) 10%, var(--color-base-200));
+  border: var(--skin-border-w) solid
+    color-mix(in oklab, var(--qflash-color) 35%, var(--skin-card-line));
+  border-left: 3px solid var(--qflash-color);
+  border-radius: var(--skin-radius-box);
+  box-shadow: var(--skin-shadow);
+}
+.qflash-info {
+  --qflash-color: var(--color-info);
+}
+.qflash-error {
+  --qflash-color: var(--color-error);
+}
+
+.qflash-timer {
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 2px;
+  transform-origin: left;
+  background-color: color-mix(in oklab, var(--qflash-color) 45%, transparent);
+  animation: qflash-timer 6s linear forwards;
+}
+.qflash:hover .qflash-timer {
+  animation-play-state: paused;
+}
+
+@keyframes qflash-in {
+  from {
+    opacity: 0;
+    transform: translateX(0.75rem);
+  }
+}
+@keyframes qflash-timer {
+  to {
+    transform: scaleX(0);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .qflash {
+    animation: qflash-in 0.22s ease-out;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .qflash-timer {
+    display: none;
+  }
+}
+
 /* Botões sem sombra, com microinteração definida por cada skin. */
 .btn:not(.btn-ghost):not(.btn-link) {
   border-width: var(--skin-border-w);

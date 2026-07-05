@@ -319,7 +319,11 @@ defmodule QuizProjectWeb.Layouts do
 
   def flash_group(assigns) do
     ~H"""
-    <div id={@id} aria-live="polite">
+    <div
+      id={@id}
+      aria-live="polite"
+      class="pointer-events-none fixed left-3 right-3 top-16 z-40 flex flex-col gap-2 sm:left-auto sm:right-4 sm:w-80"
+    >
       <.flash kind={:info} flash={@flash} />
       <.flash kind={:error} flash={@flash} />
 
