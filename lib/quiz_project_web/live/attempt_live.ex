@@ -192,16 +192,31 @@ defmodule QuizProjectWeb.AttemptLive do
               entrega não será possível alterar as respostas.
             </p>
           <% end %>
+          <p
+            :if={@finalizing}
+            class="mt-3 flex items-center gap-2 text-sm opacity-80"
+            id="finalizing-notice"
+          >
+            <span class="loading loading-spinner loading-sm"></span>
+            Corrigindo suas respostas, aguarde…
+          </p>
           <div class="modal-action">
-            <button phx-click="cancel_confirm" class="btn btn-ghost rounded-full" id="cancel-confirm">
+            <button
+              phx-click="cancel_confirm"
+              disabled={@finalizing}
+              class="btn btn-ghost rounded-full"
+              id="cancel-confirm"
+            >
               Cancelar
             </button>
             <button
               phx-click="finalize_forced"
+              disabled={@finalizing}
               class="btn btn-primary rounded-full"
               id="finalize-forced"
             >
-              Confirmar entrega
+              <span :if={@finalizing} class="loading loading-spinner loading-sm"></span>
+              {if @finalizing, do: "Entregando…", else: "Confirmar entrega"}
             </button>
           </div>
         </div>
@@ -350,7 +365,7 @@ defmodule QuizProjectWeb.AttemptLive do
          socket
          |> assign(attempt: attempt, version: attempt.quiz_version)
          |> assign(page_title: build_title([title_name(attempt.quiz_version.name)]))
-         |> assign(page: 1, restore_timers: %{}, validated: false)
+         |> assign(page: 1, restore_timers: %{}, validated: false, finalizing: false)
          |> assign(show_confirm_modal: false, pending: %{unanswered: 0, later: 0})
          |> assign(pending_unanswered_numbers: [], pending_later_numbers: [])
          |> rebuild()}
@@ -473,12 +488,23 @@ defmodule QuizProjectWeb.AttemptLive do
   end
 
   def handle_event("finalize_forced", _params, socket) do
+    # A correção (inclui avaliação por IA das discursivas) pode demorar; marca
+    # o estado de processamento e faz o trabalho pesado fora do handle_event,
+    # para a interface renderizar o "Entregando…" antes de travar.
+    send(self(), :finalize)
+    {:noreply, assign(socket, finalizing: true)}
+  end
+
+  def handle_info(:finalize, socket) do
     case Attempts.finalize(socket.assigns.attempt, force: true) do
       {:ok, finished} ->
         {:noreply, push_navigate(socket, to: ~p"/tentativa/#{finished.id}/resultado")}
 
       {:error, _} ->
-        {:noreply, put_flash(socket, :error, "Não foi possível finalizar.")}
+        {:noreply,
+         socket
+         |> assign(finalizing: false)
+         |> put_flash(:error, "Não foi possível finalizar.")}
     end
   end
 

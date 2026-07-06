@@ -83,7 +83,12 @@ defmodule QuizProjectWeb.QuizPublicLive do
               </span>
             </div>
 
-            <button type="submit" id="start-attempt" class="btn btn-primary w-full rounded-full">
+            <button
+              type="submit"
+              id="start-attempt"
+              phx-disable-with="Preparando sua tentativa…"
+              class="btn btn-primary w-full rounded-full"
+            >
               Começar a responder
             </button>
 

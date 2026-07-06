@@ -105,6 +105,15 @@
 /* Make LiveView wrapper divs transparent for layout */
 [data-phx-session], [data-phx-teleported-src] { display: contents }
 
+/* Feedback imediato (client-side) enquanto um evento phx-click/submit está
+   em voo: o elemento acionado esmaece e mostra o cursor de espera, deixando
+   claro que há processamento em curso e evitando cliques repetidos. */
+.phx-click-loading, .phx-submit-loading {
+  opacity: 0.65;
+  cursor: wait;
+  pointer-events: none;
+}
+
 /* This file is for your main application CSS */
 
 /* ============================================================
