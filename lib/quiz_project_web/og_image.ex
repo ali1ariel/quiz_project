@@ -21,14 +21,41 @@ defmodule QuizProjectWeb.OgImage do
   PNG do card de resultado de uma tentativa finalizada, ou `:error` se a
   tentativa não existir, não estiver finalizada ou o render falhar.
   """
-  def result_png(id) do
+  def result_png(id, opts \\ []) do
     with {:ok, attempt} <- fetch_finished(id) do
       summary = Attempts.result_summary(attempt)
       html = build_result_html(attempt, summary)
-      cache_key = "og-#{attempt.id}-#{:erlang.phash2({attempt.score, attempt.percent, summary})}"
 
-      cached(cache_key, fn -> render_png(html) end)
+      if Keyword.get(opts, :cache, true) do
+        key = "og-#{attempt.id}-#{:erlang.phash2({attempt.score, attempt.percent, summary})}"
+        cached(key, fn -> render_png(html) end)
+      else
+        render_png(html)
+      end
     end
+  end
+
+  @doc """
+  Gera o card `n` vezes SEM cache, imprimindo tempo por render, para medir o
+  comportamento real de memória. Rode no console da release enquanto observa
+  `free -h`/`htop`:
+
+      bin/quiz_project remote
+      QuizProjectWeb.OgImage.bench("ID_DE_UMA_TENTATIVA", 10)
+
+  Como cada render é forçado (sem cache), com `session_pool` de 1 os renders
+  acontecem em série — é isso que a instância vê num pico de acessos.
+  """
+  def bench(id, n) when is_integer(n) and n > 0 do
+    times =
+      Enum.map(1..n, fn i ->
+        {micros, result} = :timer.tc(fn -> result_png(id, cache: false) end)
+        tag = with {:ok, png} <- result, do: "ok #{byte_size(png)}b", else: (other -> inspect(other))
+        IO.puts("#{i}/#{n}: #{div(micros, 1000)}ms (#{tag})")
+        micros
+      end)
+
+    IO.puts("média: #{div(Enum.sum(times), n * 1000)}ms")
   end
 
   @doc "PNG estático de fallback (card genérico), lido do disco uma única vez."
