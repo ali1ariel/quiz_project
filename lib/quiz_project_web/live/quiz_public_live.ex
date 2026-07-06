@@ -115,7 +115,17 @@ defmodule QuizProjectWeb.QuizPublicLive do
            version: version,
            in_progress: Attempts.find_in_progress(version, participant),
            start_error: nil,
-           page_title: build_title([title_name(version.name)])
+           page_title: build_title([title_name(version.name)]),
+           og_title: version.name,
+           og_description:
+             case version.description do
+               d when is_binary(d) and d != "" ->
+                 d
+
+               _ ->
+                 "Responda este quiz com #{length(version.questions)} questões e veja seu resultado."
+             end,
+           og_url: url(~p"/q/#{slug}")
          )}
 
       {:error, :not_found} ->

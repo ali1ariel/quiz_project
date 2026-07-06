@@ -567,6 +567,9 @@ defmodule QuizProjectWeb.ResultLive do
            stats: stats,
            share_text: share_text(version, attempt, stats),
            share_url: url(~p"/tentativa/#{attempt.id}/resultado"),
+           og_title: "Resultado — #{version.name}",
+           og_description: share_text(version, attempt, stats),
+           og_url: url(~p"/tentativa/#{attempt.id}/resultado"),
            show_summary: false,
            page_title: build_title(["Resultados", title_name(version.name)])
          )

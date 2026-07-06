@@ -262,6 +262,25 @@ defmodule QuizProjectWeb.AttemptFlowTest do
     assert has_element?(other_view, "#final-score")
     assert has_element?(other_view, "#share-desktop")
     assert other_html =~ "Resposta do participante"
+
+    # o preview do link (Open Graph) vem já no HTML estático, que é o que os
+    # crawlers de preview leem — eles não abrem o socket
+    static_html =
+      anonymous_session(build_conn(), "outro-token") |> get(result_path) |> html_response(200)
+
+    assert static_html =~ ~s(property="og:title")
+    assert static_html =~ "Resultado — Quiz público"
+    assert static_html =~ ~s(property="og:description")
+  end
+
+  test "página pública do quiz expõe tags de preview (Open Graph)", %{quiz: quiz} do
+    html =
+      anonymous_session(build_conn()) |> get(~p"/q/#{quiz.public_slug}") |> html_response(200)
+
+    assert html =~ ~s(property="og:title")
+    assert html =~ ~s(property="og:description")
+    assert html =~ ~s(name="twitter:card")
+    assert html =~ "Quiz público"
   end
 
   test "anulação é retroativa: re-corrige tentativas de versões anteriores", %{
