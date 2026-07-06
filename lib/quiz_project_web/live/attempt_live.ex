@@ -142,6 +142,8 @@ defmodule QuizProjectWeb.AttemptLive do
         id="pagination-bottom"
       />
 
+      <.page_nav page={@page} page_count={length(@page_statuses)} />
+
       <div class="flex justify-end pt-2 pb-10">
         <button
           :if={!@confirm_anyway}
@@ -221,6 +223,32 @@ defmodule QuizProjectWeb.AttemptLive do
         {index}
       </button>
     </nav>
+    """
+  end
+
+  attr :page, :integer, required: true
+  attr :page_count, :integer, required: true
+
+  defp page_nav(assigns) do
+    ~H"""
+    <div :if={@page_count > 1} class="flex justify-between gap-3">
+      <button
+        phx-click="prev_page"
+        disabled={@page <= 1}
+        class="btn btn-outline rounded-full"
+        id="prev-page"
+      >
+        <.icon name="hero-arrow-left" class="size-4" /> Anterior
+      </button>
+      <button
+        phx-click="next_page"
+        disabled={@page >= @page_count}
+        class="btn btn-outline rounded-full"
+        id="next-page"
+      >
+        Próxima <.icon name="hero-arrow-right" class="size-4" />
+      </button>
+    </div>
     """
   end
 
@@ -434,7 +462,15 @@ defmodule QuizProjectWeb.AttemptLive do
   ## Paginação e confirmação
 
   def handle_event("goto_page", %{"page" => page}, socket) do
-    {:noreply, socket |> assign(page: String.to_integer(page)) |> rebuild()}
+    {:noreply, change_page(socket, String.to_integer(page))}
+  end
+
+  def handle_event("prev_page", _params, socket) do
+    {:noreply, change_page(socket, socket.assigns.page - 1)}
+  end
+
+  def handle_event("next_page", _params, socket) do
+    {:noreply, change_page(socket, socket.assigns.page + 1)}
   end
 
   def handle_event("confirm", _params, socket) do
@@ -497,6 +533,15 @@ defmodule QuizProjectWeb.AttemptLive do
   end
 
   ## Apoio
+
+  # rebuild/1 já limita a página ao intervalo válido, então prev/next nas bordas
+  # são inofensivos; o scroll leva o participante ao topo da nova página.
+  defp change_page(socket, page) do
+    socket
+    |> assign(page: page)
+    |> rebuild()
+    |> push_event("scroll-to-top", %{})
+  end
 
   defp save(socket, question_id, payload) do
     question = socket.assigns.questions_by_id[question_id]

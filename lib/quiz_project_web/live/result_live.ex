@@ -34,16 +34,53 @@ defmodule QuizProjectWeb.ResultLive do
             }> — {version_suffix(@version.version_number)}</span>
           </p>
         </div>
-        <div class="text-right hidden md:block">
-          <p class="text-3xl font-bold text-primary" id="final-score">
-            {format_decimal(@attempt.score)}<span class="text-lg opacity-70">/{format_decimal(
-              @attempt.max_score
-            )}</span>
-          </p>
-          <p class="text-sm opacity-70">{format_decimal(@attempt.percent)}% de aproveitamento</p>
-          <p :if={@attempt.finished_at} class="text-sm opacity-70" id="attempt-duration">
-            tempo utilizado: {format_duration(@attempt.started_at, @attempt.finished_at)}
-          </p>
+        <div class="flex items-center gap-3">
+          <button
+            :if={@role == :participant}
+            id="share-result"
+            type="button"
+            phx-hook=".ShareResult"
+            data-share-title={@version.name}
+            data-share-text={@share_text}
+            class="btn btn-outline btn-sm rounded-full"
+          >
+            <.icon name="hero-share" class="size-4" /> Compartilhar
+          </button>
+          <script :type={Phoenix.LiveView.ColocatedHook} name=".ShareResult">
+            export default {
+              mounted() {
+                this.onClick = async () => {
+                  const text = this.el.dataset.shareText
+                  const title = this.el.dataset.shareTitle
+                  try {
+                    if (navigator.share) {
+                      await navigator.share({title, text})
+                    } else if (navigator.clipboard) {
+                      await navigator.clipboard.writeText(text)
+                      this.pushEvent("shared_copied", {})
+                    }
+                  } catch (_e) {
+                    // usuário cancelou o compartilhamento
+                  }
+                }
+                this.el.addEventListener("click", this.onClick)
+              },
+              destroyed() {
+                this.el.removeEventListener("click", this.onClick)
+              }
+            }
+          </script>
+          <div class="text-right hidden md:block">
+            <p class="text-3xl font-bold text-primary" id="final-score">
+              {format_decimal(@attempt.score)}<span class="text-lg opacity-70">/{format_decimal(
+                @attempt.max_score
+              )}</span>
+            </p>
+            <p class="text-sm opacity-70">{format_decimal(@attempt.percent)}% de aproveitamento</p>
+            <p :if={@attempt.finished_at} class="text-sm opacity-70" id="attempt-duration">
+              tempo utilizado: {format_duration(@attempt.started_at, @attempt.finished_at)}
+            </p>
+          </div>
         </div>
       </div>
 
@@ -144,6 +181,8 @@ defmodule QuizProjectWeb.ResultLive do
           </div>
 
           <.pagination page={@page} page_count={@page_count} id="result-pagination-bottom" />
+
+          <.page_nav page={@page} page_count={@page_count} />
         </div>
 
         <%!-- resumo lateral (desktop) --%>
@@ -276,6 +315,32 @@ defmodule QuizProjectWeb.ResultLive do
     """
   end
 
+  attr :page, :integer, required: true
+  attr :page_count, :integer, required: true
+
+  defp page_nav(assigns) do
+    ~H"""
+    <div :if={@page_count > 1} class="flex justify-between gap-3">
+      <button
+        phx-click="prev_page"
+        disabled={@page <= 1}
+        class="btn btn-outline rounded-full"
+        id="prev-page"
+      >
+        <.icon name="hero-arrow-left" class="size-4" /> Anterior
+      </button>
+      <button
+        phx-click="next_page"
+        disabled={@page >= @page_count}
+        class="btn btn-outline rounded-full"
+        id="next-page"
+      >
+        Próxima <.icon name="hero-arrow-right" class="size-4" />
+      </button>
+    </div>
+    """
+  end
+
   attr :attempt, :map, required: true
   attr :stats, :map, required: true
 
@@ -301,6 +366,14 @@ defmodule QuizProjectWeb.ResultLive do
       <li class="flex justify-between">
         <span class="opacity-70">Respondidas</span>
         <span class="font-semibold">{@stats.answered}/{@stats.total}</span>
+      </li>
+      <li class="flex justify-between">
+        <span class="opacity-70">Acertos</span>
+        <span class="font-semibold text-success">{@stats.correct}</span>
+      </li>
+      <li class="flex justify-between">
+        <span class="opacity-70">Erros</span>
+        <span class="font-semibold text-error">{@stats.incorrect}</span>
       </li>
       <li class="flex justify-between">
         <span class="opacity-70">"Não sei"</span>
@@ -370,6 +443,7 @@ defmodule QuizProjectWeb.ResultLive do
   defp zero?(score), do: Decimal.compare(score, Decimal.new(0)) != :gt
 
   defp full?(nil, _points), do: false
+  defp full?(_score, nil), do: false
   defp full?(score, points), do: Decimal.compare(score, points) != :lt
 
   attr :question, :map, required: true
@@ -456,6 +530,9 @@ defmodule QuizProjectWeb.ResultLive do
           |> Enum.map(&questions_by_id[&1])
           |> Enum.reject(&is_nil/1)
 
+        points = Scoring.question_points(version, version.questions)
+        stats = stats(version, attempt, answers, points)
+
         {:ok,
          socket
          |> assign(
@@ -464,8 +541,9 @@ defmodule QuizProjectWeb.ResultLive do
            role: role,
            answers: answers,
            ordered_questions: ordered_questions,
-           points: Scoring.question_points(version, version.questions),
-           stats: stats(version, attempt, answers),
+           points: points,
+           stats: stats,
+           share_text: share_text(version, attempt, stats),
            show_summary: false,
            page_title: build_title(["Resultados", title_name(version.name)])
          )
@@ -474,7 +552,19 @@ defmodule QuizProjectWeb.ResultLive do
   end
 
   def handle_event("goto_page", %{"page" => page}, socket) do
-    {:noreply, paginate(socket, String.to_integer(page))}
+    {:noreply, change_page(socket, String.to_integer(page))}
+  end
+
+  def handle_event("prev_page", _params, socket) do
+    {:noreply, change_page(socket, socket.assigns.page - 1)}
+  end
+
+  def handle_event("next_page", _params, socket) do
+    {:noreply, change_page(socket, socket.assigns.page + 1)}
+  end
+
+  def handle_event("shared_copied", _params, socket) do
+    {:noreply, put_flash(socket, :info, "Resultado copiado para a área de transferência.")}
   end
 
   def handle_event("toggle_summary", _params, socket) do
@@ -490,6 +580,10 @@ defmodule QuizProjectWeb.ResultLive do
   end
 
   @per_page 10
+
+  defp change_page(socket, page) do
+    socket |> paginate(page) |> push_event("scroll-to-top", %{})
+  end
 
   # Mesma paginação da tela de resposta: 10 questões por página, com a
   # numeração global preservada.
@@ -531,13 +625,15 @@ defmodule QuizProjectWeb.ResultLive do
     Quizzes.authorize_owner(Quizzes.get_quiz!(version.quiz_id), user)
   end
 
-  defp stats(version, _attempt, answers) do
+  defp stats(version, _attempt, answers, points) do
     values = Map.values(answers)
     questions_by_id = Map.new(version.questions, &{&1.id, &1})
 
     %{
       total: map_size(answers),
       answered: Enum.count(values, &(&1.state == :answered)),
+      correct: Enum.count(values, &full?(&1.score, points[&1.question_id])),
+      incorrect: Enum.count(values, &zero?(&1.score)),
       dont_know: Enum.count(values, &(&1.state == :dont_know)),
       annulled: Enum.count(version.questions, & &1.annulled),
       imported: Enum.count(values, & &1.imported_from_previous),
@@ -547,6 +643,15 @@ defmodule QuizProjectWeb.ResultLive do
           question && question.type == :text && answer.ai_percent != nil
         end)
     }
+  end
+
+  # Texto compartilhável do resultado — não exige login de quem recebe, pois
+  # é apenas um resumo (nota, acertos e erros), sem link para a tentativa.
+  defp share_text(version, attempt, stats) do
+    "Resultado no quiz \"#{version.name}\": " <>
+      "#{format_decimal(attempt.score)}/#{format_decimal(attempt.max_score)} pontos " <>
+      "(#{format_decimal(attempt.percent)}%), " <>
+      "#{stats.correct} acerto(s) e #{stats.incorrect} erro(s)."
   end
 
   defp answer(answers, question), do: answers[question.id]

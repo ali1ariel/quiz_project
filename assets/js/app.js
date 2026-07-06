@@ -60,6 +60,11 @@ setSkin(localStorage.getItem("phx:skin") || defaultSkin)
 
 window.addEventListener("phx:set-theme", event => setTheme(event.target.dataset.phxTheme))
 
+// Ao trocar de página numa LiveView paginada, volta ao topo do conteúdo.
+window.addEventListener("phx:scroll-to-top", () =>
+  window.scrollTo({top: 0, behavior: "smooth"})
+)
+
 colorScheme.addEventListener("change", () => {
   if (document.documentElement.getAttribute("data-theme-source") === "system") {
     document.documentElement.setAttribute("data-theme", systemTheme())
