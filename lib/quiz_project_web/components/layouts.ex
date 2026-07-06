@@ -47,7 +47,7 @@ defmodule QuizProjectWeb.Layouts do
       <div class="flex-1 min-w-0">
         <.link navigate={~p"/"} class="flex w-fit items-center gap-2 font-bold text-lg">
           <img src={~p"/images/logo.png"} alt="Quizzes" class="size-8 shrink-0 rounded-full" />
-          <span class="md:hidden lg:inline">Quizzes</span>
+          <span class="md:hidden lg:inline">Quiz<span class="text-primary">zes</span></span>
         </.link>
       </div>
 

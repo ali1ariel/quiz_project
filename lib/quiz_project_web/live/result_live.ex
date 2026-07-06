@@ -553,7 +553,7 @@ defmodule QuizProjectWeb.ResultLive do
           |> Enum.reject(&is_nil/1)
 
         points = Scoring.question_points(version, version.questions)
-        stats = stats(version, attempt, answers, points)
+        stats = Attempts.result_summary(attempt)
 
         {:ok,
          socket
@@ -570,6 +570,7 @@ defmodule QuizProjectWeb.ResultLive do
            og_title: "Resultado — #{version.name}",
            og_description: share_text(version, attempt, stats),
            og_url: url(~p"/tentativa/#{attempt.id}/resultado"),
+           og_image: url(~p"/tentativa/#{attempt.id}/og.png"),
            show_summary: false,
            page_title: build_title(["Resultados", title_name(version.name)])
          )
@@ -655,31 +656,6 @@ defmodule QuizProjectWeb.ResultLive do
 
   defp owner_check(version, user) do
     Quizzes.authorize_owner(Quizzes.get_quiz!(version.quiz_id), user)
-  end
-
-  defp stats(version, _attempt, answers, points) do
-    values = Map.values(answers)
-    questions_by_id = Map.new(version.questions, &{&1.id, &1})
-
-    %{
-      total: map_size(answers),
-      answered: Enum.count(values, &(&1.state == :answered)),
-      correct: Enum.count(values, &full?(&1.score, points[&1.question_id])),
-      incorrect: Enum.count(values, &zero?(&1.score)),
-      partial:
-        Enum.count(values, fn answer ->
-          points = points[answer.question_id]
-          not zero?(answer.score) and not full?(answer.score, points)
-        end),
-      dont_know: Enum.count(values, &(&1.state == :dont_know)),
-      annulled: Enum.count(version.questions, & &1.annulled),
-      imported: Enum.count(values, & &1.imported_from_previous),
-      ai_graded:
-        Enum.count(values, fn answer ->
-          question = questions_by_id[answer.question_id]
-          question && question.type == :text && answer.ai_percent != nil
-        end)
-    }
   end
 
   # Texto compartilhável do resultado — não exige login de quem recebe, pois

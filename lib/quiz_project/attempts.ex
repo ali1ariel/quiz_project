@@ -316,6 +316,44 @@ defmodule QuizProject.Attempts do
   end
 
   @doc """
+  Resumo de correção de uma tentativa finalizada: contagens usadas tanto na
+  tela de resultado quanto no card de preview (Open Graph), para as duas
+  telas nunca divergirem. Exige `quiz_version.questions` e `answers` carregados.
+  """
+  def result_summary(attempt) do
+    version = attempt.quiz_version
+    questions_by_id = Map.new(version.questions, &{&1.id, &1})
+    points = Scoring.question_points(version, version.questions)
+    values = attempt.answers
+
+    %{
+      total: length(values),
+      answered: Enum.count(values, &(&1.state == :answered)),
+      correct: Enum.count(values, &summary_full?(&1.score, points[&1.question_id])),
+      incorrect: Enum.count(values, &summary_zero?(&1.score)),
+      partial:
+        Enum.count(values, fn answer ->
+          points = points[answer.question_id]
+          not summary_zero?(answer.score) and not summary_full?(answer.score, points)
+        end),
+      dont_know: Enum.count(values, &(&1.state == :dont_know)),
+      annulled: Enum.count(version.questions, & &1.annulled),
+      imported: Enum.count(values, & &1.imported_from_previous),
+      ai_graded:
+        Enum.count(values, fn answer ->
+          question = questions_by_id[answer.question_id]
+          question && question.type == :text && answer.ai_percent != nil
+        end)
+    }
+  end
+
+  defp summary_zero?(nil), do: true
+  defp summary_zero?(score), do: Decimal.compare(score, Decimal.new(0)) != :gt
+  defp summary_full?(nil, _points), do: false
+  defp summary_full?(_score, nil), do: false
+  defp summary_full?(score, points), do: Decimal.compare(score, points) != :lt
+
+  @doc """
   Finaliza a tentativa. Sem `force: true`, retorna `{:error, {:pending, resumo}}`
   se houver questões sem resposta. Com `force: true`, converte todas as
   pendências em "não sei" e finaliza. Depois de finalizada, a tentativa

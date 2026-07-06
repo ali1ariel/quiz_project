@@ -111,6 +111,16 @@ config :logger, :default_formatter,
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
 
+# ChromicPDF (Chrome headless) para gerar os cards de preview de link.
+# session_pool size 1 + on_demand + --disable-dev-shm-usage são calibrados
+# para uma instância com pouca RAM: nunca sobe dois Chromes ao mesmo tempo e
+# não mantém o navegador residente ocioso.
+config :quiz_project, :chromic_pdf,
+  chrome_executable: "/usr/bin/google-chrome-stable",
+  on_demand: true,
+  session_pool: [size: 1, timeout: 20_000],
+  chrome_args: ["--no-sandbox", "--disable-dev-shm-usage"]
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{config_env()}.exs"

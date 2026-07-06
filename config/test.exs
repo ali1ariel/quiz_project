@@ -46,3 +46,6 @@ config :phoenix_live_view,
 # Sort query params output of verified routes for robust url comparisons
 config :phoenix,
   sort_verified_routes_query_params: true
+
+# Não sobe Chrome na suíte: a rota de card de preview cai no fallback estático.
+config :quiz_project, enable_chromic_pdf: false
