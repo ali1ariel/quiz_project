@@ -120,7 +120,7 @@ defmodule QuizProjectWeb.QuizPublicLive do
            og_description:
              case version.description do
                d when is_binary(d) and d != "" ->
-                 d
+                 meta_description(d)
 
                _ ->
                  "Responda este quiz com #{length(version.questions)} questões e veja seu resultado."
@@ -159,5 +159,21 @@ defmodule QuizProjectWeb.QuizPublicLive do
 
   defp format_decimal(decimal) do
     decimal |> Decimal.normalize() |> Decimal.to_string(:normal)
+  end
+
+  # Meta tags (og:description / twitter:description) precisam ser uma única
+  # linha: a maioria dos parsers de link preview (incl. o do Notion) não lida
+  # bem com quebras de linha cruas dentro do atributo content="...", e acaba
+  # simplesmente não encontrando a tag. Também truncamos para ~200 caracteres,
+  # que é o limite prático respeitado pela maioria das plataformas.
+  defp meta_description(text) do
+    text
+    |> String.replace(~r/\s+/u, " ")
+    |> String.trim()
+    |> truncate(200)
+  end
+
+  defp truncate(str, max) do
+    if String.length(str) > max, do: String.slice(str, 0, max) <> "…", else: str
   end
 end
