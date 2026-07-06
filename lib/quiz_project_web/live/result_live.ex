@@ -146,53 +146,20 @@ defmodule QuizProjectWeb.ResultLive do
           <.pagination page={@page} page_count={@page_count} id="result-pagination-bottom" />
 
           <.page_nav page={@page} page_count={@page_count} />
-
-          <div class="card qcard bg-base-200 p-5 flex flex-col items-center gap-2 text-center">
-            <p class="text-sm opacity-70">
-              Qualquer pessoa com o link pode ver este resultado, sem precisar de login.
-            </p>
-            <button
-              id="share-result"
-              type="button"
-              phx-hook=".ShareResult"
-              data-share-title={@version.name}
-              data-share-text={@share_text}
-              data-share-url={@share_url}
-              class="btn btn-primary rounded-full"
-            >
-              <.icon name="hero-share" class="size-4" /> Compartilhar resultado
-            </button>
-            <script :type={Phoenix.LiveView.ColocatedHook} name=".ShareResult">
-              export default {
-                mounted() {
-                  this.onClick = async () => {
-                    const {shareTitle: title, shareText: text, shareUrl: url} = this.el.dataset
-                    try {
-                      if (navigator.share) {
-                        await navigator.share({title, text, url})
-                      } else if (navigator.clipboard) {
-                        await navigator.clipboard.writeText(`${text} ${url}`)
-                        this.pushEvent("shared_copied", {})
-                      }
-                    } catch (_e) {
-                      // usuário cancelou o compartilhamento
-                    }
-                  }
-                  this.el.addEventListener("click", this.onClick)
-                },
-                destroyed() {
-                  this.el.removeEventListener("click", this.onClick)
-                }
-              }
-            </script>
-          </div>
         </div>
 
         <%!-- resumo lateral (desktop) --%>
         <aside class="hidden lg:block sticky top-4" id="summary-desktop">
           <div class="card qcard bg-base-200 p-5 space-y-3">
             <h2 class="font-semibold text-base">Resumo do quiz</h2>
-            <.summary attempt={@attempt} stats={@stats} />
+            <.summary
+              id="share-desktop"
+              attempt={@attempt}
+              stats={@stats}
+              share_title={@version.name}
+              share_text={@share_text}
+              share_url={@share_url}
+            />
           </div>
         </aside>
       </div>
@@ -285,11 +252,42 @@ defmodule QuizProjectWeb.ResultLive do
             ]}
           >
             <div class="px-5 pb-8 pt-1">
-              <.summary attempt={@attempt} stats={@stats} />
+              <.summary
+                id="share-mobile"
+                attempt={@attempt}
+                stats={@stats}
+                share_title={@version.name}
+                share_text={@share_text}
+                share_url={@share_url}
+              />
             </div>
           </div>
         </div>
       </div>
+
+      <script :type={Phoenix.LiveView.ColocatedHook} name=".ShareResult">
+        export default {
+          mounted() {
+            this.onClick = async () => {
+              const {shareTitle: title, shareText: text, shareUrl: url} = this.el.dataset
+              try {
+                if (navigator.share) {
+                  await navigator.share({title, text, url})
+                } else if (navigator.clipboard) {
+                  await navigator.clipboard.writeText(`${text} ${url}`)
+                  this.pushEvent("shared_copied", {})
+                }
+              } catch (_e) {
+                // usuário cancelou o compartilhamento
+              }
+            }
+            this.el.addEventListener("click", this.onClick)
+          },
+          destroyed() {
+            this.el.removeEventListener("click", this.onClick)
+          }
+        }
+      </script>
     </Layouts.app>
     """
   end
@@ -344,8 +342,12 @@ defmodule QuizProjectWeb.ResultLive do
     """
   end
 
+  attr :id, :string, required: true
   attr :attempt, :map, required: true
   attr :stats, :map, required: true
+  attr :share_title, :string, required: true
+  attr :share_text, :string, required: true
+  attr :share_url, :string, required: true
 
   defp summary(assigns) do
     ~H"""
@@ -399,6 +401,19 @@ defmodule QuizProjectWeb.ResultLive do
         <span class="font-semibold">{@stats.imported}</span>
       </li>
     </ul>
+    <div class="mt-4 flex justify-center">
+      <button
+        id={@id}
+        type="button"
+        phx-hook=".ShareResult"
+        data-share-title={@share_title}
+        data-share-text={@share_text}
+        data-share-url={@share_url}
+        class="btn btn-primary btn-sm rounded-full"
+      >
+        <.icon name="hero-share" class="size-4" /> Compartilhar página de resultados
+      </button>
+    </div>
     """
   end
 

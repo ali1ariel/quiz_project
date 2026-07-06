@@ -260,7 +260,7 @@ defmodule QuizProjectWeb.AttemptFlowTest do
     {:ok, other_view, other_html} = live(other_conn, result_path)
 
     assert has_element?(other_view, "#final-score")
-    assert has_element?(other_view, "#share-result")
+    assert has_element?(other_view, "#share-desktop")
     assert other_html =~ "Resposta do participante"
   end
 
