@@ -116,12 +116,8 @@ defmodule QuizProjectWeb.AttemptFlowTest do
     |> element("#attempt-question-#{single.id} button[phx-click='toggle_later']")
     |> render_click()
 
-    # confirmar acusa pendência e troca o botão
+    # entregar abre direto o modal com as pendências e seus intervalos
     view |> element("#confirm-attempt") |> render_click()
-    assert has_element?(view, "#confirm-anyway")
-
-    # abre o modal, mostra contagens com intervalos e finaliza mesmo assim
-    view |> element("#confirm-anyway") |> render_click()
     assert has_element?(view, "#confirm-modal")
     assert render(view) =~ "marcada(s) para responder depois"
     # a single é a questão 2 na ordem fixa
@@ -206,7 +202,7 @@ defmodule QuizProjectWeb.AttemptFlowTest do
     assert has_element?(view, "#clear-#{tf.id}")
   end
 
-  test "sem pendências finaliza direto", %{quiz: quiz, version: version} do
+  test "sem pendências ainda pede confirmação antes de entregar", %{quiz: quiz, version: version} do
     {conn, view, _path} = start_anonymous_attempt(quiz)
 
     tf = Enum.find(version.questions, &(&1.type == :true_false))
@@ -216,7 +212,10 @@ defmodule QuizProjectWeb.AttemptFlowTest do
     view |> element("#tf-#{tf.id}-true") |> render_click()
     view |> element("#single-#{single.id}-#{correct_option.id}") |> render_click()
 
+    # mesmo tudo respondido, o modal aparece para confirmar a entrega
     view |> element("#confirm-attempt") |> render_click()
+    assert has_element?(view, "#confirm-modal")
+    view |> element("#finalize-forced") |> render_click()
 
     {result_path, _flash} = assert_redirect(view)
     {:ok, _result_view, result_html} = live(conn, result_path)
@@ -240,6 +239,31 @@ defmodule QuizProjectWeb.AttemptFlowTest do
     assert {:error, {:live_redirect, %{to: "/"}}} = live(other_conn, path)
   end
 
+  test "resultado de tentativa finalizada é público para quem tem o link", %{
+    quiz: quiz,
+    version: version
+  } do
+    {_conn, view, _path} = start_anonymous_attempt(quiz)
+
+    tf = Enum.find(version.questions, &(&1.type == :true_false))
+    single = Enum.find(version.questions, &(&1.type == :single))
+    correct_option = Enum.find(single.options, & &1.correct)
+
+    view |> element("#tf-#{tf.id}-true") |> render_click()
+    view |> element("#single-#{single.id}-#{correct_option.id}") |> render_click()
+    view |> element("#confirm-attempt") |> render_click()
+    view |> element("#finalize-forced") |> render_click()
+    {result_path, _flash} = assert_redirect(view)
+
+    # outra sessão anônima (sem o token do participante) enxerga o resultado
+    other_conn = anonymous_session(build_conn(), "outro-token")
+    {:ok, other_view, other_html} = live(other_conn, result_path)
+
+    assert has_element?(other_view, "#final-score")
+    assert has_element?(other_view, "#share-result")
+    assert other_html =~ "Resposta do participante"
+  end
+
   test "anulação é retroativa: re-corrige tentativas de versões anteriores", %{
     quiz: quiz,
     version: version,
@@ -255,6 +279,7 @@ defmodule QuizProjectWeb.AttemptFlowTest do
     view |> element("#tf-#{tf.id}-false") |> render_click()
     view |> element("#single-#{single.id}-#{correct_option.id}") |> render_click()
     view |> element("#confirm-attempt") |> render_click()
+    view |> element("#finalize-forced") |> render_click()
     {result_path, _flash} = assert_redirect(view)
 
     # antes da v2: 50%, questão ainda não anulada

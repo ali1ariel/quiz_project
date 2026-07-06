@@ -34,53 +34,16 @@ defmodule QuizProjectWeb.ResultLive do
             }> — {version_suffix(@version.version_number)}</span>
           </p>
         </div>
-        <div class="flex items-center gap-3">
-          <button
-            :if={@role == :participant}
-            id="share-result"
-            type="button"
-            phx-hook=".ShareResult"
-            data-share-title={@version.name}
-            data-share-text={@share_text}
-            class="btn btn-outline btn-sm rounded-full"
-          >
-            <.icon name="hero-share" class="size-4" /> Compartilhar
-          </button>
-          <script :type={Phoenix.LiveView.ColocatedHook} name=".ShareResult">
-            export default {
-              mounted() {
-                this.onClick = async () => {
-                  const text = this.el.dataset.shareText
-                  const title = this.el.dataset.shareTitle
-                  try {
-                    if (navigator.share) {
-                      await navigator.share({title, text})
-                    } else if (navigator.clipboard) {
-                      await navigator.clipboard.writeText(text)
-                      this.pushEvent("shared_copied", {})
-                    }
-                  } catch (_e) {
-                    // usuário cancelou o compartilhamento
-                  }
-                }
-                this.el.addEventListener("click", this.onClick)
-              },
-              destroyed() {
-                this.el.removeEventListener("click", this.onClick)
-              }
-            }
-          </script>
-          <div class="text-right hidden md:block">
-            <p class="text-3xl font-bold text-primary" id="final-score">
-              {format_decimal(@attempt.score)}<span class="text-lg opacity-70">/{format_decimal(
-                @attempt.max_score
-              )}</span>
-            </p>
-            <p class="text-sm opacity-70">{format_decimal(@attempt.percent)}% de aproveitamento</p>
-            <p :if={@attempt.finished_at} class="text-sm opacity-70" id="attempt-duration">
-              tempo utilizado: {format_duration(@attempt.started_at, @attempt.finished_at)}
-            </p>
-          </div>
+        <div class="text-right hidden md:block">
+          <p class="text-3xl font-bold text-primary" id="final-score">
+            {format_decimal(@attempt.score)}<span class="text-lg opacity-70">/{format_decimal(
+              @attempt.max_score
+            )}</span>
+          </p>
+          <p class="text-sm opacity-70">{format_decimal(@attempt.percent)}% de aproveitamento</p>
+          <p :if={@attempt.finished_at} class="text-sm opacity-70" id="attempt-duration">
+            tempo utilizado: {format_duration(@attempt.started_at, @attempt.finished_at)}
+          </p>
         </div>
       </div>
 
@@ -125,7 +88,7 @@ defmodule QuizProjectWeb.ResultLive do
             <div class="mt-4 space-y-3 text-sm">
               <div>
                 <p class="text-xs uppercase opacity-70 mb-1">
-                  {if @role == :creator, do: "Resposta do participante", else: "Sua resposta"}
+                  {if @role == :participant, do: "Sua resposta", else: "Resposta do participante"}
                 </p>
                 <.user_answer question={question} answer={answer(@answers, question)} />
               </div>
@@ -183,6 +146,46 @@ defmodule QuizProjectWeb.ResultLive do
           <.pagination page={@page} page_count={@page_count} id="result-pagination-bottom" />
 
           <.page_nav page={@page} page_count={@page_count} />
+
+          <div class="card qcard bg-base-200 p-5 flex flex-col items-center gap-2 text-center">
+            <p class="text-sm opacity-70">
+              Qualquer pessoa com o link pode ver este resultado, sem precisar de login.
+            </p>
+            <button
+              id="share-result"
+              type="button"
+              phx-hook=".ShareResult"
+              data-share-title={@version.name}
+              data-share-text={@share_text}
+              data-share-url={@share_url}
+              class="btn btn-primary rounded-full"
+            >
+              <.icon name="hero-share" class="size-4" /> Compartilhar resultado
+            </button>
+            <script :type={Phoenix.LiveView.ColocatedHook} name=".ShareResult">
+              export default {
+                mounted() {
+                  this.onClick = async () => {
+                    const {shareTitle: title, shareText: text, shareUrl: url} = this.el.dataset
+                    try {
+                      if (navigator.share) {
+                        await navigator.share({title, text, url})
+                      } else if (navigator.clipboard) {
+                        await navigator.clipboard.writeText(`${text} ${url}`)
+                        this.pushEvent("shared_copied", {})
+                      }
+                    } catch (_e) {
+                      // usuário cancelou o compartilhamento
+                    }
+                  }
+                  this.el.addEventListener("click", this.onClick)
+                },
+                destroyed() {
+                  this.el.removeEventListener("click", this.onClick)
+                }
+              }
+            </script>
+          </div>
         </div>
 
         <%!-- resumo lateral (desktop) --%>
@@ -376,18 +379,22 @@ defmodule QuizProjectWeb.ResultLive do
         <span class="font-semibold text-error">{@stats.incorrect}</span>
       </li>
       <li class="flex justify-between">
+        <span class="opacity-70">Parcialmente corretas</span>
+        <span class="font-semibold text-warning">{@stats.partial}</span>
+      </li>
+      <li :if={@stats.dont_know > 0} class="flex justify-between">
         <span class="opacity-70">"Não sei"</span>
         <span class="font-semibold">{@stats.dont_know}</span>
       </li>
-      <li class="flex justify-between">
+      <li :if={@stats.annulled > 0} class="flex justify-between">
         <span class="opacity-70">Questões anuladas</span>
         <span class="font-semibold">{@stats.annulled}</span>
       </li>
-      <li class="flex justify-between">
+      <li :if={@stats.ai_graded > 0} class="flex justify-between">
         <span class="opacity-70">Discursivas avaliadas por IA</span>
         <span class="font-semibold">{@stats.ai_graded}</span>
       </li>
-      <li class="flex justify-between">
+      <li :if={@stats.imported > 0} class="flex justify-between">
         <span class="opacity-70">Respostas importadas</span>
         <span class="font-semibold">{@stats.imported}</span>
       </li>
@@ -544,6 +551,7 @@ defmodule QuizProjectWeb.ResultLive do
            points: points,
            stats: stats,
            share_text: share_text(version, attempt, stats),
+           share_url: url(~p"/tentativa/#{attempt.id}/resultado"),
            show_summary: false,
            page_title: build_title(["Resultados", title_name(version.name)])
          )
@@ -564,7 +572,8 @@ defmodule QuizProjectWeb.ResultLive do
   end
 
   def handle_event("shared_copied", _params, socket) do
-    {:noreply, put_flash(socket, :info, "Resultado copiado para a área de transferência.")}
+    {:noreply,
+     put_flash(socket, :info, "Link do resultado copiado para a área de transferência.")}
   end
 
   def handle_event("toggle_summary", _params, socket) do
@@ -616,6 +625,11 @@ defmodule QuizProjectWeb.ResultLive do
       match?(:ok, owner_check(version, socket.assigns.current_user)) ->
         :creator
 
+      # Tentativa finalizada é pública: qualquer pessoa com o link do resultado
+      # pode vê-la (somente leitura), mesmo sem login.
+      attempt.status == :finished ->
+        :viewer
+
       true ->
         nil
     end
@@ -634,6 +648,11 @@ defmodule QuizProjectWeb.ResultLive do
       answered: Enum.count(values, &(&1.state == :answered)),
       correct: Enum.count(values, &full?(&1.score, points[&1.question_id])),
       incorrect: Enum.count(values, &zero?(&1.score)),
+      partial:
+        Enum.count(values, fn answer ->
+          points = points[answer.question_id]
+          not zero?(answer.score) and not full?(answer.score, points)
+        end),
       dont_know: Enum.count(values, &(&1.state == :dont_know)),
       annulled: Enum.count(version.questions, & &1.annulled),
       imported: Enum.count(values, & &1.imported_from_previous),

@@ -142,57 +142,66 @@ defmodule QuizProjectWeb.AttemptLive do
         id="pagination-bottom"
       />
 
-      <.page_nav page={@page} page_count={length(@page_statuses)} />
-
-      <div class="flex justify-end pt-2 pb-10">
+      <div class="flex items-center justify-between gap-3 pt-2 pb-10">
         <button
-          :if={!@confirm_anyway}
-          id="confirm-attempt"
-          phx-click="confirm"
-          class="btn btn-primary btn-lg rounded-full"
+          phx-click="prev_page"
+          disabled={@page <= 1}
+          class="btn btn-outline rounded-full"
+          id="prev-page"
         >
-          Confirmar respostas
+          <.icon name="hero-arrow-left" class="size-4" /> Anterior
+        </button>
+        <button id="confirm-attempt" phx-click="confirm" class="btn btn-primary rounded-full">
+          Entregar
         </button>
         <button
-          :if={@confirm_anyway}
-          id="confirm-anyway"
-          phx-click="confirm_anyway"
-          class="btn btn-warning btn-lg rounded-full"
+          phx-click="next_page"
+          disabled={@page >= length(@page_statuses)}
+          class="btn btn-outline rounded-full"
+          id="next-page"
         >
-          Confirmar mesmo assim
+          Próxima <.icon name="hero-arrow-right" class="size-4" />
         </button>
       </div>
 
       <dialog :if={@show_confirm_modal} id="confirm-modal" class="modal modal-open">
         <div class="modal-box rounded-2xl">
-          <h3 class="font-bold text-lg mb-2">Existem questões pendentes</h3>
-          <ul class="text-sm space-y-2 mb-2">
-            <li :if={@pending.unanswered > 0} id="pending-unanswered">
-              <span class="badge badge-error badge-xs rounded-full mr-1"></span>
-              {@pending.unanswered} questão(ões) sem resposta:
-              <span class="font-semibold">{format_ranges(@pending_unanswered_numbers)}</span>
-            </li>
-            <li :if={@pending.later > 0} id="pending-later">
-              <span class="badge badge-warning badge-xs rounded-full mr-1"></span>
-              {@pending.later} questão(ões) marcada(s) para responder depois:
-              <span class="font-semibold">{format_ranges(@pending_later_numbers)}</span>
-            </li>
-          </ul>
-          <p class="text-sm opacity-70">
-            Ao confirmar, todas as pendências serão convertidas para "Não sei a
-            resposta" (nota zero) e a tentativa será finalizada. Essa ação não
-            pode ser desfeita.
-          </p>
+          <%= if @pending.unanswered > 0 or @pending.later > 0 do %>
+            <h3 class="font-bold text-lg mb-2">Existem questões pendentes</h3>
+            <ul class="text-sm space-y-2 mb-2">
+              <li :if={@pending.unanswered > 0} id="pending-unanswered">
+                <span class="badge badge-error badge-xs rounded-full mr-1"></span>
+                {@pending.unanswered} questão(ões) sem resposta:
+                <span class="font-semibold">{format_ranges(@pending_unanswered_numbers)}</span>
+              </li>
+              <li :if={@pending.later > 0} id="pending-later">
+                <span class="badge badge-warning badge-xs rounded-full mr-1"></span>
+                {@pending.later} questão(ões) marcada(s) para responder depois:
+                <span class="font-semibold">{format_ranges(@pending_later_numbers)}</span>
+              </li>
+            </ul>
+            <p class="text-sm opacity-70">
+              Ao entregar, todas as pendências serão convertidas para "Não sei a
+              resposta" (nota zero) e a tentativa será finalizada. Essa ação não
+              pode ser desfeita.
+            </p>
+          <% else %>
+            <h3 class="font-bold text-lg mb-2">Entregar tentativa</h3>
+            <p class="text-sm opacity-70">
+              Todas as questões foram respondidas. Deseja entregar? Depois da
+              entrega não será possível alterar as respostas.
+            </p>
+          <% end %>
           <div class="modal-action">
             <button phx-click="cancel_confirm" class="btn btn-ghost rounded-full" id="cancel-confirm">
               Cancelar
             </button>
             <button
               phx-click="finalize_forced"
-              class="btn btn-warning rounded-full"
+              class="btn btn-primary rounded-full"
               id="finalize-forced"
             >
-              Confirmar e finalizar
+              Confirmar entrega
             </button>
           </div>
         </div>
@@ -223,32 +232,6 @@ defmodule QuizProjectWeb.AttemptLive do
         {index}
       </button>
     </nav>
-    """
-  end
-
-  attr :page, :integer, required: true
-  attr :page_count, :integer, required: true
-
-  defp page_nav(assigns) do
-    ~H"""
-    <div :if={@page_count > 1} class="flex justify-between gap-3">
-      <button
-        phx-click="prev_page"
-        disabled={@page <= 1}
-        class="btn btn-outline rounded-full"
-        id="prev-page"
-      >
-        <.icon name="hero-arrow-left" class="size-4" /> Anterior
-      </button>
-      <button
-        phx-click="next_page"
-        disabled={@page >= @page_count}
-        class="btn btn-outline rounded-full"
-        id="next-page"
-      >
-        Próxima <.icon name="hero-arrow-right" class="size-4" />
-      </button>
-    </div>
     """
   end
 
@@ -367,7 +350,7 @@ defmodule QuizProjectWeb.AttemptLive do
          socket
          |> assign(attempt: attempt, version: attempt.quiz_version)
          |> assign(page_title: build_title([title_name(attempt.quiz_version.name)]))
-         |> assign(page: 1, restore_timers: %{}, confirm_anyway: false, validated: false)
+         |> assign(page: 1, restore_timers: %{}, validated: false)
          |> assign(show_confirm_modal: false, pending: %{unanswered: 0, later: 0})
          |> assign(pending_unanswered_numbers: [], pending_later_numbers: [])
          |> rebuild()}
@@ -474,34 +457,15 @@ defmodule QuizProjectWeb.AttemptLive do
   end
 
   def handle_event("confirm", _params, socket) do
-    case Attempts.finalize(socket.assigns.attempt) do
-      {:ok, finished} ->
-        {:noreply, push_navigate(socket, to: ~p"/tentativa/#{finished.id}/resultado")}
-
-      {:error, {:pending, pending}} ->
-        {:noreply,
-         socket
-         |> assign(confirm_anyway: true, pending: pending, validated: true)
-         |> assign_pending_numbers()
-         |> rebuild()
-         |> put_flash(
-           :error,
-           "Há questões pendentes. Verifique as páginas em vermelho/amarelo ou confirme mesmo assim."
-         )}
-
-      {:error, _} ->
-        {:noreply, put_flash(socket, :error, "Não foi possível finalizar.")}
-    end
-  end
-
-  def handle_event("confirm_anyway", _params, socket) do
     {:noreply,
      socket
      |> assign(
        show_confirm_modal: true,
-       pending: Attempts.pending_summary(socket.assigns.attempt)
+       pending: Attempts.pending_summary(socket.assigns.attempt),
+       validated: true
      )
-     |> assign_pending_numbers()}
+     |> assign_pending_numbers()
+     |> rebuild()}
   end
 
   def handle_event("cancel_confirm", _params, socket) do
