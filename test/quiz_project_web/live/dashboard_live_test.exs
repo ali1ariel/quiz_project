@@ -3,6 +3,7 @@ defmodule QuizProjectWeb.DashboardLiveTest do
 
   import Phoenix.LiveViewTest
 
+  alias QuizProject.Attempts
   alias QuizProject.Quizzes
 
   setup :register_and_log_in_user
@@ -102,6 +103,236 @@ defmodule QuizProjectWeb.DashboardLiveTest do
     # aba de respondidos vazia
     view |> element("#tab-answered") |> render_click()
     assert render(view) =~ "não respondeu nenhum quiz"
+  end
+
+  test "agrupa respondidos por quiz e versão com linha evolutiva", %{conn: conn, user: user} do
+    participant = %{user: user, token: "token-dashboard"}
+
+    # v1 com duas V/F (50 pts cada); primeira tentativa acerta só uma => 50%
+    {:ok, version} = Quizzes.create_draft_quiz(user)
+    {:ok, version} = Quizzes.update_draft(version, %{name: "Quiz evolutivo"}, user)
+
+    {:ok, _} =
+      Quizzes.upsert_question(
+        version,
+        %{statement: "Q1?", type: :true_false, true_false_answer: true},
+        [],
+        user
+      )
+
+    {:ok, _q2} =
+      Quizzes.upsert_question(
+        version,
+        %{statement: "Q2?", type: :true_false, true_false_answer: true},
+        [],
+        user
+      )
+
+    {:ok, published_v1} = Quizzes.publish(Quizzes.get_version!(version.id), user)
+    v1 = Quizzes.get_version_full!(published_v1.id)
+
+    # duas tentativas na v1 (50% e depois 100%) para existir linha evolutiva
+    {:ok, attempt1} = Attempts.start_attempt(v1, participant, "Eu mesmo")
+    tf1 = Enum.find(attempt1.quiz_version.questions, &(&1.statement == "Q1?"))
+    answer1 = Enum.find(attempt1.answers, &(&1.question_id == tf1.id))
+    {:ok, _} = Attempts.save_answer(attempt1, answer1, tf1, %{"value" => true})
+    {:ok, _} = Attempts.finalize(attempt1, force: true)
+
+    {:ok, retry} = Attempts.start_attempt(v1, participant, "Eu mesmo")
+
+    for question <- retry.quiz_version.questions do
+      answer = Enum.find(retry.answers, &(&1.question_id == question.id))
+      {:ok, _} = Attempts.save_answer(retry, answer, question, %{"value" => true})
+    end
+
+    {:ok, _} = Attempts.finalize(retry)
+
+    # v2 muda uma questão; segunda tentativa acerta as duas => 100%
+    quiz = Quizzes.get_quiz!(v1.quiz_id)
+    {:ok, draft} = Quizzes.ensure_draft(quiz, user)
+
+    q1_draft =
+      Quizzes.get_version_full!(draft.id).questions
+      |> Enum.find(&(&1.statement == "Q1?"))
+
+    {:ok, _} =
+      Quizzes.upsert_question(
+        Quizzes.get_version!(draft.id),
+        %{id: q1_draft.id, statement: "Q1 revisada?", type: :true_false, true_false_answer: true},
+        [],
+        user
+      )
+
+    {:ok, published_v2} = Quizzes.publish(Quizzes.get_version!(draft.id), user)
+    v2 = Quizzes.get_version_full!(published_v2.id)
+
+    {:ok, attempt2} = Attempts.start_attempt(v2, participant, "Eu mesmo")
+
+    for question <- attempt2.quiz_version.questions do
+      answer = Enum.find(attempt2.answers, &(&1.question_id == question.id))
+      {:ok, _} = Attempts.save_answer(attempt2, answer, question, %{"value" => true})
+    end
+
+    {:ok, _} = Attempts.finalize(attempt2)
+
+    {:ok, view, _html} = live(conn, ~p"/painel")
+    view |> element("#tab-answered") |> render_click()
+
+    # um único card para o quiz, com subgrupos por versão
+    assert has_element?(view, "#answered-quiz-#{quiz.id}")
+    assert has_element?(view, "#answered-quiz-#{quiz.id}-v1")
+    assert has_element?(view, "#answered-quiz-#{quiz.id}-v2")
+
+    # versões não se misturam: linha evolutiva só na v1 (2 tentativas);
+    # v2 tem uma tentativa e fica sem gráfico
+    assert has_element?(view, "#evolution-#{quiz.id}-v1 svg path")
+    refute has_element?(view, "#evolution-#{quiz.id}-v2")
+
+    # link para a página de estatísticas do quiz
+    assert has_element?(view, "#quiz-stats-#{quiz.id}")
+
+    html = render(view)
+    assert html =~ "50%"
+    assert html =~ "100%"
+    assert html =~ "Evolução das notas"
+  end
+
+  test "página de evolução compara respostas questão por questão", %{conn: conn, user: user} do
+    participant = %{user: user, token: "token-evolucao"}
+
+    {:ok, version} = Quizzes.create_draft_quiz(user)
+    {:ok, version} = Quizzes.update_draft(version, %{name: "Quiz evolução"}, user)
+
+    {:ok, _} =
+      Quizzes.upsert_question(
+        version,
+        %{statement: "Q1?", type: :true_false, true_false_answer: true},
+        [],
+        user
+      )
+
+    {:ok, _} =
+      Quizzes.upsert_question(
+        version,
+        %{statement: "Q2?", type: :true_false, true_false_answer: true},
+        [],
+        user
+      )
+
+    {:ok, published} = Quizzes.publish(Quizzes.get_version!(version.id), user)
+    v1 = Quizzes.get_version_full!(published.id)
+
+    # 1ª tentativa: erra Q1 e acerta Q2; 2ª tentativa: acerta as duas
+    {:ok, attempt1} = Attempts.start_attempt(v1, participant, "Eu mesmo")
+
+    for question <- attempt1.quiz_version.questions do
+      answer = Enum.find(attempt1.answers, &(&1.question_id == question.id))
+      value = question.statement == "Q2?"
+      {:ok, _} = Attempts.save_answer(attempt1, answer, question, %{"value" => value})
+    end
+
+    {:ok, _} = Attempts.finalize(attempt1)
+
+    {:ok, attempt2} = Attempts.start_attempt(v1, participant, "Eu mesmo")
+
+    for question <- attempt2.quiz_version.questions do
+      answer = Enum.find(attempt2.answers, &(&1.question_id == question.id))
+      {:ok, _} = Attempts.save_answer(attempt2, answer, question, %{"value" => true})
+    end
+
+    {:ok, _} = Attempts.finalize(attempt2)
+
+    {:ok, view, html} = live(conn, ~p"/quiz/#{v1.quiz_id}/evolucao")
+
+    assert html =~ "Quiz evolução"
+    assert has_element?(view, "#evolution-v1")
+    assert has_element?(view, "#evolution-chart-v1 svg path")
+
+    # estatísticas da versão
+    assert html =~ "Última nota"
+    assert html =~ "Melhor nota"
+    assert html =~ "Progresso"
+    assert html =~ "+50%"
+
+    # comparação por questão: Q1 evoluiu de incorreta para correta
+    q1 = Enum.find(v1.questions, &(&1.statement == "Q1?"))
+    q2 = Enum.find(v1.questions, &(&1.statement == "Q2?"))
+    assert has_element?(view, "#evolution-v1-q#{q1.id}")
+    assert html =~ "você evoluiu nesta questão"
+
+    # Q2 sempre correta
+    assert has_element?(view, "#evolution-v1-q#{q2.id}")
+    assert html =~ "sempre correta"
+
+    # as respostas em si, tentativa a tentativa
+    assert html =~ "1ª tentativa"
+    assert html =~ "2ª tentativa"
+    assert html =~ "Resposta correta"
+
+    # questões objetivas não têm avaliação de evolução por IA
+    refute html =~ "Avaliar minha evolução com IA"
+  end
+
+  test "avalia com IA a evolução das respostas de uma questão discursiva", %{
+    conn: conn,
+    user: user
+  } do
+    participant = %{user: user, token: "token-discursiva"}
+
+    {:ok, version} = Quizzes.create_draft_quiz(user)
+    {:ok, version} = Quizzes.update_draft(version, %{name: "Quiz discursivo"}, user)
+
+    {:ok, _} =
+      Quizzes.upsert_question(
+        version,
+        %{
+          statement: "Explique a fotossíntese",
+          type: :text,
+          editor_note: "Conversão de luz solar em energia química pelas plantas"
+        },
+        [],
+        user
+      )
+
+    {:ok, published} = Quizzes.publish(Quizzes.get_version!(version.id), user)
+    v1 = Quizzes.get_version_full!(published.id)
+
+    answers = [
+      "Algo com plantas e sol.",
+      "As plantas convertem luz solar em energia química por meio da fotossíntese."
+    ]
+
+    for text <- answers do
+      {:ok, attempt} = Attempts.start_attempt(v1, participant, "Eu mesmo")
+      question = hd(attempt.quiz_version.questions)
+      answer = Enum.find(attempt.answers, &(&1.question_id == question.id))
+      {:ok, _} = Attempts.save_answer(attempt, answer, question, %{"text" => text})
+      {:ok, _} = Attempts.finalize(attempt)
+    end
+
+    {:ok, view, html} = live(conn, ~p"/quiz/#{v1.quiz_id}/evolucao")
+
+    # as duas respostas aparecem na comparação
+    assert html =~ "Algo com plantas e sol."
+    assert html =~ "convertem luz solar em energia química"
+
+    question = hd(v1.questions)
+    assert has_element?(view, "#evaluate-question-#{question.id}")
+
+    view |> element("#evaluate-question-#{question.id}") |> render_click()
+
+    evaluated = render(view)
+    assert has_element?(view, "#evaluation-question-#{question.id}")
+    assert evaluated =~ "avaliação heurística local, sem IA externa"
+    assert evaluated =~ "2 respostas suas para a mesma questão"
+    refute has_element?(view, "#evaluate-question-#{question.id}")
+  end
+
+  test "página de evolução sem tentativas redireciona ao painel", %{conn: conn, user: user} do
+    {:ok, version} = Quizzes.create_draft_quiz(user)
+
+    assert {:error, {:live_redirect, %{to: "/painel"}}} =
+             live(conn, ~p"/quiz/#{version.quiz_id}/evolucao")
   end
 
   test "exige login", %{} do

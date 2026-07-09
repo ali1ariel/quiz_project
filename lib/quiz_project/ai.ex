@@ -30,6 +30,15 @@ defmodule QuizProject.AI do
     provider().generate_reference(statement)
   end
 
+  @doc """
+  Avalia a evolução do participante respondendo a mesma questão discursiva
+  em tentativas sucessivas, a partir de um resumo textual do histórico.
+  Retorna `{:ok, texto}`.
+  """
+  def evaluate_progression(summary) when is_binary(summary) do
+    provider().evaluate_progression(summary)
+  end
+
   def provider do
     Application.get_env(:quiz_project, :ai_provider, QuizProject.AI.Fake)
   end

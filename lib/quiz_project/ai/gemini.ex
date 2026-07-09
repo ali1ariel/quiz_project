@@ -31,6 +31,14 @@ defmodule QuizProject.AI.Gemini do
     end
   end
 
+  @impl true
+  def evaluate_progression(summary) do
+    with {:ok, body} <-
+           generate(Prompts.progression_system(), Prompts.progression_user(summary)) do
+      SharedParsers.parse_evaluation(body)
+    end
+  end
+
   defp generate(system, user) do
     api_key = Application.get_env(:quiz_project, :gemini_api_key)
 
@@ -50,7 +58,7 @@ defmodule QuizProject.AI.Gemini do
               contents: [%{role: "user", parts: [%{text: user}]}],
               generationConfig: %{response_mime_type: "application/json"}
             },
-            receive_timeout: 30_000
+            receive_timeout: 60_000
           ] ++ Application.get_env(:quiz_project, :ai_req_options, [])
         )
 

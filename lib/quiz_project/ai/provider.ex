@@ -27,4 +27,13 @@ defmodule QuizProject.AI.Provider do
   """
   @callback generate_reference(statement :: String.t()) ::
               {:ok, String.t()} | {:error, term()}
+
+  @doc """
+  Avalia a evolução do participante respondendo a mesma questão discursiva
+  em tentativas sucessivas, a partir de um resumo textual (enunciado e
+  respostas em ordem cronológica, com notas e feedback da correção).
+  Retorna a análise em texto corrido.
+  """
+  @callback evaluate_progression(summary :: String.t()) ::
+              {:ok, String.t()} | {:error, term()}
 end

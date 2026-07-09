@@ -1,6 +1,8 @@
 defmodule QuizProjectWeb.DashboardLive do
   use QuizProjectWeb, :live_view
 
+  import QuizProjectWeb.EvolutionChart
+
   alias QuizProject.Attempts
   alias QuizProject.Quizzes
 
@@ -128,58 +130,104 @@ defmodule QuizProjectWeb.DashboardLive do
         </div>
       </div>
 
-      <div :if={@tab == :answered} id="answered-list" class="space-y-3">
-        <p :if={@answered == []} class="opacity-70 text-sm py-8 text-center">
+      <div :if={@tab == :answered} id="answered-list" class="space-y-4">
+        <p :if={@answered_groups == []} class="opacity-70 text-sm py-8 text-center">
           Você ainda não respondeu nenhum quiz.
         </p>
 
         <div
-          :for={attempt <- @answered}
-          id={"attempt-#{attempt.id}"}
-          class="card qcard bg-base-200 p-4 flex flex-col sm:flex-row sm:items-center gap-3"
+          :for={group <- @answered_groups}
+          id={"answered-quiz-#{group.quiz_id}"}
+          class="card qcard bg-base-200 p-4 space-y-3"
         >
-          <div class="flex-1 min-w-0">
-            <div class="flex items-center gap-2 flex-wrap">
-              <span class="font-semibold truncate">{attempt.quiz_version.name}</span>
-              <span
-                :if={version_suffix(attempt.quiz_version.version_number)}
-                class="badge badge-sm badge-ghost rounded-full"
-              >
-                {version_suffix(attempt.quiz_version.version_number)}
-              </span>
-              <span
-                :if={attempt.status == :finished}
-                class="badge badge-sm badge-success rounded-full"
-              >
-                {format_decimal(attempt.score)}/{format_decimal(attempt.max_score)} pts
-              </span>
-              <span
-                :if={attempt.status == :in_progress}
-                class="badge badge-sm badge-warning rounded-full"
-              >
-                em andamento
-              </span>
-            </div>
-            <p class="text-xs opacity-70 mt-1">
-              Identificado como "{attempt.display_identity}"
-            </p>
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="font-semibold truncate">{group.name}</span>
+            <span class="badge badge-sm badge-ghost rounded-full">
+              {group.count} {if group.count == 1, do: "tentativa", else: "tentativas"}
+            </span>
+            <.link
+              :if={group.has_stats}
+              id={"quiz-stats-#{group.quiz_id}"}
+              navigate={~p"/quiz/#{group.quiz_id}/evolucao"}
+              class="btn btn-xs btn-outline rounded-full ml-auto"
+            >
+              <.icon name="hero-chart-bar" class="size-3" /> Ver estatísticas
+            </.link>
           </div>
 
-          <div class="flex gap-2">
-            <.link
-              :if={attempt.status == :finished}
-              navigate={~p"/tentativa/#{attempt.id}/resultado"}
-              class="btn btn-sm btn-outline rounded-full"
+          <div
+            :for={version_group <- group.by_version}
+            id={"answered-quiz-#{group.quiz_id}-v#{version_group.number}"}
+            class="space-y-2"
+          >
+            <div class="flex items-center gap-2">
+              <span class="badge badge-sm badge-neutral rounded-full">
+                versão {version_group.number}
+              </span>
+              <span class="text-xs opacity-70">
+                {length(version_group.attempts)} {if length(version_group.attempts) == 1,
+                  do: "tentativa",
+                  else: "tentativas"}
+              </span>
+            </div>
+
+            <.evolution_chart
+              :if={version_group.chart}
+              chart={version_group.chart}
+              id={"evolution-#{group.quiz_id}-v#{version_group.number}"}
+            />
+
+            <div
+              :for={attempt <- version_group.attempts}
+              id={"attempt-#{attempt.id}"}
+              class="flex flex-col sm:flex-row sm:items-center gap-2 rounded-xl border border-base-300 px-3 py-2"
             >
-              Ver resultado
-            </.link>
-            <.link
-              :if={attempt.status == :in_progress}
-              navigate={~p"/tentativa/#{attempt.id}"}
-              class="btn btn-sm btn-primary rounded-full"
-            >
-              Continuar
-            </.link>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span
+                    :if={attempt.status == :finished}
+                    class="badge badge-sm badge-success rounded-full"
+                  >
+                    {format_decimal(attempt.score)}/{format_decimal(attempt.max_score)} pts
+                  </span>
+                  <span
+                    :if={attempt.status == :finished && attempt.percent}
+                    class="text-sm font-semibold"
+                  >
+                    {format_decimal(attempt.percent)}%
+                  </span>
+                  <span
+                    :if={attempt.status == :in_progress}
+                    class="badge badge-sm badge-warning rounded-full"
+                  >
+                    em andamento
+                  </span>
+                  <span :if={attempt_date(attempt)} class="text-xs opacity-70">
+                    em {attempt_date(attempt)}
+                  </span>
+                </div>
+                <p class="text-xs opacity-70 mt-0.5">
+                  Identificado como "{attempt.display_identity}"
+                </p>
+              </div>
+
+              <div class="flex gap-2">
+                <.link
+                  :if={attempt.status == :finished}
+                  navigate={~p"/tentativa/#{attempt.id}/resultado"}
+                  class="btn btn-sm btn-outline rounded-full"
+                >
+                  Ver resultado
+                </.link>
+                <.link
+                  :if={attempt.status == :in_progress}
+                  navigate={~p"/tentativa/#{attempt.id}"}
+                  class="btn btn-sm btn-primary rounded-full"
+                >
+                  Continuar
+                </.link>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -372,8 +420,63 @@ defmodule QuizProjectWeb.DashboardLive do
 
     assign(socket,
       created: Quizzes.list_created(user),
-      answered: Attempts.list_answered(user)
+      answered_groups: group_answered(Attempts.list_answered(user))
     )
+  end
+
+  # Agrupa as tentativas por quiz (e, dentro do quiz, por versão), mantendo
+  # os grupos ordenados pela tentativa mais recente. `list_answered` já vem
+  # ordenado por inserted_at desc, então a primeira tentativa de cada grupo
+  # é a mais recente. Versões não se misturam: cada versão tem sua própria
+  # linha evolutiva, calculada só com as tentativas finalizadas dela.
+  defp group_answered(attempts) do
+    attempts
+    |> Enum.group_by(& &1.quiz_version.quiz_id)
+    |> Enum.map(fn {quiz_id, group} ->
+      by_version =
+        group
+        |> Enum.group_by(& &1.quiz_version.version_number)
+        |> Enum.sort_by(&elem(&1, 0), :desc)
+        |> Enum.map(fn {number, version_attempts} ->
+          %{
+            number: number,
+            attempts: version_attempts,
+            chart: version_attempts |> finished_in_order() |> chart_data()
+          }
+        end)
+
+      %{
+        quiz_id: quiz_id,
+        name: group_name(group),
+        latest_at: hd(group).inserted_at,
+        count: length(group),
+        by_version: by_version,
+        has_stats: Enum.any?(group, &(&1.status == :finished))
+      }
+    end)
+    |> Enum.sort_by(& &1.latest_at, {:desc, DateTime})
+  end
+
+  defp group_name(group) do
+    latest = Enum.max_by(group, & &1.quiz_version.version_number)
+
+    case latest.quiz_version.name do
+      name when name in [nil, ""] -> "Quiz sem nome"
+      name -> name
+    end
+  end
+
+  defp finished_in_order(group) do
+    group
+    |> Enum.filter(&(&1.status == :finished and &1.percent != nil and &1.finished_at != nil))
+    |> Enum.sort_by(& &1.finished_at, DateTime)
+  end
+
+  defp attempt_date(attempt) do
+    case attempt.finished_at || attempt.started_at do
+      nil -> nil
+      datetime -> Calendar.strftime(datetime, "%d/%m/%Y")
+    end
   end
 
   def handle_event("switch_tab", %{"tab" => tab}, socket) do
@@ -444,7 +547,6 @@ defmodule QuizProjectWeb.DashboardLive do
       {:error, errors} when is_list(errors) ->
         {:noreply, assign(socket, import_errors: errors, import_json: json)}
     end
-
   rescue
     _ in [Jason.DecodeError, File.Error] ->
       {:noreply, assign(socket, import_errors: ["Erro ao ler o arquivo JSON"], import_json: nil)}

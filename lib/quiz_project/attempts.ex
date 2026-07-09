@@ -513,6 +513,22 @@ defmodule QuizProject.Attempts do
     end
   end
 
+  @doc """
+  Tentativas finalizadas do usuário em todas as versões de um quiz, em ordem
+  cronológica e com questões e alternativas carregadas — base da página de
+  evolução. O agrupamento por versão fica no chamador: versões não se
+  misturam na análise.
+  """
+  def list_finished_for_participant(%{id: user_id}, quiz_id) do
+    Attempt
+    |> Ash.Query.filter(
+      user_id == ^user_id and quiz_version.quiz_id == ^quiz_id and status == :finished
+    )
+    |> Ash.Query.sort(finished_at: :asc)
+    |> Ash.Query.load(answers: [], quiz_version: [questions: [:options]])
+    |> Ash.read!(authorize?: false)
+  end
+
   @doc "Tentativas do usuário logado (aba \"Quizzes respondidos\")."
   def list_answered(%{id: user_id}) do
     Attempt

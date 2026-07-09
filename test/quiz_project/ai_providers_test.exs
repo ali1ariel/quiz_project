@@ -63,6 +63,34 @@ defmodule QuizProject.AIProvidersTest do
     assert {:error, :missing_api_key} = OpenAI.generate_tags("Enunciado")
   end
 
+  test "OpenAI: avalia progressão do participante" do
+    Req.Test.stub(QuizProject.AIProvidersTest, fn conn ->
+      Req.Test.json(conn, %{
+        "choices" => [
+          %{
+            "message" => %{
+              "content" =>
+                ~s({"evaluation": "Você dominou as questões 1 e 2; a questão 3 segue incorreta."})
+            }
+          }
+        ]
+      })
+    end)
+
+    assert {:ok, "Você dominou as questões 1 e 2; a questão 3 segue incorreta."} =
+             OpenAI.evaluate_progression("Quiz: Teste — versão 1\nNotas: 50%, 100%")
+  end
+
+  test "OpenAI: avaliação sem campo evaluation vira erro" do
+    Req.Test.stub(QuizProject.AIProvidersTest, fn conn ->
+      Req.Test.json(conn, %{
+        "choices" => [%{"message" => %{"content" => ~s({"resultado": "ok"})}}]
+      })
+    end)
+
+    assert {:error, {:unexpected_response, _}} = OpenAI.evaluate_progression("resumo")
+  end
+
   test "Gemini: gera tags a partir da resposta da API" do
     Req.Test.stub(QuizProject.AIProvidersTest, fn conn ->
       Req.Test.json(conn, %{

@@ -29,6 +29,13 @@ defmodule QuizProject.AI.OpenAI do
     end
   end
 
+  @impl true
+  def evaluate_progression(summary) do
+    with {:ok, body} <- chat(Prompts.progression_system(), Prompts.progression_user(summary)) do
+      parse_evaluation(body)
+    end
+  end
+
   def parse_tags(%{"tags" => tags}) when is_list(tags) do
     {:ok, tags |> Enum.filter(&is_binary/1) |> Enum.take(4)}
   end
@@ -46,6 +53,12 @@ defmodule QuizProject.AI.OpenAI do
   end
 
   def parse_reference(other), do: {:error, {:unexpected_response, other}}
+
+  def parse_evaluation(%{"evaluation" => evaluation}) when is_binary(evaluation) do
+    {:ok, evaluation}
+  end
+
+  def parse_evaluation(other), do: {:error, {:unexpected_response, other}}
 
   defp chat(system, user) do
     api_key = Application.get_env(:quiz_project, :openai_api_key)
@@ -68,7 +81,7 @@ defmodule QuizProject.AI.OpenAI do
                 %{role: "user", content: user}
               ]
             },
-            receive_timeout: 30_000
+            receive_timeout: 60_000
           ] ++ Application.get_env(:quiz_project, :ai_req_options, [])
         )
 

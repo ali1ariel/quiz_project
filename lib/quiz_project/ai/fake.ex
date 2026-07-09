@@ -63,6 +63,17 @@ defmodule QuizProject.AI.Fake do
   end
 
   @impl true
+  def evaluate_progression(summary) do
+    answers = summary |> String.split(~r/\dª resposta/) |> length() |> Kernel.-(1)
+
+    {:ok,
+     "Foram comparadas #{answers} respostas suas para a mesma questão. " <>
+       "Confira o feedback de cada correção para ver quais lacunas apontadas " <>
+       "você já fechou e quais persistem na resposta mais recente. " <>
+       "(avaliação heurística local, sem IA externa)"}
+  end
+
+  @impl true
   def generate_reference(statement) do
     {:ok,
      "Resposta de referência gerada automaticamente a partir do enunciado: " <>

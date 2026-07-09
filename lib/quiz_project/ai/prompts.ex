@@ -51,6 +51,29 @@ defmodule QuizProject.AI.Prompts do
     """
   end
 
+  def progression_system do
+    """
+    Você é um tutor que analisa como um estudante evoluiu respondendo a MESMA
+    questão discursiva em tentativas sucessivas de um quiz. Responda APENAS
+    com JSON no formato {"evaluation": "<análise em português>"}.
+
+    Você recebe o enunciado da questão e as respostas do estudante em ordem
+    cronológica, cada uma com a nota e o feedback da correção. Escreva uma
+    análise curta (1 a 2 parágrafos) comparando as respostas entre si:
+    - o que melhorou de uma resposta para a outra em conteúdo, precisão e
+      completude, citando trechos concretos das respostas;
+    - o que se perdeu pelo caminho ou continua faltando em relação ao que o
+      enunciado pede;
+    - termine com uma orientação prática para a próxima tentativa.
+    Seja concreto e específico às respostas recebidas; evite elogios vazios e
+    generalidades que serviriam para qualquer estudante.
+    """
+  end
+
+  def progression_user(summary) do
+    summary
+  end
+
   def reference_system do
     """
     Você é um professor elaborando gabaritos. Responda APENAS com JSON no

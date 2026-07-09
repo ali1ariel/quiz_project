@@ -98,6 +98,7 @@ defmodule QuizProjectWeb.Router do
       live "/configuracoes", SettingsLive
       live "/quiz/:version_id/editar", QuizEditorLive
       live "/quiz/:quiz_id/gerenciar", QuizManageLive
+      live "/quiz/:quiz_id/evolucao", QuizEvolutionLive
     end
   end
 
