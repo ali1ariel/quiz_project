@@ -39,6 +39,10 @@ defmodule QuizProjectWeb.Layouts do
     default: nil,
     doc: "início da tentativa em andamento; quando presente, exibe o cronômetro na navbar"
 
+  attr :notifications, :list,
+    default: [],
+    doc: "notificações fixas de execuções em background (assign do hook :notify_attempts)"
+
   slot :inner_block, required: true
 
   def app(assigns) do
@@ -99,15 +103,15 @@ defmodule QuizProjectWeb.Layouts do
         <% end %>
 
         <.link
-            id="desktop-nav-api-docs-link"
-            href={~p"/api/docs"}
-            target="_blank"
-            rel="noreferrer"
-            class="inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold opacity-65 transition hover:bg-base-200 hover:opacity-100"
-            title="Documentação da API"
-          >
-            Documentação da API <.icon name="hero-arrow-right" class="size-4" />
-          </.link>
+          id="desktop-nav-api-docs-link"
+          href={~p"/api/docs"}
+          target="_blank"
+          rel="noreferrer"
+          class="inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold opacity-65 transition hover:bg-base-200 hover:opacity-100"
+          title="Documentação da API"
+        >
+          Documentação da API <.icon name="hero-arrow-right" class="size-4" />
+        </.link>
       </nav>
 
       <%!-- cronômetro da tentativa (todas as larguras) --%>
@@ -276,6 +280,57 @@ defmodule QuizProjectWeb.Layouts do
     </main>
 
     <.flash_group flash={@flash} />
+    <.notification_stack notifications={@notifications} />
+    """
+  end
+
+  @doc """
+  Pilha fixa de notificações de execuções em background (canto inferior
+  direito). Persistem entre páginas e recargas até serem dispensadas ou
+  abertas; os eventos são tratados pelo hook `:notify_attempts`.
+  """
+  attr :notifications, :list, required: true
+
+  def notification_stack(assigns) do
+    ~H"""
+    <div
+      :if={@notifications != []}
+      id="notification-stack"
+      class="fixed bottom-4 right-4 z-50 flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-2"
+      aria-live="polite"
+      aria-label="Notificações"
+    >
+      <div
+        :for={notification <- @notifications}
+        id={"notification-#{notification.id}"}
+        class="rounded-2xl border border-base-300 bg-base-100 p-3 shadow-lg space-y-1"
+      >
+        <div class="flex items-start justify-between gap-2">
+          <p class="text-sm font-semibold flex items-center gap-1.5 min-w-0">
+            <.icon name="hero-bell-alert" class="size-4 shrink-0 text-primary" />
+            <span class="break-words">{notification.title}</span>
+          </p>
+          <button
+            id={"dismiss-notification-#{notification.id}"}
+            phx-click="dismiss_notification"
+            phx-value-id={notification.id}
+            class="btn btn-ghost btn-xs btn-circle shrink-0"
+            aria-label="Dispensar notificação"
+          >
+            <.icon name="hero-x-mark" class="size-4" />
+          </button>
+        </div>
+        <p :if={notification.body} class="text-xs opacity-70">{notification.body}</p>
+        <button
+          id={"open-notification-#{notification.id}"}
+          phx-click="open_notification"
+          phx-value-id={notification.id}
+          class="text-sm font-semibold text-primary underline decoration-primary/35 underline-offset-2 hover:decoration-primary"
+        >
+          Clique aqui para ver o resultado
+        </button>
+      </div>
+    </div>
     """
   end
 

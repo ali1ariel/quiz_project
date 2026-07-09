@@ -11,7 +11,7 @@ defmodule QuizProjectWeb.QuizManageLive do
 
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_user={@current_user} wide>
+    <Layouts.app flash={@flash} current_user={@current_user} notifications={@notifications} wide>
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 class="text-2xl font-bold">{@published.name}</h1>
@@ -210,6 +210,9 @@ defmodule QuizProjectWeb.QuizManageLive do
 
     with :ok <- Quizzes.authorize_owner(quiz, socket.assigns.current_user),
          published when not is_nil(published) <- Quizzes.latest_published_version(quiz) do
+      # respostas novas (corrigidas em background) entram na lista ao vivo
+      if connected?(socket), do: QuizProject.Attempts.Notifier.subscribe_quiz(quiz.id)
+
       {:ok,
        socket
        |> assign(quiz: quiz, tab: :attempts, annul_question: nil)
@@ -230,6 +233,12 @@ defmodule QuizProjectWeb.QuizManageLive do
          |> put_flash(:error, "Você não tem acesso a esse quiz.")
          |> push_navigate(to: ~p"/painel")}
     end
+  end
+
+  # Uma resposta acabou de ser corrigida em background: atualiza a lista de
+  # tentativas na frente do criador, sem recarregar a página.
+  def handle_info({:attempt_finished, _info}, socket) do
+    {:noreply, load_attempts(socket)}
   end
 
   def handle_event("switch_tab", %{"tab" => tab}, socket) do

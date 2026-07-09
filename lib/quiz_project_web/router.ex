@@ -93,7 +93,10 @@ defmodule QuizProjectWeb.Router do
     pipe_through [:browser, :require_authenticated_user]
 
     live_session :authenticated,
-      on_mount: [{QuizProjectWeb.UserAuth, :ensure_authenticated}] do
+      on_mount: [
+        {QuizProjectWeb.UserAuth, :ensure_authenticated},
+        {QuizProjectWeb.UserAuth, :notify_attempts}
+      ] do
       live "/painel", DashboardLive
       live "/configuracoes", SettingsLive
       live "/quiz/:version_id/editar", QuizEditorLive

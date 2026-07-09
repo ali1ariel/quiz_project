@@ -108,6 +108,77 @@ defmodule QuizProjectWeb.UserAuth do
     end
   end
 
+  # Notificações fixas das execuções em background: carrega as não lidas do
+  # usuário, assina o tópico PubSub e mantém o assign `:notifications` que o
+  # layout renderiza como pilha fixa em todas as páginas autenticadas. Elas
+  # sobrevivem a navegação e recarga — só somem quando o usuário dispensa ou
+  # abre o link. Os eventos de dispensar/abrir são tratados aqui (`:halt`);
+  # a mensagem PubSub segue com `:cont` para cada LiveView também reagir
+  # (ex.: o painel recarrega a lista ao vivo).
+  def on_mount(:notify_attempts, _params, _session, socket) do
+    socket =
+      if socket.assigns[:current_user] do
+        user_id = socket.assigns.current_user.id
+
+        if Phoenix.LiveView.connected?(socket) do
+          QuizProject.Attempts.Notifier.subscribe_user(user_id)
+        end
+
+        socket
+        |> Phoenix.Component.assign(
+          :notifications,
+          QuizProject.Notifications.list_unread(user_id)
+        )
+        |> Phoenix.LiveView.attach_hook(
+          :attempt_notifications,
+          :handle_info,
+          &handle_attempt_notification/2
+        )
+        |> Phoenix.LiveView.attach_hook(
+          :notification_events,
+          :handle_event,
+          &handle_notification_event/3
+        )
+      else
+        Phoenix.Component.assign(socket, :notifications, [])
+      end
+
+    {:cont, socket}
+  end
+
+  defp handle_attempt_notification({:attempt_finished, _info}, socket) do
+    {:cont, reload_notifications(socket)}
+  end
+
+  defp handle_attempt_notification(_message, socket), do: {:cont, socket}
+
+  defp handle_notification_event("dismiss_notification", %{"id" => id}, socket) do
+    QuizProject.Notifications.mark_read(id, socket.assigns.current_user.id)
+    {:halt, reload_notifications(socket)}
+  end
+
+  # navega para o `path` guardado na notificação (nunca o do cliente) e a
+  # marca como lida
+  defp handle_notification_event("open_notification", %{"id" => id}, socket) do
+    case QuizProject.Notifications.mark_read(id, socket.assigns.current_user.id) do
+      {:ok, notification} ->
+        {:halt, Phoenix.LiveView.push_navigate(socket, to: notification.path)}
+
+      _ ->
+        {:halt, reload_notifications(socket)}
+    end
+  end
+
+  defp handle_notification_event(_event, _params, socket), do: {:cont, socket}
+
+  defp reload_notifications(socket) do
+    Phoenix.Component.assign(
+      socket,
+      :notifications,
+      QuizProject.Notifications.list_unread(socket.assigns.current_user.id)
+    )
+  end
+
   defp mount_current_user(socket, session) do
     socket
     |> Phoenix.Component.assign_new(:current_user, fn ->

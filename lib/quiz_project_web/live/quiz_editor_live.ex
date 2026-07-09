@@ -27,7 +27,7 @@ defmodule QuizProjectWeb.QuizEditorLive do
 
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_user={@current_user} wide>
+    <Layouts.app flash={@flash} current_user={@current_user} notifications={@notifications} wide>
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div class="flex items-center gap-3">
           <h1 class="text-2xl font-bold">

@@ -18,7 +18,13 @@ defmodule QuizProjectWeb.QuizEvolutionLive do
 
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_user={@current_user} active_nav={:quizzes} wide>
+    <Layouts.app
+      flash={@flash}
+      current_user={@current_user}
+      notifications={@notifications}
+      active_nav={:quizzes}
+      wide
+    >
       <div class="flex items-center gap-3 flex-wrap">
         <.link navigate={~p"/painel"} class="btn btn-sm btn-ghost rounded-full">
           <.icon name="hero-arrow-left" class="size-4" /> Voltar
@@ -254,10 +260,7 @@ defmodule QuizProjectWeb.QuizEvolutionLive do
   end
 
   def mount(%{"quiz_id" => quiz_id}, _session, socket) do
-    attempts =
-      socket.assigns.current_user
-      |> Attempts.list_finished_for_participant(quiz_id)
-      |> Enum.filter(&(&1.percent != nil and &1.finished_at != nil))
+    attempts = load_attempts(socket.assigns.current_user, quiz_id)
 
     if attempts == [] do
       {:ok,
@@ -265,19 +268,33 @@ defmodule QuizProjectWeb.QuizEvolutionLive do
        |> put_flash(:error, "Você ainda não finalizou nenhuma tentativa nesse quiz.")
        |> push_navigate(to: ~p"/painel")}
     else
-      quiz_name = quiz_name(attempts)
-
       {:ok,
-       assign(socket,
-         quiz_name: quiz_name,
-         total: length(attempts),
-         sections: build_sections(attempts),
+       socket
+       |> assign(
+         quiz_id: quiz_id,
          evaluating: MapSet.new(),
          evaluations: %{},
-         evaluation_errors: %{},
-         page_title: build_title(["Evolução", quiz_name])
-       )}
+         evaluation_errors: %{}
+       )
+       |> assign_attempts(attempts)}
     end
+  end
+
+  defp load_attempts(user, quiz_id) do
+    user
+    |> Attempts.list_finished_for_participant(quiz_id)
+    |> Enum.filter(&(&1.percent != nil and &1.finished_at != nil))
+  end
+
+  defp assign_attempts(socket, attempts) do
+    quiz_name = quiz_name(attempts)
+
+    assign(socket,
+      quiz_name: quiz_name,
+      total: length(attempts),
+      sections: build_sections(attempts),
+      page_title: build_title(["Evolução", quiz_name])
+    )
   end
 
   def handle_event("evaluate_question", %{"question-id" => question_id}, socket) do
@@ -287,6 +304,18 @@ defmodule QuizProjectWeb.QuizEvolutionLive do
      socket
      |> update(:evaluating, &MapSet.put(&1, question_id))
      |> update(:evaluation_errors, &Map.delete(&1, question_id))}
+  end
+
+  # Correção em background terminou (broadcast assinado pelo hook
+  # :notify_attempts): se for deste quiz, a nova tentativa entra nas
+  # estatísticas ao vivo, sem recarregar a página.
+  def handle_info({:attempt_finished, %{quiz_id: quiz_id}}, socket) do
+    if quiz_id == socket.assigns.quiz_id do
+      attempts = load_attempts(socket.assigns.current_user, quiz_id)
+      {:noreply, assign_attempts(socket, attempts)}
+    else
+      {:noreply, socket}
+    end
   end
 
   def handle_info({:evaluate_question, question_id}, socket) do

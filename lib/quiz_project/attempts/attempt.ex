@@ -41,6 +41,13 @@ defmodule QuizProject.Attempts.Attempt do
       accept [:user_id]
     end
 
+    # Entrega da tentativa: sai de :in_progress e entra na fila de correção
+    # em background. O participante não espera a correção — é notificado via
+    # PubSub quando ela termina (ver QuizProject.Attempts.Notifier).
+    update :start_processing do
+      change set_attribute(:status, :processing)
+    end
+
     update :finish do
       accept [:score, :max_score, :percent]
       require_atomic? false
@@ -66,7 +73,7 @@ defmodule QuizProject.Attempts.Attempt do
     attribute :participant_token, :string
 
     attribute :status, :atom do
-      constraints one_of: [:in_progress, :finished]
+      constraints one_of: [:in_progress, :processing, :finished]
       allow_nil? false
       default :in_progress
     end

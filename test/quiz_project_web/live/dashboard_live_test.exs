@@ -328,6 +328,99 @@ defmodule QuizProjectWeb.DashboardLiveTest do
     refute has_element?(view, "#evaluate-question-#{question.id}")
   end
 
+  test "painel notifica e atualiza ao vivo quando a correção termina", %{conn: conn, user: user} do
+    participant = %{user: user, token: "token-notificacao"}
+
+    {:ok, version} = Quizzes.create_draft_quiz(user)
+    {:ok, version} = Quizzes.update_draft(version, %{name: "Quiz notificado"}, user)
+
+    {:ok, _} =
+      Quizzes.upsert_question(
+        version,
+        %{statement: "Q1?", type: :true_false, true_false_answer: true},
+        [],
+        user
+      )
+
+    {:ok, published} = Quizzes.publish(Quizzes.get_version!(version.id), user)
+    v1 = Quizzes.get_version_full!(published.id)
+
+    {:ok, attempt} = Attempts.start_attempt(v1, participant, "Eu mesmo")
+    question = hd(attempt.quiz_version.questions)
+    answer = Enum.find(attempt.answers, &(&1.question_id == question.id))
+    {:ok, _} = Attempts.save_answer(attempt, answer, question, %{"value" => true})
+
+    # tentativa entregue, correção ainda na fila
+    attempt
+    |> Ash.Changeset.for_update(:start_processing, %{}, authorize?: false)
+    |> Ash.update!()
+
+    {:ok, view, _html} = live(conn, ~p"/painel")
+    view |> element("#tab-answered") |> render_click()
+
+    # aparece como "corrigindo…" com link para acompanhar
+    assert render(view) =~ "corrigindo…"
+    assert render(view) =~ "Acompanhar correção"
+
+    # correção termina em background → notificação fixa + lista ao vivo
+    {:ok, finished} = Attempts.process_grading(attempt.id)
+
+    updated = render(view)
+    assert has_element?(view, "#notification-stack")
+    assert updated =~ "Correção concluída"
+    assert updated =~ "Quiz notificado"
+    assert updated =~ "Clique aqui para ver o resultado"
+    assert updated =~ "100%"
+    refute updated =~ "corrigindo…"
+
+    notification = user.id |> QuizProject.Notifications.list_unread() |> hd()
+
+    # a notificação persiste ao navegar/remontar: aparece já no mount
+    {:ok, view2, html2} = live(conn, ~p"/configuracoes")
+    assert html2 =~ "Correção concluída"
+    assert has_element?(view2, "#notification-#{notification.id}")
+
+    # abrir leva ao resultado e marca como lida
+    view2 |> element("#open-notification-#{notification.id}") |> render_click()
+    assert_redirect(view2, "/tentativa/#{finished.id}/resultado")
+    assert QuizProject.Notifications.list_unread(user.id) == []
+
+    # dispensada/lida não volta mais
+    {:ok, _view3, html3} = live(conn, ~p"/painel")
+    refute html3 =~ "Correção concluída"
+  end
+
+  test "dispensar notificação a marca como lida sem navegar", %{conn: conn, user: user} do
+    participant = %{user: user, token: "token-dispensa"}
+
+    {:ok, version} = Quizzes.create_draft_quiz(user)
+    {:ok, version} = Quizzes.update_draft(version, %{name: "Quiz dispensado"}, user)
+
+    {:ok, _} =
+      Quizzes.upsert_question(
+        version,
+        %{statement: "Q1?", type: :true_false, true_false_answer: true},
+        [],
+        user
+      )
+
+    {:ok, published} = Quizzes.publish(Quizzes.get_version!(version.id), user)
+    v1 = Quizzes.get_version_full!(published.id)
+
+    {:ok, attempt} = Attempts.start_attempt(v1, participant, "Eu mesmo")
+    {:ok, _} = Attempts.submit(attempt, force: true)
+
+    [notification] = QuizProject.Notifications.list_unread(user.id)
+
+    {:ok, view, _html} = live(conn, ~p"/painel")
+    assert has_element?(view, "#notification-#{notification.id}")
+
+    view |> element("#dismiss-notification-#{notification.id}") |> render_click()
+
+    refute has_element?(view, "#notification-stack")
+    assert QuizProject.Notifications.list_unread(user.id) == []
+  end
+
   test "página de evolução sem tentativas redireciona ao painel", %{conn: conn, user: user} do
     {:ok, version} = Quizzes.create_draft_quiz(user)
 

@@ -13,7 +13,9 @@ defmodule QuizProject.Attempts do
 
   require Ash.Query
 
-  alias QuizProject.Attempts.{Answer, Attempt, Grader}
+  alias QuizProject.Attempts.{Answer, Attempt, Grader, Notifier}
+  alias QuizProject.Jobs
+  alias QuizProject.Notifications
   alias QuizProject.Quizzes
   alias QuizProject.Quizzes.{Compatibility, Scoring, TagOrdering}
 
@@ -360,6 +362,74 @@ defmodule QuizProject.Attempts do
   nunca mais pode ser editada.
   """
   def finalize(attempt, opts \\ []) do
+    with {:ok, prepared} <- prepare_submission(attempt, opts) do
+      grade_and_finish(prepared)
+    end
+  end
+
+  @doc """
+  Entrega a tentativa sem bloquear o participante: valida as pendências como
+  `finalize/2`, marca a tentativa como `:processing` e agenda a correção
+  (incluindo a avaliação por IA das discursivas) em background. Quando a
+  correção termina, `QuizProject.Attempts.Notifier` publica o resultado via
+  PubSub — as LiveViews interessadas se atualizam em tempo real.
+
+  Retorna `{:ok, attempt}` já com status `:processing`.
+  """
+  def submit(attempt, opts \\ []) do
+    with {:ok, prepared} <- prepare_submission(attempt, opts) do
+      processing =
+        prepared
+        |> Ash.Changeset.for_update(:start_processing, %{}, authorize?: false)
+        |> Ash.update!()
+
+      :ok = Jobs.run(fn -> process_grading(processing.id) end)
+
+      {:ok, processing}
+    end
+  end
+
+  @doc """
+  Corrige uma tentativa em `:processing` e publica o resultado. É o trabalho
+  agendado por `submit/2`; roda fora do processo que atende o participante.
+  Idempotente: tentativa que não está mais em processamento é retornada
+  como está, sem re-corrigir.
+  """
+  def process_grading(attempt_id) do
+    attempt = get_attempt_full!(attempt_id)
+
+    if attempt.status == :processing do
+      with {:ok, finished} <- grade_and_finish(attempt) do
+        # registro durável (usuário logado) + aviso em tempo real via PubSub
+        if finished.user_id, do: Notifications.notify_attempt_finished(finished)
+        Notifier.broadcast_finished(finished)
+        {:ok, finished}
+      end
+    else
+      {:ok, attempt}
+    end
+  end
+
+  @doc """
+  Rede de segurança da correção em background: se o job morreu e a tentativa
+  ficou presa em `:processing` (sem atualização há mais de 2 minutos),
+  reenfileira a correção. Chamado quando alguém abre a página de resultado
+  de uma tentativa em processamento.
+  """
+  def requeue_stale_grading(%Attempt{status: :processing} = attempt) do
+    if DateTime.diff(DateTime.utc_now(), attempt.updated_at, :second) > 120 do
+      Jobs.run(fn -> process_grading(attempt.id) end)
+    else
+      :ok
+    end
+  end
+
+  def requeue_stale_grading(_attempt), do: :ok
+
+  # Validação e preparo comuns à entrega síncrona (`finalize/2`) e à
+  # assíncrona (`submit/2`): sem `force: true`, pendências interrompem;
+  # com força, viram "não sei".
+  defp prepare_submission(attempt, opts) do
     force? = Keyword.get(opts, :force, false)
 
     with :ok <- ensure_in_progress(attempt) do
@@ -379,7 +449,7 @@ defmodule QuizProject.Attempts do
             |> Ash.update!()
           end)
 
-          grade_and_finish(get_attempt_full!(attempt.id))
+          {:ok, get_attempt_full!(attempt.id)}
       end
     end
   end

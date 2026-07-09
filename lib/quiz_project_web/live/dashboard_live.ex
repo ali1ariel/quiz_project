@@ -8,7 +8,13 @@ defmodule QuizProjectWeb.DashboardLive do
 
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_user={@current_user} active_nav={:quizzes} wide>
+    <Layouts.app
+      flash={@flash}
+      current_user={@current_user}
+      notifications={@notifications}
+      active_nav={:quizzes}
+      wide
+    >
       <div class="flex flex-wrap items-center justify-between gap-3">
         <h1 class="text-2xl font-bold">Meus quizzes</h1>
         <div class="flex gap-2">
@@ -202,6 +208,12 @@ defmodule QuizProjectWeb.DashboardLive do
                   >
                     em andamento
                   </span>
+                  <span
+                    :if={attempt.status == :processing}
+                    class="badge badge-sm badge-info rounded-full inline-flex items-center gap-1"
+                  >
+                    <span class="loading loading-spinner loading-xs"></span> corrigindo…
+                  </span>
                   <span :if={attempt_date(attempt)} class="text-xs opacity-70">
                     em {attempt_date(attempt)}
                   </span>
@@ -218,6 +230,13 @@ defmodule QuizProjectWeb.DashboardLive do
                   class="btn btn-sm btn-outline rounded-full"
                 >
                   Ver resultado
+                </.link>
+                <.link
+                  :if={attempt.status == :processing}
+                  navigate={~p"/tentativa/#{attempt.id}/resultado"}
+                  class="btn btn-sm btn-outline rounded-full"
+                >
+                  Acompanhar correção
                 </.link>
                 <.link
                   :if={attempt.status == :in_progress}
@@ -477,6 +496,13 @@ defmodule QuizProjectWeb.DashboardLive do
       nil -> nil
       datetime -> Calendar.strftime(datetime, "%d/%m/%Y")
     end
+  end
+
+  # Correção em background terminou (broadcast do Notifier, assinado pelo
+  # hook :notify_attempts): recarrega as listas ao vivo — a tentativa sai de
+  # "corrigindo…" para a nota sem o usuário recarregar a página.
+  def handle_info({:attempt_finished, _info}, socket) do
+    {:noreply, load_lists(socket)}
   end
 
   def handle_event("switch_tab", %{"tab" => tab}, socket) do

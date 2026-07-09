@@ -10,8 +10,32 @@ defmodule QuizProjectWeb.ResultLive do
   use QuizProjectWeb, :live_view
 
   alias QuizProject.Attempts
+  alias QuizProject.Attempts.Notifier
   alias QuizProject.Quizzes
   alias QuizProject.Quizzes.Scoring
+
+  # Tentativa entregue e ainda em correção (background): mostra o estado de
+  # processamento e espera o broadcast do Notifier — quando a correção
+  # termina, a página vira o resultado completo em tempo real, sem reload.
+  def render(%{processing: true} = assigns) do
+    ~H"""
+    <Layouts.app flash={@flash} current_user={@current_user} wide>
+      <div class="max-w-lg mx-auto text-center space-y-4 py-16" id="processing-result">
+        <span class="loading loading-spinner loading-lg text-primary"></span>
+        <h1 class="text-2xl font-bold">Corrigindo suas respostas…</h1>
+        <p class="text-sm opacity-70">
+          A correção de "{@version.name}" está em andamento — questões
+          discursivas passam pela avaliação da IA e podem levar alguns
+          segundos. Pode continuar navegando: esta página se atualiza sozinha
+          quando o resultado ficar pronto.
+        </p>
+        <p class="text-xs opacity-60">
+          Tentativa de "{@attempt.display_identity}"
+        </p>
+      </div>
+    </Layouts.app>
+    """
+  end
 
   def render(assigns) do
     ~H"""
@@ -534,47 +558,83 @@ defmodule QuizProjectWeb.ResultLive do
          |> put_flash(:error, "Você não tem acesso a essa tentativa.")
          |> push_navigate(to: ~p"/")}
 
-      attempt.status != :finished and role == :participant ->
+      attempt.status == :in_progress and role == :participant ->
         {:ok, push_navigate(socket, to: ~p"/tentativa/#{attempt.id}")}
 
-      attempt.status != :finished ->
+      attempt.status == :in_progress ->
         {:ok,
          socket
          |> put_flash(:error, "Essa tentativa ainda está em andamento.")
          |> push_navigate(to: ~p"/quiz/#{version.quiz_id}/gerenciar")}
 
-      true ->
-        questions_by_id = Map.new(version.questions, &{&1.id, &1})
-        answers = Map.new(attempt.answers, &{&1.question_id, &1})
-
-        ordered_questions =
-          attempt.question_order
-          |> Enum.map(&questions_by_id[&1])
-          |> Enum.reject(&is_nil/1)
-
-        points = Scoring.question_points(version, version.questions)
-        stats = Attempts.result_summary(attempt)
+      attempt.status == :processing ->
+        if connected?(socket) do
+          Notifier.subscribe_attempt(attempt.id)
+          # correção presa (job morreu)? reenfileira em background
+          Attempts.requeue_stale_grading(attempt)
+        end
 
         {:ok,
-         socket
-         |> assign(
+         assign(socket,
+           processing: true,
            attempt: attempt,
            version: version,
            role: role,
-           answers: answers,
-           ordered_questions: ordered_questions,
-           points: points,
-           stats: stats,
-           share_text: share_text(version, attempt, stats),
-           share_url: url(~p"/tentativa/#{attempt.id}/resultado"),
-           og_title: "Resultado — #{version.name}",
-           og_description: share_text(version, attempt, stats),
-           og_url: url(~p"/tentativa/#{attempt.id}/resultado"),
-           og_image: url(~p"/tentativa/#{attempt.id}/og.png"),
-           show_summary: false,
-           page_title: build_title(["Resultados", title_name(version.name)])
-         )
-         |> paginate(1)}
+           page_title: build_title(["Corrigindo…", title_name(version.name)])
+         )}
+
+      true ->
+        {:ok, assign_result(socket, attempt, role)}
+    end
+  end
+
+  # Monta (ou re-monta, quando a correção em background termina) todos os
+  # assigns do resultado completo.
+  defp assign_result(socket, attempt, role) do
+    version = attempt.quiz_version
+    questions_by_id = Map.new(version.questions, &{&1.id, &1})
+    answers = Map.new(attempt.answers, &{&1.question_id, &1})
+
+    ordered_questions =
+      attempt.question_order
+      |> Enum.map(&questions_by_id[&1])
+      |> Enum.reject(&is_nil/1)
+
+    points = Scoring.question_points(version, version.questions)
+    stats = Attempts.result_summary(attempt)
+
+    socket
+    |> assign(
+      processing: false,
+      attempt: attempt,
+      version: version,
+      role: role,
+      answers: answers,
+      ordered_questions: ordered_questions,
+      points: points,
+      stats: stats,
+      share_text: share_text(version, attempt, stats),
+      share_url: url(~p"/tentativa/#{attempt.id}/resultado"),
+      og_title: "Resultado — #{version.name}",
+      og_description: share_text(version, attempt, stats),
+      og_url: url(~p"/tentativa/#{attempt.id}/resultado"),
+      og_image: url(~p"/tentativa/#{attempt.id}/og.png"),
+      show_summary: false,
+      page_title: build_title(["Resultados", title_name(version.name)])
+    )
+    |> paginate(1)
+  end
+
+  def handle_info({:attempt_finished, %{attempt_id: attempt_id}}, socket) do
+    if socket.assigns[:processing] && socket.assigns.attempt.id == attempt_id do
+      attempt = Attempts.get_attempt_full!(attempt_id)
+
+      {:noreply,
+       socket
+       |> assign_result(attempt, socket.assigns.role)
+       |> put_flash(:info, "Correção concluída!")}
+    else
+      {:noreply, socket}
     end
   end
 

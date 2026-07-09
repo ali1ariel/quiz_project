@@ -223,6 +223,49 @@ defmodule QuizProjectWeb.AttemptFlowTest do
     assert result_html =~ "100%"
   end
 
+  test "resultado em processamento se atualiza ao vivo quando a correção termina", %{
+    version: version
+  } do
+    alias QuizProject.Attempts
+
+    token = "token-ao-vivo"
+    conn = anonymous_session(build_conn(), token)
+
+    {:ok, attempt} = Attempts.start_attempt(version, %{user: nil, token: token}, "Fulana")
+
+    tf = Enum.find(attempt.quiz_version.questions, &(&1.type == :true_false))
+    answer = Enum.find(attempt.answers, &(&1.question_id == tf.id))
+    {:ok, _} = Attempts.save_answer(attempt, answer, tf, %{"value" => true})
+
+    # simula a tentativa entregue com a correção ainda na fila: marca
+    # :processing sem rodar o job
+    attempt
+    |> Ash.Changeset.for_update(:start_processing, %{}, authorize?: false)
+    |> Ash.update!()
+
+    {:ok, view, html} = live(conn, ~p"/tentativa/#{attempt.id}/resultado")
+
+    assert has_element?(view, "#processing-result")
+    assert html =~ "Corrigindo suas respostas"
+    refute has_element?(view, "#final-score")
+
+    # a correção termina em background → broadcast → a página vira o
+    # resultado completo sem navegação nem reload
+    {:ok, _} = Attempts.process_grading(attempt.id)
+
+    updated = render(view)
+    assert has_element?(view, "#final-score")
+    refute has_element?(view, "#processing-result")
+    assert updated =~ "Correção concluída!"
+  end
+
+  test "entrega não bloqueia: modal explica a correção em segundo plano", %{quiz: quiz} do
+    {_conn, view, _path} = start_anonymous_attempt(quiz)
+
+    view |> element("#confirm-attempt") |> render_click()
+    assert render(view) =~ "correção acontece em segundo plano"
+  end
+
   test "tentativa em andamento aparece para continuar na página pública", %{quiz: quiz} do
     {conn, _view, path} = start_anonymous_attempt(quiz)
 

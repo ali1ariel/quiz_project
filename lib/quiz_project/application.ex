@@ -12,7 +12,9 @@ defmodule QuizProject.Application do
         QuizProjectWeb.Telemetry,
         QuizProject.Repo,
         {DNSCluster, query: Application.get_env(:quiz_project, :dns_cluster_query) || :ignore},
-        {Phoenix.PubSub, name: QuizProject.PubSub}
+        {Phoenix.PubSub, name: QuizProject.PubSub},
+        # Trabalho em background (correção de tentativas etc.) — ver QuizProject.Jobs
+        {Task.Supervisor, name: QuizProject.TaskSupervisor}
       ] ++
         chromic_pdf_child() ++
         [

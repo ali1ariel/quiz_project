@@ -10,7 +10,13 @@ defmodule QuizProjectWeb.SettingsLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_user={@current_user} active_nav={:account} wide>
+    <Layouts.app
+      flash={@flash}
+      current_user={@current_user}
+      notifications={@notifications}
+      active_nav={:account}
+      wide
+    >
       <div id="settings-page" class="grid gap-8 lg:grid-cols-[15rem_minmax(0,1fr)]">
         <aside class="space-y-5">
           <div>

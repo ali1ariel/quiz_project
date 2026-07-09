@@ -53,7 +53,12 @@ config :spark,
 
 config :quiz_project,
   ecto_repos: [QuizProject.Repo],
-  ash_domains: [QuizProject.Accounts, QuizProject.Quizzes, QuizProject.Attempts],
+  ash_domains: [
+    QuizProject.Accounts,
+    QuizProject.Quizzes,
+    QuizProject.Attempts,
+    QuizProject.Notifications
+  ],
   generators: [timestamp_type: :utc_datetime]
 
 # Configure the endpoint

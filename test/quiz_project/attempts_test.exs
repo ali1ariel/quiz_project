@@ -310,6 +310,49 @@ defmodule QuizProject.AttemptsTest do
       assert {:error, :finished} = Attempts.finalize(finished, force: true)
     end
 
+    test "submit corrige em background e notifica via PubSub", %{attempt: attempt} do
+      tf = question_by_type(attempt, :true_false)
+      {:ok, _} = Attempts.save_answer(attempt, answer_for(attempt, tf), tf, %{"value" => true})
+
+      :ok = QuizProject.Attempts.Notifier.subscribe_attempt(attempt.id)
+      :ok = QuizProject.Attempts.Notifier.subscribe_quiz(attempt.quiz_version.quiz_id)
+
+      # o retorno é imediato, já em :processing — a correção não bloqueia
+      {:ok, processing} = Attempts.submit(attempt, force: true)
+      assert processing.status == :processing
+
+      # nos testes o job roda inline, então a notificação já chegou:
+      # uma no tópico da tentativa e uma no do quiz (criador acompanhando)
+      attempt_id = attempt.id
+      assert_receive {:attempt_finished, %{attempt_id: ^attempt_id, percent: percent}}
+      assert_receive {:attempt_finished, %{attempt_id: ^attempt_id}}
+      assert Decimal.equal?(percent, Decimal.new(25))
+
+      reloaded = Attempts.get_attempt_full!(attempt.id)
+      assert reloaded.status == :finished
+      assert Decimal.equal?(reloaded.score, Decimal.new(25))
+    end
+
+    test "submit sem force exige resolver pendências", %{attempt: attempt} do
+      assert {:error, {:pending, %{unanswered: 4}}} = Attempts.submit(attempt)
+      assert Attempts.get_attempt_full!(attempt.id).status == :in_progress
+    end
+
+    test "tentativa em processamento não é editável nem reentregável", %{attempt: attempt} do
+      tf = question_by_type(attempt, :true_false)
+      {:ok, _} = Attempts.save_answer(attempt, answer_for(attempt, tf), tf, %{"value" => true})
+
+      processing =
+        attempt
+        |> Ash.Changeset.for_update(:start_processing, %{}, authorize?: false)
+        |> Ash.update!()
+
+      assert {:error, :finished} =
+               Attempts.save_answer(processing, answer_for(attempt, tf), tf, %{"value" => false})
+
+      assert {:error, :finished} = Attempts.submit(processing, force: true)
+    end
+
     test "corrige objetivas: tudo certo dá nota máxima", %{attempt: attempt} do
       tf = question_by_type(attempt, :true_false)
       single = question_by_type(attempt, :single)
