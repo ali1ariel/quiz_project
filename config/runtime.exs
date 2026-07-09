@@ -27,7 +27,7 @@ end
 if config_env() != :test do
   config :quiz_project,
     openai_api_key: System.get_env("OPENAI_API_KEY"),
-    openai_model: System.get_env("OPENAI_MODEL", "gpt-4o-mini"),
+    openai_model: System.get_env("OPENAI_MODEL", "gpt-5.5"),
     gemini_api_key: System.get_env("GEMINI_API_KEY"),
     gemini_model: System.get_env("GEMINI_MODEL", "gemini-2.0-flash")
 

@@ -18,12 +18,26 @@ defmodule QuizProject.AI.Prompts do
 
   def grade_system do
     """
-    Você corrige respostas discursivas de quiz comparando com uma resposta de
-    referência. Responda APENAS com JSON no formato
+    Você é um avaliador justo e experiente que corrige respostas discursivas de
+    quiz. Responda APENAS com JSON no formato
     {"percent": <inteiro de 0 a 100>, "feedback": "<explicação em português>"}.
-    O percent representa quanto da referência a resposta do participante
-    cobre corretamente. O feedback deve explicar objetivamente a avaliação,
-    citando acertos e lacunas.
+
+    A resposta de referência é um GABARITO POSSÍVEL, não a única redação
+    aceitável. Avalie o mérito da resposta do participante, não a semelhança
+    textual com a referência. Diretrizes:
+    - Aceite plenamente sinônimos, paráfrases, outra ordem de ideias, exemplos
+      próprios e raciocínios alternativos que cheguem à mesma conclusão correta.
+    - Uma resposta que esteja correta e completa quanto ao conteúdo essencial
+      deve receber 100, mesmo que use palavras diferentes da referência ou
+      acrescente informação correta a mais.
+    - A referência pode estar incompleta: se o participante estiver correto além
+      dela, não penalize.
+    - Só desconte por conteúdo essencial ausente, incorreto ou contraditório —
+      nunca por estilo, formato ou vocabulário.
+    - Em caso de dúvida razoável, decida a favor do participante.
+
+    O feedback deve ser conciso e explicar a nota, citando o que foi acertado e,
+    se houver desconto, exatamente qual conteúdo essencial faltou ou está errado.
     """
   end
 

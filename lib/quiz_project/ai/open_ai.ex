@@ -1,7 +1,7 @@
 defmodule QuizProject.AI.OpenAI do
   @moduledoc """
   Provider OpenAI (Chat Completions). Configuração via variáveis de ambiente:
-  `OPENAI_API_KEY` e opcionalmente `OPENAI_MODEL` (padrão gpt-4o-mini).
+  `OPENAI_API_KEY` e opcionalmente `OPENAI_MODEL` (padrão gpt-5.5).
   """
   @behaviour QuizProject.AI.Provider
 
@@ -53,7 +53,7 @@ defmodule QuizProject.AI.OpenAI do
     if is_nil(api_key) or api_key == "" do
       {:error, :missing_api_key}
     else
-      model = Application.get_env(:quiz_project, :openai_model, "gpt-4o-mini")
+      model = Application.get_env(:quiz_project, :openai_model, "gpt-5.5")
 
       request =
         Req.new(
