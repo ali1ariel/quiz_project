@@ -559,13 +559,13 @@ defmodule QuizProjectWeb.ResultLive do
          |> push_navigate(to: ~p"/")}
 
       attempt.status == :in_progress and role == :participant ->
-        {:ok, push_navigate(socket, to: ~p"/tentativa/#{attempt.id}")}
+        {:ok, push_navigate(socket, to: ~p"/attempt/#{attempt.id}")}
 
       attempt.status == :in_progress ->
         {:ok,
          socket
          |> put_flash(:error, "Essa tentativa ainda está em andamento.")
-         |> push_navigate(to: ~p"/quiz/#{version.quiz_id}/gerenciar")}
+         |> push_navigate(to: ~p"/quiz/#{version.quiz_id}/manage")}
 
       attempt.status == :processing ->
         if connected?(socket) do
@@ -614,11 +614,11 @@ defmodule QuizProjectWeb.ResultLive do
       points: points,
       stats: stats,
       share_text: share_text(version, attempt, stats),
-      share_url: url(~p"/tentativa/#{attempt.id}/resultado"),
+      share_url: url(~p"/attempt/#{attempt.id}/result"),
       og_title: "Resultado — #{version.name}",
       og_description: share_text(version, attempt, stats),
-      og_url: url(~p"/tentativa/#{attempt.id}/resultado"),
-      og_image: url(~p"/tentativa/#{attempt.id}/og.png"),
+      og_url: url(~p"/attempt/#{attempt.id}/result"),
+      og_image: url(~p"/attempt/#{attempt.id}/og.png"),
       show_summary: false,
       page_title: build_title(["Resultados", title_name(version.name)])
     )

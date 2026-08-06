@@ -349,7 +349,7 @@ defmodule QuizProjectWeb.AttemptLive do
 
     with :ok <- Attempts.authorize_participant(attempt, participant) do
       if attempt.status == :finished do
-        {:ok, push_navigate(socket, to: ~p"/tentativa/#{attempt.id}/resultado")}
+        {:ok, push_navigate(socket, to: ~p"/attempt/#{attempt.id}/result")}
       else
         {:ok,
          socket
@@ -484,7 +484,7 @@ defmodule QuizProjectWeb.AttemptLive do
     # via PubSub quando a correção termina.
     case Attempts.submit(socket.assigns.attempt, force: true) do
       {:ok, processing} ->
-        {:noreply, push_navigate(socket, to: ~p"/tentativa/#{processing.id}/resultado")}
+        {:noreply, push_navigate(socket, to: ~p"/attempt/#{processing.id}/result")}
 
       {:error, _} ->
         {:noreply, put_flash(socket, :error, "Não foi possível finalizar.")}
@@ -526,7 +526,7 @@ defmodule QuizProjectWeb.AttemptLive do
 
       {:error, :finished} ->
         {:noreply,
-         push_navigate(socket, to: ~p"/tentativa/#{socket.assigns.attempt.id}/resultado")}
+         push_navigate(socket, to: ~p"/attempt/#{socket.assigns.attempt.id}/result")}
 
       {:error, _} ->
         {:noreply, socket}

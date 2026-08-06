@@ -6,16 +6,16 @@ defmodule QuizProjectWeb.AuthControllerTest do
   test "registra, loga e desloga", %{conn: conn} do
     # registro cria a conta e redireciona para o painel
     conn =
-      post(conn, ~p"/criar-conta", %{
+      post(conn, ~p"/register", %{
         "user" => %{"email" => "novo@teste.com", "password" => "senha12345"}
       })
 
-    assert redirected_to(conn) == ~p"/painel"
+    assert redirected_to(conn) == ~p"/dashboard"
     assert get_session(conn, :user_id)
     assert get_session(conn, :participant_token)
 
     # logout limpa a sessão
-    conn = delete(recycle(conn), ~p"/sair")
+    conn = delete(recycle(conn), ~p"/logout")
     assert redirected_to(conn) == ~p"/"
     refute get_session(conn, :user_id)
   end
@@ -27,11 +27,11 @@ defmodule QuizProjectWeb.AuthControllerTest do
       )
 
     conn =
-      post(conn, ~p"/entrar", %{
+      post(conn, ~p"/login", %{
         "user" => %{"email" => "login@teste.com", "password" => "senha12345"}
       })
 
-    assert redirected_to(conn) == ~p"/painel"
+    assert redirected_to(conn) == ~p"/dashboard"
     assert get_session(conn, :user_id)
   end
 
@@ -42,7 +42,7 @@ defmodule QuizProjectWeb.AuthControllerTest do
       )
 
     conn =
-      post(conn, ~p"/entrar", %{
+      post(conn, ~p"/login", %{
         "user" => %{"email" => "login@teste.com", "password" => "errada123"}
       })
 
@@ -51,8 +51,8 @@ defmodule QuizProjectWeb.AuthControllerTest do
   end
 
   test "rota autenticada exige login", %{conn: conn} do
-    conn = get(conn, ~p"/painel")
-    assert redirected_to(conn) == ~p"/entrar"
+    conn = get(conn, ~p"/dashboard")
+    assert redirected_to(conn) == ~p"/login"
   end
 
   test "toda visita ganha participant_token", %{conn: conn} do

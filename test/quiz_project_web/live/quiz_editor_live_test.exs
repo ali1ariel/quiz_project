@@ -13,7 +13,7 @@ defmodule QuizProjectWeb.QuizEditorLiveTest do
   end
 
   test "autosave atualiza os dados básicos", %{conn: conn, version: version} do
-    {:ok, view, _html} = live(conn, ~p"/quiz/#{version.id}/editar")
+    {:ok, view, _html} = live(conn, ~p"/quiz/#{version.id}/edit")
 
     view
     |> form("#quiz-form")
@@ -31,7 +31,7 @@ defmodule QuizProjectWeb.QuizEditorLiveTest do
   end
 
   test "adiciona pergunta verdadeiro/falso pelo modal", %{conn: conn, version: version} do
-    {:ok, view, _html} = live(conn, ~p"/quiz/#{version.id}/editar")
+    {:ok, view, _html} = live(conn, ~p"/quiz/#{version.id}/edit")
 
     view |> element("#add-question") |> render_click()
     assert has_element?(view, "#question-modal")
@@ -55,7 +55,7 @@ defmodule QuizProjectWeb.QuizEditorLiveTest do
   end
 
   test "publicar sem nome nem questões lista erros", %{conn: conn, version: version} do
-    {:ok, view, _html} = live(conn, ~p"/quiz/#{version.id}/editar")
+    {:ok, view, _html} = live(conn, ~p"/quiz/#{version.id}/edit")
 
     view |> element("#publish-quiz") |> render_click()
 
@@ -80,12 +80,12 @@ defmodule QuizProjectWeb.QuizEditorLiveTest do
         user
       )
 
-    {:ok, view, _html} = live(conn, ~p"/quiz/#{version.id}/editar")
+    {:ok, view, _html} = live(conn, ~p"/quiz/#{version.id}/edit")
 
     view |> element("#publish-quiz") |> render_click()
 
     {path, _flash} = assert_redirect(view)
-    assert path == "/quiz/#{version.quiz_id}/gerenciar"
+    assert path == "/quiz/#{version.quiz_id}/manage"
 
     assert Quizzes.get_version!(version.id).status == :published
   end
@@ -107,8 +107,8 @@ defmodule QuizProjectWeb.QuizEditorLiveTest do
 
     {:ok, _} = Quizzes.publish(Quizzes.get_version!(version.id), user)
 
-    assert {:error, {:live_redirect, %{to: to}}} = live(conn, ~p"/quiz/#{version.id}/editar")
-    assert to == "/quiz/#{version.quiz_id}/gerenciar"
+    assert {:error, {:live_redirect, %{to: to}}} = live(conn, ~p"/quiz/#{version.id}/edit")
+    assert to == "/quiz/#{version.quiz_id}/manage"
   end
 
   test "outro usuário não acessa o editor", %{version: version} do
@@ -119,7 +119,7 @@ defmodule QuizProjectWeb.QuizEditorLiveTest do
 
     conn = log_in_user(build_conn(), other)
 
-    assert {:error, {:live_redirect, %{to: "/painel"}}} =
-             live(conn, ~p"/quiz/#{version.id}/editar")
+    assert {:error, {:live_redirect, %{to: "/dashboard"}}} =
+             live(conn, ~p"/quiz/#{version.id}/edit")
   end
 end

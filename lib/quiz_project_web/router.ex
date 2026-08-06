@@ -27,14 +27,14 @@ defmodule QuizProjectWeb.Router do
 
     get "/", PageController, :home
     get "/api/docs", PageController, :api_docs
-    get "/tentativa/:id/og.png", OgController, :result
-    delete "/sair", AuthController, :logout
+    get "/attempt/:id/og.png", OgController, :result
+    delete "/logout", AuthController, :logout
 
     live_session :public,
       on_mount: [{QuizProjectWeb.UserAuth, :mount_current_user}] do
       live "/q/:slug", QuizPublicLive
-      live "/tentativa/:id", AttemptLive
-      live "/tentativa/:id/resultado", ResultLive
+      live "/attempt/:id", AttemptLive
+      live "/attempt/:id/result", ResultLive
     end
   end
 
@@ -83,10 +83,10 @@ defmodule QuizProjectWeb.Router do
   scope "/", QuizProjectWeb do
     pipe_through [:browser, :redirect_if_authenticated]
 
-    get "/entrar", AuthController, :login_form
-    post "/entrar", AuthController, :login
-    get "/criar-conta", AuthController, :register_form
-    post "/criar-conta", AuthController, :register
+    get "/login", AuthController, :login_form
+    post "/login", AuthController, :login
+    get "/register", AuthController, :register_form
+    post "/register", AuthController, :register
   end
 
   scope "/", QuizProjectWeb do
@@ -97,11 +97,11 @@ defmodule QuizProjectWeb.Router do
         {QuizProjectWeb.UserAuth, :ensure_authenticated},
         {QuizProjectWeb.UserAuth, :notify_attempts}
       ] do
-      live "/painel", DashboardLive
-      live "/configuracoes", SettingsLive
-      live "/quiz/:version_id/editar", QuizEditorLive
-      live "/quiz/:quiz_id/gerenciar", QuizManageLive
-      live "/quiz/:quiz_id/evolucao", QuizEvolutionLive
+      live "/dashboard", DashboardLive
+      live "/settings", SettingsLive
+      live "/quiz/:version_id/edit", QuizEditorLive
+      live "/quiz/:quiz_id/manage", QuizManageLive
+      live "/quiz/:quiz_id/evolution", QuizEvolutionLive
     end
   end
 

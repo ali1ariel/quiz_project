@@ -53,14 +53,14 @@ defmodule QuizProjectWeb.UserAuth do
       conn
       |> put_flash(:error, "Você precisa entrar para acessar essa página.")
       |> put_session(:user_return_to, current_path(conn))
-      |> redirect(to: ~p"/entrar")
+      |> redirect(to: ~p"/login")
       |> halt()
     end
   end
 
   def redirect_if_authenticated(conn, _opts) do
     if conn.assigns[:current_user] do
-      conn |> redirect(to: ~p"/painel") |> halt()
+      conn |> redirect(to: ~p"/dashboard") |> halt()
     else
       conn
     end
@@ -79,7 +79,7 @@ defmodule QuizProjectWeb.UserAuth do
     |> put_session(:user_id, user.id)
     |> put_session(:participant_token, participant_token || generate_participant_token())
     |> delete_session(:user_return_to)
-    |> redirect(to: return_to || ~p"/painel")
+    |> redirect(to: return_to || ~p"/dashboard")
   end
 
   def log_out_user(conn) do
@@ -104,7 +104,7 @@ defmodule QuizProjectWeb.UserAuth do
       {:halt,
        socket
        |> Phoenix.LiveView.put_flash(:error, "Você precisa entrar para acessar essa página.")
-       |> Phoenix.LiveView.redirect(to: ~p"/entrar")}
+       |> Phoenix.LiveView.redirect(to: ~p"/login")}
     end
   end
 

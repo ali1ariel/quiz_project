@@ -17,7 +17,7 @@ defmodule QuizProjectWeb.PageControllerTest do
     assert document |> LazyHTML.query("#usar-com-ia") |> Enum.any?()
 
     assert document
-           |> LazyHTML.query("#api-docs-open-token-settings[href='/configuracoes?tab=tokens']")
+           |> LazyHTML.query("#api-docs-open-token-settings[href='/settings?tab=tokens']")
            |> Enum.any?()
 
     assert document |> LazyHTML.query("#api-ai-prompt") |> Enum.any?()

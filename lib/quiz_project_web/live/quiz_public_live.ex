@@ -41,7 +41,7 @@ defmodule QuizProjectWeb.QuizPublicLive do
             <.icon name="hero-arrow-path" class="size-5" />
             <span>Você tem uma tentativa em andamento neste quiz.</span>
             <.link
-              navigate={~p"/tentativa/#{@in_progress.id}"}
+              navigate={~p"/attempt/#{@in_progress.id}"}
               class="btn btn-primary btn-sm rounded-full"
             >
               Continuar
@@ -94,7 +94,7 @@ defmodule QuizProjectWeb.QuizPublicLive do
 
             <p :if={!@current_user} class="text-xs opacity-70 text-center">
               Você está respondendo como participante anônimo.
-              <.link navigate={~p"/entrar"} class="link">Entre na sua conta</.link>
+              <.link navigate={~p"/login"} class="link">Entre na sua conta</.link>
               para poder continuar de outro dispositivo.
             </p>
           </form>
@@ -143,7 +143,7 @@ defmodule QuizProjectWeb.QuizPublicLive do
   def handle_event("start", %{"display_identity" => identity}, socket) do
     case Attempts.start_attempt(socket.assigns.version, participant(socket), identity) do
       {:ok, attempt} ->
-        {:noreply, push_navigate(socket, to: ~p"/tentativa/#{attempt.id}")}
+        {:noreply, push_navigate(socket, to: ~p"/attempt/#{attempt.id}")}
 
       {:error, %Ash.Error.Invalid{}} ->
         {:noreply, assign(socket, start_error: "Informe como prefere se identificar.")}

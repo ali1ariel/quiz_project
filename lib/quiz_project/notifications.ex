@@ -28,7 +28,7 @@ defmodule QuizProject.Notifications do
         body:
           "Você fez #{format_decimal(attempt.score)}/#{format_decimal(attempt.max_score)} pontos " <>
             "(#{format_decimal(attempt.percent)}%).",
-        path: "/tentativa/#{attempt.id}/resultado"
+        path: "/attempt/#{attempt.id}/result"
       },
       authorize?: false
     )

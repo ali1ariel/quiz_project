@@ -507,13 +507,13 @@ defmodule QuizProjectWeb.QuizEditorLive do
        )}
     else
       :published ->
-        {:ok, push_navigate(socket, to: ~p"/quiz/#{version.quiz_id}/gerenciar")}
+        {:ok, push_navigate(socket, to: ~p"/quiz/#{version.quiz_id}/manage")}
 
       {:error, _} ->
         {:ok,
          socket
          |> put_flash(:error, "Você não tem acesso a esse quiz.")
-         |> push_navigate(to: ~p"/painel")}
+         |> push_navigate(to: ~p"/dashboard")}
     end
   end
 
@@ -551,8 +551,8 @@ defmodule QuizProjectWeb.QuizEditorLive do
       {:ok, published} ->
         {:noreply,
          socket
-         |> put_flash(:info, "Quiz publicado! Compartilhe o link público.")
-         |> push_navigate(to: ~p"/quiz/#{published.quiz_id}/gerenciar")}
+         |> put_flash(:info, "Quiz publicado com sucesso!")
+         |> push_navigate(to: ~p"/quiz/#{published.quiz_id}/manage")}
 
       {:error, errors} when is_list(errors) ->
         {:noreply, assign(socket, publish_errors: errors)}
@@ -567,8 +567,8 @@ defmodule QuizProjectWeb.QuizEditorLive do
       {:ok, _} ->
         {:noreply,
          socket
-         |> put_flash(:info, "Rascunho descartado.")
-         |> push_navigate(to: ~p"/painel")}
+         |> put_flash(:info, "Rascunho excluído.")
+         |> push_navigate(to: ~p"/dashboard")}
 
       {:error, _} ->
         {:noreply, put_flash(socket, :error, "Não foi possível descartar o rascunho.")}

@@ -74,7 +74,7 @@ defmodule QuizProjectWeb.Layouts do
         <% else %>
           <.link
             id="desktop-nav-quizzes"
-            navigate={~p"/painel"}
+            navigate={~p"/dashboard"}
             class="inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold opacity-65 transition hover:bg-base-200 hover:opacity-100"
             title="Criar, editar e acompanhar seus quizzes"
           >
@@ -94,7 +94,7 @@ defmodule QuizProjectWeb.Layouts do
         <% else %>
           <.link
             id="desktop-nav-account"
-            navigate={~p"/configuracoes"}
+            navigate={~p"/settings"}
             class="inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold opacity-65 transition hover:bg-base-200 hover:opacity-100"
             title="Alterar perfil, senha e tokens de integração"
           >
@@ -173,18 +173,18 @@ defmodule QuizProjectWeb.Layouts do
           </span>
           <.link
             id="desktop-logout"
-            href={~p"/sair"}
+            href={~p"/logout"}
             method="delete"
             class="rounded-full border border-base-300 px-4 py-2 text-sm font-semibold transition hover:border-error/40 hover:bg-error/10 hover:text-error"
           >
             Sair
           </.link>
         <% else %>
-          <.link navigate={~p"/entrar"} class="rounded-full px-4 py-2 text-sm font-semibold">
+          <.link navigate={~p"/login"} class="rounded-full px-4 py-2 text-sm font-semibold">
             Entrar
           </.link>
           <.link
-            navigate={~p"/criar-conta"}
+            navigate={~p"/register"}
             class="rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-content"
           >
             Criar conta
@@ -203,7 +203,7 @@ defmodule QuizProjectWeb.Layouts do
             <%= if @current_user do %>
               <p class="text-xs opacity-70 truncate px-1">{@current_user.email}</p>
               <.link
-                navigate={~p"/painel"}
+                navigate={~p"/dashboard"}
                 class="flex items-center gap-3 rounded-2xl border border-base-300 px-3 py-2.5 transition hover:border-primary hover:bg-base-100"
               >
                 <span class="grid size-9 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
@@ -217,7 +217,7 @@ defmodule QuizProjectWeb.Layouts do
                 </span>
               </.link>
               <.link
-                navigate={~p"/configuracoes"}
+                navigate={~p"/settings"}
                 class="flex items-center gap-3 rounded-2xl border border-transparent px-3 py-2.5 transition hover:border-base-300 hover:bg-base-100"
               >
                 <span class="grid size-9 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
@@ -229,18 +229,18 @@ defmodule QuizProjectWeb.Layouts do
                 </span>
               </.link>
               <.link
-                href={~p"/sair"}
+                href={~p"/logout"}
                 method="delete"
                 class="btn btn-ghost btn-sm w-full rounded-full"
               >
                 Sair
               </.link>
             <% else %>
-              <.link navigate={~p"/entrar"} class="btn btn-outline btn-sm w-full rounded-full">
+              <.link navigate={~p"/login"} class="btn btn-outline btn-sm w-full rounded-full">
                 Entrar
               </.link>
               <.link
-                navigate={~p"/criar-conta"}
+                navigate={~p"/register"}
                 class="btn btn-primary btn-sm w-full rounded-full"
               >
                 Criar conta

@@ -9,11 +9,11 @@ defmodule QuizProjectWeb.SettingsLiveTest do
   setup :register_and_log_in_user
 
   test "exige login" do
-    assert {:error, {:redirect, %{to: "/entrar"}}} = live(build_conn(), ~p"/configuracoes")
+    assert {:error, {:redirect, %{to: "/login"}}} = live(build_conn(), ~p"/settings")
   end
 
   test "exibe as áreas principais", %{conn: conn} do
-    {:ok, view, html} = live(conn, ~p"/configuracoes")
+    {:ok, view, html} = live(conn, ~p"/settings")
 
     assert html =~ "Conta e API"
     assert has_element?(view, "#settings-page")
@@ -27,7 +27,7 @@ defmodule QuizProjectWeb.SettingsLiveTest do
   end
 
   test "atualiza o perfil", %{conn: conn, user: user} do
-    {:ok, view, _html} = live(conn, ~p"/configuracoes")
+    {:ok, view, _html} = live(conn, ~p"/settings")
 
     view
     |> form("#profile-form", %{
@@ -41,7 +41,7 @@ defmodule QuizProjectWeb.SettingsLiveTest do
   end
 
   test "troca a senha", %{conn: conn, user: user} do
-    {:ok, view, _html} = live(conn, ~p"/configuracoes")
+    {:ok, view, _html} = live(conn, ~p"/settings")
     view |> element("#settings-tab-security") |> render_click()
 
     assert has_element?(view, "#password-form")
@@ -61,7 +61,7 @@ defmodule QuizProjectWeb.SettingsLiveTest do
   end
 
   test "cria, mostra uma vez e revoga token", %{conn: conn, user: user} do
-    {:ok, view, _html} = live(conn, ~p"/configuracoes")
+    {:ok, view, _html} = live(conn, ~p"/settings")
     view |> element("#settings-tab-tokens") |> render_click()
 
     assert has_element?(view, "#token-form")
@@ -88,7 +88,7 @@ defmodule QuizProjectWeb.SettingsLiveTest do
   end
 
   test "abre diretamente a aba de tokens pela URL", %{conn: conn} do
-    {:ok, view, _html} = live(conn, ~p"/configuracoes?tab=tokens")
+    {:ok, view, _html} = live(conn, ~p"/settings?tab=tokens")
 
     assert has_element?(view, "#token-settings")
     assert has_element?(view, "#token-form")

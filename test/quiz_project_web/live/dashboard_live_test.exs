@@ -9,7 +9,7 @@ defmodule QuizProjectWeb.DashboardLiveTest do
   setup :register_and_log_in_user
 
   test "mostra abas e botões principais", %{conn: conn} do
-    {:ok, view, _html} = live(conn, ~p"/painel")
+    {:ok, view, _html} = live(conn, ~p"/dashboard")
 
     assert has_element?(view, "#tab-created")
     assert has_element?(view, "#tab-answered")
@@ -25,16 +25,16 @@ defmodule QuizProjectWeb.DashboardLiveTest do
   end
 
   test "criar quiz navega para o editor do rascunho", %{conn: conn} do
-    {:ok, view, _html} = live(conn, ~p"/painel")
+    {:ok, view, _html} = live(conn, ~p"/dashboard")
 
     view |> element("#create-quiz") |> render_click()
 
     {path, _flash} = assert_redirect(view)
-    assert path =~ ~r{^/quiz/.+/editar$}
+    assert path =~ ~r{^/quiz/.+/edit$}
   end
 
   test "importa quiz válido e navega para o editor", %{conn: conn} do
-    {:ok, view, _html} = live(conn, ~p"/painel")
+    {:ok, view, _html} = live(conn, ~p"/dashboard")
 
     view |> element("#open-import") |> render_click()
     assert has_element?(view, "#import-modal")
@@ -54,11 +54,11 @@ defmodule QuizProjectWeb.DashboardLiveTest do
     view |> element("#confirm-import") |> render_click()
 
     {path, _flash} = assert_redirect(view)
-    assert path =~ ~r{^/quiz/.+/editar$}
+    assert path =~ ~r{^/quiz/.+/edit$}
   end
 
   test "importa quiz por upload de arquivo JSON", %{conn: conn} do
-    {:ok, view, _html} = live(conn, ~p"/painel")
+    {:ok, view, _html} = live(conn, ~p"/dashboard")
 
     view |> element("#open-import") |> render_click()
 
@@ -77,11 +77,11 @@ defmodule QuizProjectWeb.DashboardLiveTest do
     view |> element("#confirm-import") |> render_click()
 
     {path, _flash} = assert_redirect(view)
-    assert path =~ ~r{^/quiz/.+/editar$}
+    assert path =~ ~r{^/quiz/.+/edit$}
   end
 
   test "JSON inválido mostra erros no modal", %{conn: conn} do
-    {:ok, view, _html} = live(conn, ~p"/painel")
+    {:ok, view, _html} = live(conn, ~p"/dashboard")
 
     view |> element("#open-import") |> render_click()
 
@@ -95,7 +95,7 @@ defmodule QuizProjectWeb.DashboardLiveTest do
     {:ok, version} = Quizzes.create_draft_quiz(user)
     {:ok, _} = Quizzes.update_draft(version, %{name: "Meu quiz listado"}, user)
 
-    {:ok, view, html} = live(conn, ~p"/painel")
+    {:ok, view, html} = live(conn, ~p"/dashboard")
 
     assert html =~ "Meu quiz listado"
     assert has_element?(view, "#quiz-#{version.quiz_id}")
@@ -175,7 +175,7 @@ defmodule QuizProjectWeb.DashboardLiveTest do
 
     {:ok, _} = Attempts.finalize(attempt2)
 
-    {:ok, view, _html} = live(conn, ~p"/painel")
+    {:ok, view, _html} = live(conn, ~p"/dashboard")
     view |> element("#tab-answered") |> render_click()
 
     # um único card para o quiz, com subgrupos por versão
@@ -242,7 +242,7 @@ defmodule QuizProjectWeb.DashboardLiveTest do
 
     {:ok, _} = Attempts.finalize(attempt2)
 
-    {:ok, view, html} = live(conn, ~p"/quiz/#{v1.quiz_id}/evolucao")
+    {:ok, view, html} = live(conn, ~p"/quiz/#{v1.quiz_id}/evolution")
 
     assert html =~ "Quiz evolução"
     assert has_element?(view, "#evolution-v1")
@@ -310,7 +310,7 @@ defmodule QuizProjectWeb.DashboardLiveTest do
       {:ok, _} = Attempts.finalize(attempt)
     end
 
-    {:ok, view, html} = live(conn, ~p"/quiz/#{v1.quiz_id}/evolucao")
+    {:ok, view, html} = live(conn, ~p"/quiz/#{v1.quiz_id}/evolution")
 
     # as duas respostas aparecem na comparação
     assert html =~ "Algo com plantas e sol."
@@ -355,7 +355,7 @@ defmodule QuizProjectWeb.DashboardLiveTest do
     |> Ash.Changeset.for_update(:start_processing, %{}, authorize?: false)
     |> Ash.update!()
 
-    {:ok, view, _html} = live(conn, ~p"/painel")
+    {:ok, view, _html} = live(conn, ~p"/dashboard")
     view |> element("#tab-answered") |> render_click()
 
     # aparece como "corrigindo…" com link para acompanhar
@@ -376,17 +376,17 @@ defmodule QuizProjectWeb.DashboardLiveTest do
     notification = user.id |> QuizProject.Notifications.list_unread() |> hd()
 
     # a notificação persiste ao navegar/remontar: aparece já no mount
-    {:ok, view2, html2} = live(conn, ~p"/configuracoes")
+    {:ok, view2, html2} = live(conn, ~p"/settings")
     assert html2 =~ "Correção concluída"
     assert has_element?(view2, "#notification-#{notification.id}")
 
     # abrir leva ao resultado e marca como lida
     view2 |> element("#open-notification-#{notification.id}") |> render_click()
-    assert_redirect(view2, "/tentativa/#{finished.id}/resultado")
+    assert_redirect(view2, "/attempt/#{finished.id}/result")
     assert QuizProject.Notifications.list_unread(user.id) == []
 
     # dispensada/lida não volta mais
-    {:ok, _view3, html3} = live(conn, ~p"/painel")
+    {:ok, _view3, html3} = live(conn, ~p"/dashboard")
     refute html3 =~ "Correção concluída"
   end
 
@@ -412,7 +412,7 @@ defmodule QuizProjectWeb.DashboardLiveTest do
 
     [notification] = QuizProject.Notifications.list_unread(user.id)
 
-    {:ok, view, _html} = live(conn, ~p"/painel")
+    {:ok, view, _html} = live(conn, ~p"/dashboard")
     assert has_element?(view, "#notification-#{notification.id}")
 
     view |> element("#dismiss-notification-#{notification.id}") |> render_click()
@@ -424,12 +424,12 @@ defmodule QuizProjectWeb.DashboardLiveTest do
   test "página de evolução sem tentativas redireciona ao painel", %{conn: conn, user: user} do
     {:ok, version} = Quizzes.create_draft_quiz(user)
 
-    assert {:error, {:live_redirect, %{to: "/painel"}}} =
-             live(conn, ~p"/quiz/#{version.quiz_id}/evolucao")
+    assert {:error, {:live_redirect, %{to: "/dashboard"}}} =
+             live(conn, ~p"/quiz/#{version.quiz_id}/evolution")
   end
 
   test "exige login", %{} do
     conn = build_conn()
-    assert {:error, {:redirect, %{to: "/entrar"}}} = live(conn, ~p"/painel")
+    assert {:error, {:redirect, %{to: "/login"}}} = live(conn, ~p"/dashboard")
   end
 end
