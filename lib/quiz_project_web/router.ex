@@ -102,6 +102,11 @@ defmodule QuizProjectWeb.Router do
       live "/quiz/:version_id/edit", QuizEditorLive
       live "/quiz/:quiz_id/manage", QuizManageLive
       live "/quiz/:quiz_id/evolution", QuizEvolutionLive
+
+      live "/adaptive-study", AdaptiveStudyLive.Index
+      live "/adaptive-study/new", AdaptiveStudyLive.Upload
+      live "/adaptive-study/:id/curate", AdaptiveStudyLive.Curate, :curate
+      live "/adaptive-study/:id/curate/map", AdaptiveStudyLive.Curate, :map
     end
   end
 

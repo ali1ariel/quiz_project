@@ -35,6 +35,38 @@ defmodule QuizProject.Notifications do
     |> Ash.create!()
   end
 
+  @doc "Registra a notificação de Mapa Mental concluído para o usuário."
+  def notify_mindmap_generated(material) do
+    Notification
+    |> Ash.Changeset.for_create(
+      :create,
+      %{
+        user_id: material.user_id,
+        title: "Mapa Mental gerado: \"#{material.title}\"",
+        body: "O conteúdo foi decomposto em um Mapa Mental atômico. Clique para ver a curadoria.",
+        path: "/adaptive-study/#{material.id}/curate"
+      },
+      authorize?: false
+    )
+    |> Ash.create!()
+  end
+
+  @doc "Registra a notificação de falha no processamento do Mapa Mental."
+  def notify_mindmap_failed(material) do
+    Notification
+    |> Ash.Changeset.for_create(
+      :create,
+      %{
+        user_id: material.user_id,
+        title: "Falha ao gerar Mapa Mental",
+        body: "Ocorreu um erro no processamento por IA do material \"#{material.title}\".",
+        path: "/adaptive-study"
+      },
+      authorize?: false
+    )
+    |> Ash.create!()
+  end
+
   @doc "Notificações não lidas do usuário, mais recentes primeiro."
   def list_unread(user_id) do
     Notification

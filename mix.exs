@@ -73,7 +73,8 @@ defmodule QuizProject.MixProject do
       {:jason, "~> 1.2"},
       {:dns_cluster, "~> 0.2.0"},
       {:bandit, "~> 1.5"},
-      {:chromic_pdf, "~> 1.17"}
+      {:chromic_pdf, "~> 1.17"},
+      {:mdex, "~> 0.13"}
     ]
   end
 

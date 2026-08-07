@@ -36,6 +36,16 @@ defmodule QuizProject.AI.OpenAI do
     end
   end
 
+  @impl true
+  def curate_mindmap(text) do
+    with {:ok, body} <- chat(Prompts.curate_mindmap_system(), Prompts.curate_mindmap_user(text)) do
+      parse_mindmap(body)
+    end
+  end
+
+  def parse_mindmap(map) when is_map(map), do: {:ok, map}
+  def parse_mindmap(other), do: {:error, {:unexpected_response, other}}
+
   def parse_tags(%{"tags" => tags}) when is_list(tags) do
     {:ok, tags |> Enum.filter(&is_binary/1) |> Enum.take(4)}
   end
@@ -60,13 +70,20 @@ defmodule QuizProject.AI.OpenAI do
 
   def parse_evaluation(other), do: {:error, {:unexpected_response, other}}
 
+  require Logger
+
   defp chat(system, user) do
     api_key = Application.get_env(:quiz_project, :openai_api_key)
 
     if is_nil(api_key) or api_key == "" do
+      Logger.error(
+        "[AI.OpenAI] Chave de API ausente! Verifique as variáveis OPENAI_API_KEY ou OPEN_AI_KEY."
+      )
+
       {:error, :missing_api_key}
     else
       model = Application.get_env(:quiz_project, :openai_model, "gpt-5.5")
+      Logger.info("[AI.OpenAI] Enviando requisição para OpenAI (modelo: #{model})...")
 
       request =
         Req.new(
@@ -81,19 +98,22 @@ defmodule QuizProject.AI.OpenAI do
                 %{role: "user", content: user}
               ]
             },
-            receive_timeout: 60_000
+            receive_timeout: :infinity
           ] ++ Application.get_env(:quiz_project, :ai_req_options, [])
         )
 
       case Req.post(request) do
         {:ok, %Req.Response{status: 200, body: body}} ->
+          Logger.info("[AI.OpenAI] Resposta HTTP 200 recebida com sucesso da OpenAI.")
           content = get_in(body, ["choices", Access.at(0), "message", "content"])
           decode_json_content(content)
 
         {:ok, %Req.Response{status: status, body: body}} ->
+          Logger.error("[AI.OpenAI] Erro HTTP #{status} retornado pela OpenAI: #{inspect(body)}")
           {:error, {:http_error, status, body}}
 
         {:error, reason} ->
+          Logger.error("[AI.OpenAI] Erro de conexão/rede na chamada OpenAI: #{inspect(reason)}")
           {:error, reason}
       end
     end

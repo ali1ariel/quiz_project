@@ -36,4 +36,10 @@ defmodule QuizProject.AI.Provider do
   """
   @callback evaluate_progression(summary :: String.t()) ::
               {:ok, String.t()} | {:error, term()}
+
+  @doc """
+  Decompõe um texto em Mapa Mental Atômico com nós hierárquicos, trechos de texto brutos e referências cruzadas.
+  """
+  @callback curate_mindmap(text :: String.t()) ::
+              {:ok, map()} | {:error, term()}
 end

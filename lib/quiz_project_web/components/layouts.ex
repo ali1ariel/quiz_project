@@ -82,6 +82,26 @@ defmodule QuizProjectWeb.Layouts do
           </.link>
         <% end %>
 
+        <%= if @active_nav == :adaptive_study do %>
+          <span
+            id="desktop-nav-adaptive-study"
+            aria-current="page"
+            class="inline-flex cursor-default items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-content shadow-sm"
+            title="Você está em Estudo Adaptativo"
+          >
+            <.icon name="hero-academic-cap" class="size-4" /> Estudo Adaptativo
+          </span>
+        <% else %>
+          <.link
+            id="desktop-nav-adaptive-study"
+            navigate={~p"/adaptive-study"}
+            class="inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold opacity-65 transition hover:bg-base-200 hover:opacity-100"
+            title="Ingestão e curadoria de materiais de estudo com Mapa Mental"
+          >
+            <.icon name="hero-academic-cap" class="size-4" /> Estudo Adaptativo
+          </.link>
+        <% end %>
+
         <%= if @active_nav == :account do %>
           <span
             id="desktop-nav-account"

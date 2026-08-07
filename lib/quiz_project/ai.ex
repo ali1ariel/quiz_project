@@ -39,7 +39,34 @@ defmodule QuizProject.AI do
     provider().evaluate_progression(summary)
   end
 
+  @doc "Decompõe o texto em Mapa Mental Atômico."
+  def curate_mindmap(text) when is_binary(text) do
+    provider().curate_mindmap(text)
+  end
+
+  @doc "Retorna o módulo do provedor de IA atualmente configurado."
   def provider do
     Application.get_env(:quiz_project, :ai_provider, QuizProject.AI.Fake)
+  end
+
+  @doc """
+  Retorna uma descrição amigável do provedor e modelo de IA em uso. Útil para inspeção no IEx.
+  """
+  def current_provider do
+    case provider() do
+      QuizProject.AI.OpenAI ->
+        model = Application.get_env(:quiz_project, :openai_model, "gpt-5.5")
+        "OpenAI (modelo: #{model})"
+
+      QuizProject.AI.Gemini ->
+        model = Application.get_env(:quiz_project, :gemini_model, "gemini-2.0-flash")
+        "Gemini (modelo: #{model})"
+
+      QuizProject.AI.Fake ->
+        "Fake (heurística local sem IA externa)"
+
+      other ->
+        inspect(other)
+    end
   end
 end

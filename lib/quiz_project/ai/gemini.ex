@@ -39,13 +39,25 @@ defmodule QuizProject.AI.Gemini do
     end
   end
 
+  @impl true
+  def curate_mindmap(text) do
+    with {:ok, body} <-
+           generate(Prompts.curate_mindmap_system(), Prompts.curate_mindmap_user(text)) do
+      SharedParsers.parse_mindmap(body)
+    end
+  end
+
+  require Logger
+
   defp generate(system, user) do
     api_key = Application.get_env(:quiz_project, :gemini_api_key)
 
     if is_nil(api_key) or api_key == "" do
+      Logger.error("[AI.Gemini] Chave de API ausente! Verifique a variável GEMINI_API_KEY.")
       {:error, :missing_api_key}
     else
       model = Application.get_env(:quiz_project, :gemini_model, "gemini-2.0-flash")
+      Logger.info("[AI.Gemini] Enviando requisição para Google Gemini (modelo: #{model})...")
 
       request =
         Req.new(
@@ -58,12 +70,14 @@ defmodule QuizProject.AI.Gemini do
               contents: [%{role: "user", parts: [%{text: user}]}],
               generationConfig: %{response_mime_type: "application/json"}
             },
-            receive_timeout: 60_000
+            receive_timeout: :infinity
           ] ++ Application.get_env(:quiz_project, :ai_req_options, [])
         )
 
       case Req.post(request) do
         {:ok, %Req.Response{status: 200, body: body}} ->
+          Logger.info("[AI.Gemini] Resposta HTTP 200 recebida com sucesso do Gemini.")
+
           content =
             get_in(body, [
               "candidates",
@@ -77,9 +91,11 @@ defmodule QuizProject.AI.Gemini do
           decode_json_content(content)
 
         {:ok, %Req.Response{status: status, body: body}} ->
+          Logger.error("[AI.Gemini] Erro HTTP #{status} retornado pelo Gemini: #{inspect(body)}")
           {:error, {:http_error, status, body}}
 
         {:error, reason} ->
+          Logger.error("[AI.Gemini] Erro de conexão/rede na chamada Gemini: #{inspect(reason)}")
           {:error, reason}
       end
     end

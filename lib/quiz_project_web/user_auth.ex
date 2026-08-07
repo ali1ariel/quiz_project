@@ -150,6 +150,10 @@ defmodule QuizProjectWeb.UserAuth do
     {:cont, reload_notifications(socket)}
   end
 
+  defp handle_attempt_notification({:mindmap_generated, _info}, socket) do
+    {:cont, reload_notifications(socket)}
+  end
+
   defp handle_attempt_notification(_message, socket), do: {:cont, socket}
 
   defp handle_notification_event("dismiss_notification", %{"id" => id}, socket) do

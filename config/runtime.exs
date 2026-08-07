@@ -25,8 +25,10 @@ end
 # ("openai", "gemini" ou "fake"); sem ela, usa o primeiro provider com chave
 # configurada, caindo no Fake (heurística local) se não houver nenhuma.
 if config_env() != :test do
+  openai_key = System.get_env("OPENAI_API_KEY") || System.get_env("OPEN_AI_KEY")
+
   config :quiz_project,
-    openai_api_key: System.get_env("OPENAI_API_KEY"),
+    openai_api_key: openai_key,
     openai_model: System.get_env("OPENAI_MODEL", "gpt-5.5"),
     gemini_api_key: System.get_env("GEMINI_API_KEY"),
     gemini_model: System.get_env("GEMINI_MODEL", "gemini-2.0-flash")
@@ -44,7 +46,7 @@ if config_env() != :test do
 
       nil ->
         cond do
-          System.get_env("OPENAI_API_KEY") not in [nil, ""] -> QuizProject.AI.OpenAI
+          openai_key not in [nil, ""] -> QuizProject.AI.OpenAI
           System.get_env("GEMINI_API_KEY") not in [nil, ""] -> QuizProject.AI.Gemini
           true -> QuizProject.AI.Fake
         end

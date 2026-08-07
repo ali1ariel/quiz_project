@@ -525,8 +525,7 @@ defmodule QuizProjectWeb.AttemptLive do
         {:noreply, put_answer(socket, updated)}
 
       {:error, :finished} ->
-        {:noreply,
-         push_navigate(socket, to: ~p"/attempt/#{socket.assigns.attempt.id}/result")}
+        {:noreply, push_navigate(socket, to: ~p"/attempt/#{socket.assigns.attempt.id}/result")}
 
       {:error, _} ->
         {:noreply, socket}
