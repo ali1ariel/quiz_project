@@ -92,6 +92,8 @@ defmodule QuizProjectWeb.Router do
   scope "/", QuizProjectWeb do
     pipe_through [:browser, :require_authenticated_user]
 
+    get "/contents/:id/book.css", BookStyleController, :show
+
     live_session :authenticated,
       on_mount: [
         {QuizProjectWeb.UserAuth, :ensure_authenticated},
@@ -107,6 +109,14 @@ defmodule QuizProjectWeb.Router do
       live "/adaptive-study/new", AdaptiveStudyLive.Upload
       live "/adaptive-study/:id/curate", AdaptiveStudyLive.Curate, :curate
       live "/adaptive-study/:id/curate/map", AdaptiveStudyLive.Curate, :map
+
+      # Leitura é seção própria: ciclo de vida, volume e estado não têm
+      # interseção com a curadoria. `/new` vem antes de `/:id` porque o
+      # roteador casa na ordem em que as rotas são declaradas.
+      live "/contents", ContentsLive.Index
+      live "/contents/new", ContentsLive.Upload
+      live "/contents/:id", ContentsLive.Read
+      live "/contents/:id/:chapter", ContentsLive.Read, :chapter
     end
   end
 

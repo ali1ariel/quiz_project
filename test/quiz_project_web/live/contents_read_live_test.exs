@@ -1,0 +1,410 @@
+defmodule QuizProjectWeb.ContentsReadLiveTest do
+  use QuizProjectWeb.ConnCase, async: true
+
+  import Phoenix.LiveViewTest
+
+  alias QuizProject.AdaptiveStudy
+  alias QuizProject.AdaptiveStudy.Books
+  alias QuizProject.EpubFixture
+
+  setup :register_and_log_in_user
+
+  setup %{user: user} do
+    {:ok, material} =
+      AdaptiveStudy.create_material(user, %{
+        title: "Processando livro...",
+        format: :epub,
+        status: "ingesting"
+      })
+
+    {:ok, material} = Books.ingest(material, EpubFixture.build(), user)
+
+    %{material: material}
+  end
+
+  describe "abertura" do
+    test "sem capítulo na URL, abre no primeiro capítulo de conteúdo", %{
+      conn: conn,
+      material: material
+    } do
+      assert {:error, {:live_redirect, %{to: destino}}} =
+               live(conn, ~p"/contents/#{material.id}")
+
+      assert destino == ~p"/contents/#{material.id}/2"
+
+      {:ok, _view, html} = live(conn, destino)
+      assert html =~ "1 O parafuso"
+      refute html =~ "Todos os direitos reservados"
+    end
+
+    test "continua de onde parou quando já há posição salva", %{
+      conn: conn,
+      material: material,
+      user: user
+    } do
+      {:ok, chapter} = Books.get_chapter(material.id, 3)
+
+      {:ok, _} =
+        Books.save_position(user.id, material.id, %{
+          chapter_id: chapter.id,
+          block_position: 12,
+          offset: 0.3
+        })
+
+      assert {:error, {:live_redirect, %{to: destino}}} =
+               live(conn, ~p"/contents/#{material.id}")
+
+      assert destino == ~p"/contents/#{material.id}/3"
+      assert {:ok, _view, html} = live(conn, destino)
+      assert html =~ "A dobradiça precede o parafuso"
+    end
+
+    test "o capítulo está na URL, então a posição é compartilhável", %{
+      conn: conn,
+      material: material
+    } do
+      {:ok, _view, html} = live(conn, ~p"/contents/#{material.id}/4")
+
+      assert html =~ "Índice remissivo"
+      assert html =~ "dobradiça, 2"
+    end
+
+    test "carrega um capítulo por vez, não o livro inteiro", %{conn: conn, material: material} do
+      {:ok, _view, html} = live(conn, ~p"/contents/#{material.id}/2")
+
+      assert html =~ "O parafuso é"
+      refute html =~ "A dobradiça precede o parafuso"
+    end
+
+    test "material de outro usuário não abre", %{conn: conn} do
+      {:ok, outro} =
+        QuizProject.Accounts.register_user(
+          %{
+            email: "outro#{System.unique_integer([:positive])}@teste.com",
+            password: "senha12345"
+          },
+          authorize?: false
+        )
+
+      {:ok, alheio} = AdaptiveStudy.create_material(outro, %{title: "Alheio", format: :epub})
+
+      assert {:error, {:live_redirect, %{to: "/contents"}}} =
+               live(conn, ~p"/contents/#{alheio.id}")
+    end
+
+    test "livro ainda em ingestão mostra o avanço por capítulo", %{conn: conn, user: user} do
+      {:ok, chegando} =
+        AdaptiveStudy.create_material(user, %{
+          title: "Chegando",
+          format: :epub,
+          status: "ingesting"
+        })
+
+      {:ok, view, html} = live(conn, ~p"/contents/#{chegando.id}")
+
+      assert html =~ "ainda está sendo processado"
+
+      Phoenix.PubSub.broadcast(
+        QuizProject.PubSub,
+        Books.ingest_topic(chegando.id),
+        {:ingest_progress, %{material_id: chegando.id, done: 3, total: 12, title: "3 O martelo"}}
+      )
+
+      assert render(view) =~ "Capítulo 3 de 12"
+      assert render(view) =~ "3 O martelo"
+    end
+
+    test "material sem capítulos explica em vez de quebrar", %{conn: conn, user: user} do
+      {:ok, texto} =
+        AdaptiveStudy.create_material(user, %{title: "Notas", raw_content: "Um parágrafo."})
+
+      {:ok, _view, html} = live(conn, ~p"/contents/#{texto.id}")
+
+      assert html =~ "não é um livro em capítulos"
+    end
+  end
+
+  describe "renderização dos blocos" do
+    setup %{conn: conn, material: material} do
+      {:ok, view, html} = live(conn, ~p"/contents/#{material.id}/2")
+      %{view: view, html: html}
+    end
+
+    test "cada bloco carrega a âncora usada pela posição, busca e filtro", %{html: html} do
+      assert html =~ ~s(id="block-2")
+      assert html =~ ~s(data-position="2")
+    end
+
+    test "a marcação inline vira HTML, não texto cru", %{html: html} do
+      assert html =~ "<em>simples</em>"
+      assert html =~ "<strong>antigo</strong>"
+      assert html =~ "<code>screw</code>"
+    end
+
+    test "listagem sai com título, código e anotações", %{html: html} do
+      assert html =~ "Listagem 1.1 Medindo o passo da rosca"
+      assert html =~ "qreader-annotations"
+      assert html =~ "#1 Em milímetros"
+      assert html =~ "def passo(voltas, comprimento):"
+    end
+
+    test "callout e figura têm marcação própria", %{html: html} do
+      assert html =~ "qreader-callout"
+      assert html =~ "qreader-figure"
+      assert html =~ "Figura 1.1 Corte longitudinal"
+    end
+
+    test "a folha da editora entra por rota própria", %{html: html, material: material} do
+      assert html =~ ~s|/contents/#{material.id}/book.css|
+    end
+  end
+
+  describe "sumário" do
+    test "começa fora da tela, deixando só o texto", %{conn: conn, material: material} do
+      {:ok, view, _html} = live(conn, ~p"/contents/#{material.id}/2")
+
+      assert has_element?(view, "#contents-drawer.-translate-x-full")
+      refute has_element?(view, "#contents-backdrop")
+    end
+
+    test "o botão da barra traz o painel", %{conn: conn, material: material} do
+      {:ok, view, _html} = live(conn, ~p"/contents/#{material.id}/2")
+
+      view |> element("#open-contents") |> render_click()
+
+      assert has_element?(view, "#contents-drawer.translate-x-0")
+      assert has_element?(view, "#contents-backdrop")
+    end
+
+    test "escolher um capítulo fecha o painel", %{conn: conn, material: material} do
+      {:ok, view, _html} = live(conn, ~p"/contents/#{material.id}/2")
+
+      view |> element("#open-contents") |> render_click()
+      view |> element(~s|aside a[href="/contents/#{material.id}/3"]|) |> render_click()
+
+      assert has_element?(view, "#contents-drawer.-translate-x-full")
+      refute has_element?(view, "#contents-backdrop")
+    end
+
+    test "o termo buscado sobrevive a fechar e reabrir o painel", %{
+      conn: conn,
+      material: material
+    } do
+      {:ok, view, _html} = live(conn, ~p"/contents/#{material.id}/2")
+
+      view |> element("form[phx-change='search']") |> render_change(%{"term" => "dobradiça"})
+      view |> element("#open-contents") |> render_click()
+
+      assert render(view) =~ "dobradiça"
+      assert has_element?(view, ~s|input[name="term"][value="dobradiça"]|)
+    end
+  end
+
+  describe "navegação entre capítulos" do
+    test "avança e volta pelo sumário", %{conn: conn, material: material} do
+      {:ok, view, _html} = live(conn, ~p"/contents/#{material.id}/2")
+
+      assert view
+             |> element(~s|aside a[href="/contents/#{material.id}/3"]|)
+             |> render_click()
+
+      assert_patched(view, ~p"/contents/#{material.id}/3")
+      assert render(view) =~ "A dobradiça precede"
+    end
+
+    test "o primeiro capítulo não oferece anterior", %{conn: conn, material: material} do
+      {:ok, view, _html} = live(conn, ~p"/contents/#{material.id}/1")
+
+      refute has_element?(view, ~s|nav a[href$="/contents/#{material.id}/0"]|)
+    end
+  end
+
+  describe "posição de leitura" do
+    test "o leitor grava onde o usuário parou", %{conn: conn, material: material, user: user} do
+      {:ok, view, _html} = live(conn, ~p"/contents/#{material.id}/2")
+
+      render_hook(view, "save_position", %{"position" => 5, "offset" => 0.25})
+
+      position = Books.get_position(user.id, material.id)
+
+      assert position.block_position == 5
+      assert position.offset == 0.25
+    end
+  end
+
+  describe "painéis no telefone" do
+    test "a aparência é uma folha de baixo, não uma expansão da barra fixa", %{
+      conn: conn,
+      material: material
+    } do
+      {:ok, view, _html} = live(conn, ~p"/contents/#{material.id}/2")
+
+      assert has_element?(view, "#appearance-sheet.translate-y-\\[110\\%\\]")
+      refute has_element?(view, "#appearance-backdrop")
+
+      view |> element("#open-appearance") |> render_click()
+
+      assert has_element?(view, "#appearance-sheet.translate-y-0")
+      assert has_element?(view, "#appearance-backdrop")
+    end
+
+    test "ajustar a aparência não fecha a folha", %{conn: conn, material: material} do
+      {:ok, view, _html} = live(conn, ~p"/contents/#{material.id}/2")
+
+      view |> element("#open-appearance") |> render_click()
+      view |> element("form[phx-change='appearance']") |> render_change(%{"font_size" => "120"})
+
+      assert has_element?(view, "#appearance-sheet.translate-y-0")
+    end
+
+    test "abrir o sumário fecha a aparência, e vice-versa", %{conn: conn, material: material} do
+      {:ok, view, _html} = live(conn, ~p"/contents/#{material.id}/2")
+
+      view |> element("#open-appearance") |> render_click()
+      view |> element("#open-contents") |> render_click()
+
+      assert has_element?(view, "#contents-drawer.translate-x-0")
+      assert has_element?(view, "#appearance-sheet.translate-y-\\[110\\%\\]")
+
+      view |> element("#open-appearance") |> render_click()
+
+      assert has_element?(view, "#appearance-sheet.translate-y-0")
+      assert has_element?(view, "#contents-drawer.-translate-x-full")
+    end
+
+    test "a folha fecha pelo próprio botão", %{conn: conn, material: material} do
+      {:ok, view, _html} = live(conn, ~p"/contents/#{material.id}/2")
+
+      view |> element("#open-appearance") |> render_click()
+      view |> element("#close-appearance") |> render_click()
+
+      assert has_element?(view, "#appearance-sheet.translate-y-\\[110\\%\\]")
+      refute has_element?(view, "#appearance-backdrop")
+    end
+  end
+
+  describe "aparência" do
+    test "a escolha vira variável CSS e persiste por usuário", %{
+      conn: conn,
+      material: material,
+      user: user
+    } do
+      {:ok, view, _html} = live(conn, ~p"/contents/#{material.id}/2")
+      render_click(view, "toggle_appearance")
+
+      html =
+        view
+        |> element("form[phx-change='appearance']")
+        |> render_change(%{
+          "font" => "mono",
+          "width" => "wide",
+          "font_size" => "130",
+          "line_height" => "200"
+        })
+
+      assert html =~ "--qreader-width: 90ch"
+      assert html =~ "--qreader-size: 1.3rem"
+      assert html =~ "--qreader-leading: 2.0"
+
+      assert Books.get_preferences(user.id).font == :mono
+    end
+
+    test "valor fora da lista não derruba a tela", %{conn: conn, material: material, user: user} do
+      {:ok, view, _html} = live(conn, ~p"/contents/#{material.id}/2")
+      render_click(view, "toggle_appearance")
+
+      view
+      |> element("form[phx-change='appearance']")
+      |> render_change(%{"font" => "comic-sans", "width" => "gigante"})
+
+      assert Books.get_preferences(user.id).font == :serif
+    end
+  end
+
+  describe "busca" do
+    test "lista as ocorrências com link para o bloco", %{conn: conn, material: material} do
+      {:ok, view, _html} = live(conn, ~p"/contents/#{material.id}/2")
+
+      html =
+        view
+        |> element("form[phx-change='search']")
+        |> render_change(%{"term" => "dobradiça"})
+
+      assert html =~ "ocorrência"
+      assert html =~ "/contents/#{material.id}/3#block-"
+    end
+
+    test "termo sem resultado avisa em vez de sumir com o sumário", %{
+      conn: conn,
+      material: material
+    } do
+      {:ok, view, _html} = live(conn, ~p"/contents/#{material.id}/2")
+
+      html =
+        view
+        |> element("form[phx-change='search']")
+        |> render_change(%{"term" => "girassóis"})
+
+      assert html =~ "Nada encontrado"
+    end
+  end
+
+  describe "cobertura do filtro" do
+    test "o bloco demarcado sai marcado, sem varrer texto no render", %{
+      conn: conn,
+      material: material
+    } do
+      Books.demarcate(material.id, "no_rosca", [3, 4])
+
+      {:ok, _view, html} = live(conn, ~p"/contents/#{material.id}/2")
+
+      assert html =~ "qreader-covered"
+      assert html =~ ~s(data-nodes="no_rosca")
+    end
+
+    test "sem demarcação nenhum bloco vem marcado", %{conn: conn, material: material} do
+      {:ok, _view, html} = live(conn, ~p"/contents/#{material.id}/2")
+
+      refute html =~ "qreader-covered"
+    end
+  end
+
+  describe "mensagens que a rota herda sem pedir" do
+    test "notificação de tentativa não derruba o leitor", %{conn: conn, material: material} do
+      {:ok, view, _html} = live(conn, ~p"/contents/#{material.id}/2")
+
+      send(view.pid, {:attempt_finished, %{attempt_id: Ecto.UUID.generate()}})
+      send(view.pid, {:mindmap_generated, %{material_id: material.id}})
+
+      assert render(view) =~ "1 O parafuso"
+    end
+  end
+
+  describe "folha de estilo do livro" do
+    test "serve o CSS filtrado com cache longo", %{conn: conn, material: material} do
+      conn = get(conn, ~p"/contents/#{material.id}/book.css")
+
+      assert response_content_type(conn, :css) =~ "text/css"
+      assert get_resp_header(conn, "cache-control") == ["private, max-age=31536000, immutable"]
+
+      css = response(conn, 200)
+      assert css =~ ".qreader-book"
+      refute css =~ "@page"
+    end
+
+    test "não serve o livro de outro usuário", %{conn: conn} do
+      {:ok, outro} =
+        QuizProject.Accounts.register_user(
+          %{
+            email: "outro#{System.unique_integer([:positive])}@teste.com",
+            password: "senha12345"
+          },
+          authorize?: false
+        )
+
+      {:ok, alheio} = AdaptiveStudy.create_material(outro, %{title: "Alheio", format: :epub})
+
+      assert conn |> get(~p"/contents/#{alheio.id}/book.css") |> response(404)
+    end
+  end
+end

@@ -6,10 +6,20 @@ defmodule QuizProject.AdaptiveStudy do
 
   require Ash.Query
 
+  alias QuizProject.AdaptiveStudy.Block
+  alias QuizProject.AdaptiveStudy.Chapter
+  alias QuizProject.AdaptiveStudy.NodeBlock
+  alias QuizProject.AdaptiveStudy.ReadingPosition
+  alias QuizProject.AdaptiveStudy.ReadingPreference
   alias QuizProject.AdaptiveStudy.StudyMaterial
 
   resources do
     resource StudyMaterial
+    resource Chapter
+    resource Block
+    resource NodeBlock
+    resource ReadingPosition
+    resource ReadingPreference
   end
 
   @doc "Cria um material de estudo para o usuário."
@@ -70,10 +80,25 @@ defmodule QuizProject.AdaptiveStudy do
     end
   end
 
-  @doc "Lista todos os materiais de estudo do usuário."
+  @doc """
+  Materiais de texto do usuário — os que a curadoria de Mapa Mental atende.
+
+  Livro em EPUB fica de fora: ele vive na biblioteca de Conteúdos, que é uma
+  tela de leitura, não de curadoria. A ligação entre os dois continua existindo
+  no banco, porque a demarcação por capítulo aponta nós de mapa mental para
+  blocos do livro.
+  """
   def list_materials(%{id: user_id}) do
     StudyMaterial
-    |> Ash.Query.filter(user_id == ^user_id)
+    |> Ash.Query.filter(user_id == ^user_id and format == :text)
+    |> Ash.Query.sort(inserted_at: :desc)
+    |> Ash.read!(authorize?: false)
+  end
+
+  @doc "Livros do usuário, do mais recente para o mais antigo."
+  def list_books(%{id: user_id}) do
+    StudyMaterial
+    |> Ash.Query.filter(user_id == ^user_id and format == :epub)
     |> Ash.Query.sort(inserted_at: :desc)
     |> Ash.read!(authorize?: false)
   end

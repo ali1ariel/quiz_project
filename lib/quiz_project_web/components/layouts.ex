@@ -33,7 +33,7 @@ defmodule QuizProjectWeb.Layouts do
 
   attr :active_nav, :atom,
     default: nil,
-    doc: "destino principal ativo: :quizzes ou :account"
+    doc: "destino principal ativo: :quizzes, :contents, :adaptive_study ou :account"
 
   attr :attempt_started_at, :any,
     default: nil,
@@ -79,6 +79,26 @@ defmodule QuizProjectWeb.Layouts do
             title="Criar, editar e acompanhar seus quizzes"
           >
             <.icon name="hero-rectangle-stack" class="size-4" /> Meus quizzes
+          </.link>
+        <% end %>
+
+        <%= if @active_nav == :contents do %>
+          <span
+            id="desktop-nav-contents"
+            aria-current="page"
+            class="inline-flex cursor-default items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-content shadow-sm"
+            title="Você está em Conteúdos"
+          >
+            <.icon name="hero-book-open" class="size-4" /> Conteúdos
+          </span>
+        <% else %>
+          <.link
+            id="desktop-nav-contents"
+            navigate={~p"/contents"}
+            class="inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold opacity-65 transition hover:bg-base-200 hover:opacity-100"
+            title="Sua biblioteca de livros, focada na leitura"
+          >
+            <.icon name="hero-book-open" class="size-4" /> Conteúdos
           </.link>
         <% end %>
 
@@ -234,6 +254,18 @@ defmodule QuizProjectWeb.Layouts do
                   <span class="block truncate text-[0.68rem] opacity-70">
                     Criar, editar e acompanhar
                   </span>
+                </span>
+              </.link>
+              <.link
+                navigate={~p"/contents"}
+                class="flex items-center gap-3 rounded-2xl border border-transparent px-3 py-2.5 transition hover:border-base-300 hover:bg-base-100"
+              >
+                <span class="grid size-9 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+                  <.icon name="hero-book-open" class="size-4" />
+                </span>
+                <span class="min-w-0 text-left">
+                  <span class="block text-sm font-semibold">Conteúdos</span>
+                  <span class="block truncate text-[0.68rem] opacity-70">Biblioteca e leitura</span>
                 </span>
               </.link>
               <.link

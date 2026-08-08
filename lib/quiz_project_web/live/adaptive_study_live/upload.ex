@@ -28,10 +28,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Upload do
 
     uploaded_content =
       consume_uploaded_entries(socket, :content_file, fn %{path: path}, _entry ->
-        case File.read(path) do
-          {:ok, content} -> {:ok, content}
-          {:error, _} -> {:ok, ""}
-        end
+        {:ok, File.read!(path)}
       end)
       |> Enum.join("\n\n")
       |> String.trim()
@@ -87,7 +84,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Upload do
             </.link>
             <h1 class="text-2xl font-bold tracking-tight mt-1">Novo Material de Estudo</h1>
             <p class="text-sm opacity-70">
-              Cole o texto de estudo ou faça o upload de um arquivo (`.txt`, `.md`, `.pdf`). A IA fará a decomposição atômica em Mapa Mental.
+              Cole o texto de estudo ou envie um arquivo (`.txt`, `.md`, `.pdf`). A IA fará a decomposição atômica em Mapa Mental. Para ler um livro inteiro, use Conteúdos.
             </p>
           </div>
         </div>

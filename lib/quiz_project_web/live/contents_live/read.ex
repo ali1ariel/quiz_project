@@ -1,0 +1,727 @@
+defmodule QuizProjectWeb.ContentsLive.Read do
+  @moduledoc """
+  Leitor do livro.
+
+  Seção própria, fora de Estudo Adaptativo. Os motivos são concretos: a
+  curadoria carrega a árvore inteira e edita, a leitura carrega um capítulo por
+  vez e não edita nada; e o estado de cada uma não tem interseção — aqui é
+  posição, aparência e filtro, lá é seleção de nó e `dirty?`.
+
+  A ligação entre os dois continua no banco: a demarcação por capítulo aponta
+  nós do mapa mental para os blocos que o leitor renderiza.
+
+  O capítulo entra na URL para a posição ser compartilhável e o botão voltar do
+  navegador funcionar dentro do livro.
+  """
+  use QuizProjectWeb, :live_view
+
+  import QuizProjectWeb.Components.Book
+
+  alias QuizProject.AdaptiveStudy
+  alias QuizProject.AdaptiveStudy.Books
+
+  @impl true
+  def mount(%{"id" => id}, _session, socket) do
+    user = socket.assigns.current_user
+
+    case AdaptiveStudy.get_material(id, user) do
+      {:ok, material} ->
+        if connected?(socket) do
+          Phoenix.PubSub.subscribe(QuizProject.PubSub, Books.ingest_topic(material.id))
+        end
+
+        {:ok,
+         socket
+         |> assign(
+           material: material,
+           chapters: Books.list_chapters(material.id),
+           saved_position: Books.get_position(user.id, material.id),
+           preference: Books.get_preferences(user.id),
+           search_term: "",
+           results: [],
+           ingest_progress: nil,
+           contents_open?: false,
+           appearance_open?: false
+         )}
+
+      _ ->
+        {:ok,
+         socket
+         |> put_flash(:error, "Livro não encontrado.")
+         |> push_navigate(to: ~p"/contents")}
+    end
+  end
+
+  @impl true
+  def handle_params(params, _uri, socket) do
+    material = socket.assigns.material
+
+    cond do
+      socket.assigns.chapters == [] ->
+        {:noreply,
+         assign(socket, chapter: nil, blocks: [], covered: %{}, page_title: material.title)}
+
+      chapter = resolve_chapter(socket, params) ->
+        {:noreply, load_chapter(socket, chapter)}
+
+      true ->
+        {:noreply, push_patch(socket, to: default_path(socket))}
+    end
+  end
+
+  # Sem capítulo na URL, a leitura continua de onde parou; na primeira vez, no
+  # primeiro capítulo de conteúdo — nunca no aviso de copyright.
+  defp resolve_chapter(socket, %{"chapter" => raw}) do
+    case Integer.parse(raw) do
+      {position, ""} -> Enum.find(socket.assigns.chapters, &(&1.position == position))
+      _ -> nil
+    end
+  end
+
+  defp resolve_chapter(_socket, _params), do: nil
+
+  defp default_path(socket) do
+    material = socket.assigns.material
+
+    position =
+      case socket.assigns.saved_position do
+        %{chapter_id: chapter_id} ->
+          chapter = Enum.find(socket.assigns.chapters, &(&1.id == chapter_id))
+          chapter && chapter.position
+
+        _ ->
+          nil
+      end
+
+    position = position || Books.first_body_chapter(material.id).position
+
+    ~p"/contents/#{material.id}/#{position}"
+  end
+
+  defp load_chapter(socket, chapter) do
+    socket
+    |> assign(
+      chapter: chapter,
+      blocks: Books.list_blocks(chapter.id),
+      covered: Books.coverage(chapter.id),
+      page_title: "#{chapter.title} — #{socket.assigns.material.title}",
+      contents_open?: false
+    )
+  end
+
+  # Posição
+
+  @impl true
+  def handle_event("save_position", %{"position" => position, "offset" => offset}, socket) do
+    %{material: material, chapter: chapter, current_user: user} = socket.assigns
+
+    {:ok, saved} =
+      Books.save_position(user.id, material.id, %{
+        chapter_id: chapter.id,
+        block_position: position,
+        offset: offset
+      })
+
+    {:noreply, assign(socket, saved_position: saved)}
+  end
+
+  # Aparência
+
+  def handle_event("appearance", params, socket) do
+    user = socket.assigns.current_user
+    preference = socket.assigns.preference
+
+    attrs = %{
+      font: atom_param(params["font"], AdaptiveStudy.ReadingPreference.fonts(), preference.font),
+      width:
+        atom_param(params["width"], AdaptiveStudy.ReadingPreference.widths(), preference.width),
+      font_size: int_param(params["font_size"], preference.font_size),
+      line_height: int_param(params["line_height"], preference.line_height)
+    }
+
+    {:ok, preference} = Books.save_preferences(user.id, attrs)
+
+    {:noreply, assign(socket, preference: preference)}
+  end
+
+  # Os dois painéis se excluem: abertos juntos, um cobriria o outro no telefone,
+  # e o Esc fecharia os dois de uma vez.
+  def handle_event("toggle_appearance", _params, socket) do
+    {:noreply,
+     assign(socket, appearance_open?: not socket.assigns.appearance_open?, contents_open?: false)}
+  end
+
+  def handle_event("toggle_contents", _params, socket) do
+    {:noreply,
+     assign(socket, contents_open?: not socket.assigns.contents_open?, appearance_open?: false)}
+  end
+
+  # Busca
+
+  def handle_event("search", %{"term" => term}, socket) do
+    {:noreply,
+     assign(socket,
+       search_term: term,
+       results: Books.search(socket.assigns.material.id, term, limit: 40)
+     )}
+  end
+
+  def handle_event("clear_search", _params, socket) do
+    {:noreply, assign(socket, search_term: "", results: [])}
+  end
+
+  # A ingestão avisa a cada capítulo, então quem abriu o leitor antes de o livro
+  # ficar pronto acompanha o avanço em vez de olhar para uma tela parada.
+  @impl true
+  def handle_info({:ingest_progress, %{material_id: material_id} = progress}, socket) do
+    if material_id == socket.assigns.material.id do
+      {:noreply, assign(socket, ingest_progress: progress)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_info({:ingest_finished, %{material_id: material_id}}, socket) do
+    if material_id == socket.assigns.material.id do
+      {:ok, material} =
+        AdaptiveStudy.get_material(material_id, socket.assigns.current_user)
+
+      {:noreply,
+       socket
+       |> assign(material: material, chapters: Books.list_chapters(material_id))
+       |> push_patch(to: ~p"/contents/#{material_id}")}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  # As rotas de estudo vivem em `live_session :authenticated`, cujo `on_mount`
+  # inclui `{UserAuth, :notify_attempts}`. Isto faz a LiveView receber
+  # `{:attempt_finished, ...}` e `{:mindmap_generated, ...}` mesmo sem assinar
+  # nada — e sem esta cláusula o leitor cairia com `FunctionClauseError`.
+  def handle_info(_message, socket), do: {:noreply, socket}
+
+  defp atom_param(nil, _allowed, fallback), do: fallback
+
+  defp atom_param(value, allowed, fallback) do
+    Enum.find(allowed, fallback, &(to_string(&1) == value))
+  end
+
+  defp int_param(nil, fallback), do: fallback
+
+  defp int_param(value, fallback) do
+    case Integer.parse(to_string(value)) do
+      {number, _} -> number
+      :error -> fallback
+    end
+  end
+
+  defp chapter_index(chapters, chapter) do
+    Enum.find_index(chapters, &(&1.id == chapter.id))
+  end
+
+  defp neighbour(chapters, chapter, offset) do
+    case chapter_index(chapters, chapter) do
+      nil -> nil
+      index -> Enum.at(chapters, index + offset)
+    end
+  end
+
+  defp previous_chapter(chapters, chapter) do
+    index = chapter_index(chapters, chapter)
+    if index && index > 0, do: neighbour(chapters, chapter, -1)
+  end
+
+  defp progress(chapters, chapter) do
+    case chapter_index(chapters, chapter) do
+      nil -> 0
+      index -> round((index + 1) / length(chapters) * 100)
+    end
+  end
+
+  defp column_width(:narrow), do: "58ch"
+  defp column_width(:medium), do: "72ch"
+  defp column_width(:wide), do: "90ch"
+
+  defp font_stack(:serif), do: "ui-serif, Georgia, 'Times New Roman', serif"
+  defp font_stack(:sans), do: "var(--skin-font-body, system-ui), system-ui, sans-serif"
+  defp font_stack(:mono), do: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+
+  @impl true
+  def render(assigns) do
+    ~H"""
+    <Layouts.app flash={@flash} current_user={@current_user} active_nav={:contents} wide={true}>
+      <%= if @chapters == [] do %>
+        <.empty material={@material} progress={@ingest_progress} />
+      <% else %>
+        <link rel="stylesheet" href={~p"/contents/#{@material.id}/book.css"} />
+
+        <.toolbar chapter={@chapter} chapters={@chapters} />
+
+        <.appearance_sheet preference={@preference} open?={@appearance_open?} />
+
+        <%!-- O sumário é navegação, não leitura: fica fora da tela até ser
+             chamado, em vez de comer uma coluna fixa ao lado do texto. --%>
+        <.contents_drawer
+          material={@material}
+          chapters={@chapters}
+          chapter={@chapter}
+          search_term={@search_term}
+          results={@results}
+          open?={@contents_open?}
+        />
+
+        <%!-- As variáveis ficam no quadro, e não no texto, para a navegação de
+             rodapé acompanhar a largura de coluna escolhida. --%>
+        <div style={"--qreader-width: #{column_width(@preference.width)};
+                     --qreader-font: #{font_stack(@preference.font)};
+                     --qreader-size: #{@preference.font_size / 100}rem;
+                     --qreader-leading: #{@preference.line_height / 100};"}>
+          <div
+            id="reader-scroll"
+            phx-hook=".ReadingPosition"
+            data-block={@saved_position && @saved_position.block_position}
+            data-offset={@saved_position && @saved_position.offset}
+            data-chapter={@saved_position && @saved_position.chapter_id}
+            data-current-chapter={@chapter.id}
+          >
+            <.chapter blocks={@blocks} covered={@covered} />
+          </div>
+
+          <.pagination material={@material} chapters={@chapters} chapter={@chapter} />
+        </div>
+
+        <script :type={Phoenix.LiveView.ColocatedHook} name=".ReadingPosition">
+          // A posição é bloco + deslocamento dentro dele, e não percentual de
+          // rolagem: mudar fonte, tamanho ou largura de coluna reflui o texto e
+          // move o percentual, mas não move o bloco.
+          export default {
+            mounted() {
+              this.measureNav();
+              this.restore();
+              this.blocks = () => Array.from(this.el.querySelectorAll("[data-position]"));
+
+              this.onScroll = () => {
+                clearTimeout(this.timer);
+                this.timer = setTimeout(() => this.report(), 600);
+              };
+
+              this.onResize = () => this.measureNav();
+
+              window.addEventListener("scroll", this.onScroll, {passive: true});
+              window.addEventListener("resize", this.onResize);
+            },
+
+            // A navbar muda de altura entre telefone e desktop e entre skins.
+            // Sem medir, a barra do capítulo gruda alto demais e deixa uma
+            // fresta por onde o texto passa rolando, ou baixa demais e cobre a
+            // primeira linha.
+            measureNav() {
+              const nav = document.querySelector("header.navbar");
+              const height = nav ? Math.round(nav.getBoundingClientRect().height) : 64;
+              document.documentElement.style.setProperty("--qnav-h", `${height}px`);
+            },
+
+            updated() {
+              // Trocou de capítulo: volta ao topo em vez de manter a rolagem do
+              // anterior, que cairia no meio de um texto que não é mais o mesmo.
+              if (this.chapter !== this.el.dataset.currentChapter) { this.restore(); }
+            },
+
+            destroyed() {
+              window.removeEventListener("scroll", this.onScroll);
+              window.removeEventListener("resize", this.onResize);
+              clearTimeout(this.timer);
+            },
+
+            // Topo útil da tela: abaixo da navbar e da barra do capítulo. É o
+            // mesmo ponto que decide qual bloco conta como "onde estou".
+            stickyOffset() {
+              const nav = parseInt(
+                getComputedStyle(document.documentElement).getPropertyValue("--qnav-h"), 10
+              ) || 64;
+              return nav + 44;
+            },
+
+            restore() {
+              this.chapter = this.el.dataset.currentChapter;
+              const sameChapter = this.el.dataset.chapter === this.chapter;
+              const target = sameChapter && this.el.querySelector(
+                `[data-position="${this.el.dataset.block}"]`
+              );
+
+              if (!target) { return window.scrollTo({top: 0}); }
+
+              const offset = parseFloat(this.el.dataset.offset || "0");
+              const rect = target.getBoundingClientRect();
+              window.scrollTo({
+                top: window.scrollY + rect.top + rect.height * offset - this.stickyOffset()
+              });
+            },
+
+            report() {
+              const marker = this.stickyOffset();
+              const visible = this.blocks().find(
+                (block) => block.getBoundingClientRect().bottom > marker
+              );
+
+              if (!visible) { return; }
+
+              const rect = visible.getBoundingClientRect();
+              const offset = rect.height > 0
+                ? Math.min(Math.max((marker - rect.top) / rect.height, 0), 1)
+                : 0;
+
+              this.pushEvent("save_position", {
+                position: parseInt(visible.dataset.position, 10),
+                offset: Math.round(offset * 100) / 100
+              });
+            }
+          }
+        </script>
+      <% end %>
+    </Layouts.app>
+    """
+  end
+
+  attr :material, :map, required: true
+  attr :progress, :map, default: nil
+
+  defp empty(assigns) do
+    ~H"""
+    <div class="mx-auto max-w-lg rounded-3xl border border-base-300 bg-base-100 p-8 text-center">
+      <.icon name="hero-book-open" class="mx-auto size-10 opacity-40" />
+      <h1 class="mt-3 text-xl font-bold">{@material.title}</h1>
+
+      <div :if={@material.status == "ingesting"} class="mt-2 space-y-2">
+        <p class="text-sm opacity-70">
+          O livro ainda está sendo processado. Esta página abre sozinha quando terminar.
+        </p>
+        <div :if={@progress} class="space-y-1">
+          <div class="h-1.5 overflow-hidden rounded-full bg-base-200">
+            <div
+              class="h-full bg-primary transition-all"
+              style={"width: #{round(@progress.done / @progress.total * 100)}%"}
+            >
+            </div>
+          </div>
+          <p class="truncate text-xs opacity-60">
+            Capítulo {@progress.done} de {@progress.total} — {@progress.title}
+          </p>
+        </div>
+      </div>
+      <p :if={@material.ingest_error} class="mt-2 text-sm text-error">
+        {@material.ingest_error}
+      </p>
+      <p
+        :if={@material.status != "ingesting" and is_nil(@material.ingest_error)}
+        class="mt-2 text-sm opacity-70"
+      >
+        Este material não é um livro em capítulos — ele foi enviado como texto e vive na curadoria.
+      </p>
+
+      <.link navigate={~p"/contents"} class="btn btn-primary mt-5 rounded-full px-6">
+        Voltar à biblioteca
+      </.link>
+    </div>
+    """
+  end
+
+  attr :material, :map, required: true
+  attr :chapters, :list, required: true
+  attr :chapter, :map, required: true
+  attr :search_term, :string, required: true
+  attr :results, :list, required: true
+  attr :open?, :boolean, required: true
+
+  # O painel fica sempre no DOM, só deslocado para fora da tela: montá-lo a cada
+  # abertura perderia o termo já digitado na busca e mataria a transição.
+  defp contents_drawer(assigns) do
+    ~H"""
+    <div
+      :if={@open?}
+      id="contents-backdrop"
+      phx-click="toggle_contents"
+      phx-window-keydown="toggle_contents"
+      phx-key="escape"
+      class="fixed inset-0 z-[60] touch-none bg-base-content/20 backdrop-blur-[1px]"
+      aria-hidden="true"
+    >
+    </div>
+
+    <aside
+      id="contents-drawer"
+      class={[
+        "fixed inset-y-0 left-0 z-[70] flex w-80 max-w-[85vw] flex-col gap-3",
+        "border-r border-base-300 bg-base-100 shadow-xl",
+        "overscroll-contain p-4 pt-[max(1rem,env(safe-area-inset-top))]",
+        "transition-transform duration-200 ease-out motion-reduce:transition-none",
+        @open? && "translate-x-0",
+        not @open? && "-translate-x-full"
+      ]}
+      aria-hidden={not @open?}
+    >
+      <div class="flex items-center justify-between gap-2">
+        <.link
+          navigate={~p"/contents"}
+          class="flex min-w-0 items-center gap-1 text-xs font-semibold text-primary hover:underline"
+        >
+          <.icon name="hero-arrow-left" class="size-3 shrink-0" />
+          <span class="truncate">Biblioteca</span>
+        </.link>
+        <button
+          type="button"
+          id="close-contents"
+          phx-click="toggle_contents"
+          class="qreader-tool"
+          aria-label="Fechar sumário"
+        >
+          <.icon name="hero-x-mark" class="size-4" />
+        </button>
+      </div>
+
+      <form id="book-search" phx-change="search" phx-submit="search" class="relative">
+        <input
+          type="search"
+          name="term"
+          value={@search_term}
+          placeholder="Buscar no livro"
+          phx-debounce="300"
+          class="input input-sm input-bordered w-full rounded-full pr-8"
+        />
+        <button
+          :if={@search_term != ""}
+          type="button"
+          phx-click="clear_search"
+          class="absolute right-2 top-1/2 -translate-y-1/2 opacity-50 hover:opacity-100"
+          aria-label="Limpar busca"
+        >
+          <.icon name="hero-x-mark" class="size-4" />
+        </button>
+      </form>
+
+      <div class="-mx-1 min-h-0 flex-1 overscroll-contain overflow-y-auto px-1">
+        <%= if @search_term != "" do %>
+          <p class="px-2 pb-2 text-xs font-semibold uppercase tracking-wide opacity-60">
+            {length(@results)} ocorrência(s)
+          </p>
+          <p :if={@results == []} class="px-2 py-4 text-sm opacity-60">
+            Nada encontrado para “{@search_term}”.
+          </p>
+          <.link
+            :for={result <- @results}
+            patch={result_path(@material, @chapters, result)}
+            class="block rounded-xl px-3 py-2 text-xs leading-relaxed hover:bg-base-200"
+          >
+            {excerpt(result, @search_term)}
+          </.link>
+        <% else %>
+          <p class="px-2 pb-2 text-xs font-semibold uppercase tracking-wide opacity-60">
+            Sumário
+          </p>
+          <.contents chapters={@chapters} current={@chapter} material_id={@material.id} />
+        <% end %>
+      </div>
+    </aside>
+    """
+  end
+
+  # O resultado da busca aponta para o bloco, e o bloco sabe em que capítulo
+  # está: a mesma âncora da posição e do filtro.
+  defp result_path(material, chapters, block) do
+    chapter = Enum.find(chapters, &(&1.id == block.chapter_id))
+
+    if chapter do
+      ~p"/contents/#{material.id}/#{chapter.position}" <> "#block-#{block.position}"
+    else
+      ~p"/contents/#{material.id}"
+    end
+  end
+
+  attr :chapter, :map, required: true
+  attr :chapters, :list, required: true
+
+  # `--qnav-h` é a altura real da navbar, medida no cliente: ela muda com o
+  # ponto de quebra e com a skin, e um `top` chutado deixa uma fresta por onde o
+  # texto passa rolando.
+  defp toolbar(assigns) do
+    ~H"""
+    <div class="sticky top-[var(--qnav-h,4rem)] z-30 rounded-2xl border border-base-300 bg-base-100/95 backdrop-blur">
+      <%!-- Uma linha só: o título do capítulo é a única informação que a barra
+           precisa dar enquanto se lê; o resto são botões que abrem painel. --%>
+      <div class="flex items-center gap-1 px-1.5 py-1">
+        <button
+          type="button"
+          id="open-contents"
+          phx-click="toggle_contents"
+          class="qreader-tool"
+          title="Sumário e busca"
+          aria-label="Sumário e busca"
+        >
+          <.icon name="hero-list-bullet" class="size-5" />
+        </button>
+
+        <p class="min-w-0 flex-1 truncate text-center text-sm font-semibold">
+          {@chapter.title}
+        </p>
+
+        <button
+          type="button"
+          id="open-appearance"
+          phx-click="toggle_appearance"
+          class="qreader-tool"
+          title="Aparência"
+          aria-label="Aparência"
+        >
+          <.icon name="hero-adjustments-horizontal" class="size-5" />
+        </button>
+      </div>
+
+      <div class="h-0.5 bg-base-200">
+        <div
+          class="h-full bg-primary transition-all"
+          style={"width: #{progress(@chapters, @chapter)}%"}
+        >
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  attr :preference, :map, required: true
+  attr :open?, :boolean, required: true
+
+  # Painel de aparência como folha de baixo, e não como expansão da barra fixa:
+  # quatro controles empurrando a barra para baixo comiam metade da tela do
+  # telefone, e os controles ficavam longe do polegar.
+  defp appearance_sheet(assigns) do
+    ~H"""
+    <div
+      :if={@open?}
+      id="appearance-backdrop"
+      phx-click="toggle_appearance"
+      phx-window-keydown="toggle_appearance"
+      phx-key="escape"
+      class="fixed inset-0 z-[60] touch-none bg-base-content/20 backdrop-blur-[1px]"
+      aria-hidden="true"
+    >
+    </div>
+
+    <div
+      id="appearance-sheet"
+      class={[
+        "fixed inset-x-0 bottom-0 z-[70] mx-auto w-full max-w-xl",
+        "rounded-t-3xl border border-base-300 bg-base-100 shadow-2xl sm:rounded-3xl sm:mb-4",
+        "transition-transform duration-200 ease-out motion-reduce:transition-none",
+        @open? && "translate-y-0",
+        not @open? && "translate-y-[110%]"
+      ]}
+      aria-hidden={not @open?}
+    >
+      <div class="flex items-center justify-between gap-2 px-5 pt-4">
+        <h2 class="text-sm font-semibold">Aparência</h2>
+        <button
+          type="button"
+          id="close-appearance"
+          phx-click="toggle_appearance"
+          class="qreader-tool"
+          aria-label="Fechar aparência"
+        >
+          <.icon name="hero-x-mark" class="size-5" />
+        </button>
+      </div>
+
+      <form
+        id="book-appearance"
+        phx-change="appearance"
+        class="grid gap-5 px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-3 sm:grid-cols-2"
+      >
+        <label class="space-y-1.5">
+          <span class="text-xs font-semibold uppercase tracking-wide opacity-60">Fonte</span>
+          <select name="font" class="select select-bordered w-full rounded-full">
+            <option value="serif" selected={@preference.font == :serif}>Serifada</option>
+            <option value="sans" selected={@preference.font == :sans}>Sem serifa</option>
+            <option value="mono" selected={@preference.font == :mono}>Monoespaçada</option>
+          </select>
+        </label>
+
+        <label class="space-y-1.5">
+          <span class="text-xs font-semibold uppercase tracking-wide opacity-60">
+            Largura da coluna
+          </span>
+          <select name="width" class="select select-bordered w-full rounded-full">
+            <option value="narrow" selected={@preference.width == :narrow}>Estreita</option>
+            <option value="medium" selected={@preference.width == :medium}>Média</option>
+            <option value="wide" selected={@preference.width == :wide}>Larga</option>
+          </select>
+        </label>
+
+        <label class="space-y-1.5">
+          <span class="text-xs font-semibold uppercase tracking-wide opacity-60">
+            Tamanho ({@preference.font_size}%)
+          </span>
+          <input
+            type="range"
+            name="font_size"
+            min="70"
+            max="200"
+            step="5"
+            value={@preference.font_size}
+            class="range range-primary"
+          />
+        </label>
+
+        <label class="space-y-1.5">
+          <span class="text-xs font-semibold uppercase tracking-wide opacity-60">
+            Entrelinha ({@preference.line_height / 100})
+          </span>
+          <input
+            type="range"
+            name="line_height"
+            min="120"
+            max="240"
+            step="5"
+            value={@preference.line_height}
+            class="range range-primary"
+          />
+        </label>
+      </form>
+    </div>
+    """
+  end
+
+  attr :material, :map, required: true
+  attr :chapters, :list, required: true
+  attr :chapter, :map, required: true
+
+  defp pagination(assigns) do
+    assigns =
+      assign(assigns,
+        previous: previous_chapter(assigns.chapters, assigns.chapter),
+        next: neighbour(assigns.chapters, assigns.chapter, 1)
+      )
+
+    ~H"""
+    <nav class="mx-auto flex max-w-[var(--qreader-width)] items-center justify-between gap-3 border-t border-base-200 pt-4">
+      <.link
+        :if={@previous}
+        patch={~p"/contents/#{@material.id}/#{@previous.position}"}
+        class="btn btn-ghost max-w-[45%] rounded-full"
+      >
+        <.icon name="hero-arrow-left" class="size-4" />
+        <span class="truncate">{@previous.title}</span>
+      </.link>
+      <span :if={is_nil(@previous)}></span>
+
+      <.link
+        :if={@next}
+        patch={~p"/contents/#{@material.id}/#{@next.position}"}
+        class="btn btn-ghost max-w-[45%] rounded-full"
+      >
+        <span class="truncate">{@next.title}</span>
+        <.icon name="hero-arrow-right" class="size-4" />
+      </.link>
+    </nav>
+    """
+  end
+end

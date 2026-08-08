@@ -36,14 +36,13 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Index do
   end
 
   @impl true
-  def handle_info({:mindmap_generated, _info}, socket) do
-    user = socket.assigns.current_user
-    materials = AdaptiveStudy.list_materials(user)
-    {:noreply, assign(socket, materials: materials)}
-  end
+  def handle_info({:mindmap_generated, _info}, socket), do: {:noreply, refresh(socket)}
 
-  @impl true
   def handle_info(_message, socket), do: {:noreply, socket}
+
+  defp refresh(socket) do
+    assign(socket, materials: AdaptiveStudy.list_materials(socket.assigns.current_user))
+  end
 
   @impl true
   def render(assigns) do

@@ -604,6 +604,177 @@ h1, h2, h3 {
 }
 .qprose th { background-color: color-mix(in oklab, var(--color-base-content) 5%, transparent); }
 
+/* ============================================================
+   .qreader-book — o leitor de EPUB.
+
+   Vem depois do .qprose de propósito: os dois ficam no mesmo
+   elemento, têm a mesma especificidade, e é a ordem no arquivo
+   que faz a aparência escolhida pelo usuário vencer o padrão.
+
+   As quatro variáveis abaixo são o que o controle de aparência
+   escreve; o resto do leitor mede em `em` e acompanha sozinho.
+
+   A folha da editora entra por rota própria, já filtrada e
+   escopada sob .qreader-book. Ela alcança o que a nossa
+   marcação mantém — `pre.code-area`, tabela, citação, ênfase —
+   e não alcança os contêineres que normalizamos, cujo papel
+   passa a ser das regras .qreader-* daqui.
+   ============================================================ */
+.qreader-book {
+  font-family: var(--qreader-font, ui-serif, Georgia, serif);
+  font-size: var(--qreader-size, 1rem);
+  line-height: var(--qreader-leading, 1.75);
+  max-width: var(--qreader-width, 72ch);
+  margin-inline: auto;
+  padding-block: 1rem 4rem;
+}
+
+/* Botão da barra do leitor. Alvo de 44px, que é o mínimo
+   confortável para o polegar; no desktop o mouse não precisa de
+   tanto, mas manter um tamanho só evita a barra mudar de altura
+   entre os pontos de quebra. */
+.qreader-tool {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  inline-size: 2.75rem;
+  block-size: 2.75rem;
+  border-radius: 9999px;
+  color: color-mix(in oklab, var(--color-base-content) 70%, transparent);
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.qreader-tool:hover,
+.qreader-tool:focus-visible {
+  color: var(--color-base-content);
+  background-color: color-mix(in oklab, var(--color-base-content) 8%, transparent);
+}
+
+.qreader-block {
+  /* Alvo de rolagem: a posição salva e as âncoras da busca caem no
+     topo do bloco, e sem esta margem ele para atrás da navbar mais
+     a barra do capítulo. `--qnav-h` é medida no cliente. */
+  scroll-margin-block-start: calc(var(--qnav-h, 4rem) + 3.5rem);
+}
+
+/* Tabela larga rola dentro do próprio bloco em vez de esticar a
+   página — num telefone de 320px uma tabela de quatro colunas
+   punha o corpo inteiro em rolagem horizontal. */
+.qreader-block[data-type="table"] {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+.qreader-block[data-type="table"] table {
+  min-width: max-content;
+}
+
+/* Marca de cobertura do filtro. A aparência definitiva fica em
+   aberto até o leitor estar na mão — o que já está decidido é
+   que ela sai de node_blocks, consultada uma vez por capítulo, e
+   nunca de varredura de texto em tempo de render. */
+.qreader-covered {
+  position: relative;
+}
+.qreader-covered::before {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: -1rem;
+  width: 2px;
+  border-radius: 2px;
+  background-color: color-mix(in oklab, var(--color-primary) 55%, transparent);
+}
+
+.qreader-listing {
+  margin-block: 0 1.4em;
+}
+.qreader-listing-title {
+  font-family: var(--skin-font-display, system-ui, sans-serif);
+  font-size: 0.78em;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  padding: 0.4em 0.8em;
+  border-radius: var(--skin-radius-box, 0.5rem) var(--skin-radius-box, 0.5rem) 0 0;
+  color: var(--color-primary-content);
+  background-color: var(--color-primary);
+}
+.qreader-listing-title + pre {
+  border-start-start-radius: 0;
+  border-start-end-radius: 0;
+}
+.qreader-listing pre {
+  margin-block: 0;
+}
+
+/* As anotações numeradas explicam as marcas dentro do código:
+   são conteúdo, e ficam presas ao bloco a que pertencem. */
+.qreader-annotations {
+  list-style: none;
+  margin: 0.4em 0 0;
+  padding: 0.5em 0.9em;
+  border-inline-start: 2px solid color-mix(in oklab, var(--color-base-content) 20%, transparent);
+  font-size: 0.8em;
+  line-height: 1.5;
+  opacity: 0.8;
+}
+.qreader-annotations li { margin-block: 0.15em; }
+
+.qreader-callout {
+  margin-block: 0 1.3em;
+  padding: 0.9em 1.1em;
+  border-radius: var(--skin-radius-box, 0.5rem);
+  border-inline-start: 3px solid color-mix(in oklab, var(--color-primary) 60%, transparent);
+  background-color: color-mix(in oklab, var(--color-base-content) 5%, transparent);
+}
+.qreader-callout > :last-child { margin-block-end: 0; }
+
+.qreader-sidebar {
+  margin-block: 1.6em;
+  padding: 1.2em 1.3em;
+  border: 1px solid var(--skin-card-line, var(--color-base-300));
+  border-radius: var(--skin-radius-box, 0.5rem);
+  background-color: color-mix(in oklab, var(--color-base-content) 3%, transparent);
+  font-size: 0.94em;
+}
+.qreader-sidebar > :last-child { margin-block-end: 0; }
+
+/* Um item de lista é bloco próprio — é a granularidade que a
+   demarcação da IA usa — então cada um traz seu próprio <ul>.
+   Sem isto os marcadores ficariam desalinhados entre irmãos. */
+.qreader-list {
+  margin-block: 0;
+}
+.qreader-list + .qreader-block .qreader-list {
+  margin-block-start: 0;
+}
+
+/* Imagens ficam fora da v1: o lugar delas fica reservado para a
+   página não perder o fio quando o texto cita "veja a figura". */
+.qreader-figure {
+  margin-block: 0 1.4em;
+  text-align: center;
+}
+.qreader-figure-placeholder {
+  display: grid;
+  place-items: center;
+  min-height: 5rem;
+  border: 1px dashed var(--skin-card-line, var(--color-base-300));
+  border-radius: var(--skin-radius-box, 0.5rem);
+  font-size: 0.75em;
+  opacity: 0.55;
+}
+.qreader-figure figcaption {
+  margin-block-start: 0.5em;
+  font-size: 0.82em;
+  opacity: 0.75;
+}
+.qreader-figure-alt {
+  margin-block: 0.2em 0;
+  font-size: 0.78em;
+  font-style: italic;
+  opacity: 0.55;
+}
+
 /* Botões sem sombra, com microinteração definida por cada skin. */
 .btn:not(.btn-ghost):not(.btn-link) {
   border-width: var(--skin-border-w);
