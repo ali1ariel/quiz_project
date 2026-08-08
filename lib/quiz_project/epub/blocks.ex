@@ -254,21 +254,26 @@ defmodule QuizProject.Epub.Blocks do
 
   # Imagens ficam fora da v1, mas o bloco `:figure` já existe para que a v2 não
   # precise de migração: legenda e texto alternativo sobrevivem à ingestão.
-  defp figure_block(node, id, _href) do
-    alt =
-      node
-      |> Floki.find("img")
-      |> Floki.attribute("alt")
-      |> Enum.reject(&(&1 == ""))
-      |> Enum.join(" ")
-
+  defp figure_block(node, id, href) do
+    images = Floki.find(node, "img")
+    alt = images |> Floki.attribute("alt") |> Enum.reject(&(&1 == "")) |> Enum.join(" ")
     caption = caption(node)
+
+    source =
+      images
+      |> Floki.attribute("src")
+      |> List.first()
+      |> case do
+        nil -> nil
+        src -> Inline.resolve_path(src, href)
+      end
 
     %Block{
       source_id: id,
       type: :figure,
       caption: caption,
       content: caption || alt,
+      image_path: source,
       annotations: if(alt == "", do: [], else: [alt])
     }
   end

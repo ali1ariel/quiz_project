@@ -20,6 +20,16 @@ if System.get_env("PHX_SERVER") do
   config :quiz_project, QuizProjectWeb.Endpoint, server: true
 end
 
+# As imagens dos livros são o único estado em disco da aplicação. Em produção o
+# release fica em diretório recriado a cada deploy, então BOOK_IMAGES_DIR precisa
+# apontar para um volume persistente; sem ele, os livros já enviados perderiam as
+# figuras no próximo deploy e só voltariam com uma reingestão.
+if config_env() == :prod do
+  config :quiz_project,
+         :book_images_dir,
+         System.get_env("BOOK_IMAGES_DIR") || "/var/lib/quiz_project/book_images"
+end
+
 # Integração com IA: as API keys vêm de variáveis de ambiente do sistema
 # (não por usuário no protótipo). AI_PROVIDER escolhe explicitamente
 # ("openai", "gemini", "claude" ou "fake"); sem ela, usa o primeiro provider com

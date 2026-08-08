@@ -51,8 +51,7 @@ defmodule QuizProject.Epub.Inline do
       "br" -> "\n"
       "sup" -> "^" <> render(children, base)
       "sub" -> "~" <> render(children, base)
-      # `img` inline fica fora da v1; o alt preserva o sentido da frase.
-      "img" -> attrs |> attr("alt") |> to_string() |> escape()
+      "img" -> image(attrs, base)
       _ -> render(children, base)
     end
   end
@@ -104,6 +103,30 @@ defmodule QuizProject.Epub.Inline do
   end
 
   defp external?(href), do: String.contains?(href, "://") or String.starts_with?(href, "mailto:")
+
+  # A imagem no meio da frase é conteúdo — num livro de aprendizado profundo são
+  # as equações. Guarda o caminho de dentro do EPUB, não uma URL da aplicação:
+  # o bloco é a única cópia do texto e não deve depender do esquema de rotas.
+  defp image(attrs, base) do
+    alt = attrs |> attr("alt") |> to_string()
+
+    case attr(attrs, "src") do
+      nil -> escape(alt)
+      "" -> escape(alt)
+      src -> "![#{escape(alt)}](#{resolve_path(src, base)})"
+    end
+  end
+
+  @doc "Resolve um caminho relativo do XHTML para o caminho dentro do zip."
+  def resolve_path(path, nil), do: path
+
+  def resolve_path(path, base) do
+    if String.contains?(path, "://") do
+      path
+    else
+      base |> Path.dirname() |> Path.join(path) |> Path.expand("/") |> String.trim_leading("/")
+    end
+  end
 
   defp attr(attrs, name) do
     Enum.find_value(attrs, fn

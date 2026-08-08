@@ -285,7 +285,12 @@ defmodule QuizProjectWeb.ContentsLive.Read do
             data-chapter={@saved_position && @saved_position.chapter_id}
             data-current-chapter={@chapter.id}
           >
-            <.chapter blocks={@blocks} covered={@covered} />
+            <.chapter
+              blocks={@blocks}
+              covered={@covered}
+              material_id={@material.id}
+              invertible={@material.image_flags}
+            />
           </div>
 
           <.pagination material={@material} chapters={@chapters} chapter={@chapter} />

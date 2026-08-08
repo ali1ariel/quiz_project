@@ -157,6 +157,101 @@ defmodule QuizProjectWeb.ContentsReadLiveTest do
     test "a folha da editora entra por rota própria", %{html: html, material: material} do
       assert html =~ ~s|/contents/#{material.id}/book.css|
     end
+
+    test "a figura sai como imagem de verdade, com alt e carga preguiçosa", %{
+      html: html,
+      material: material
+    } do
+      assert html =~ ~s|src="/contents/#{material.id}/images/OEBPS/Images/parafuso.png"|
+      assert html =~ ~s|alt="Corte de um parafuso"|
+      assert html =~ ~s|loading="lazy"|
+      refute html =~ "Figura não incluída"
+    end
+  end
+
+  describe "imagens" do
+    test "a imagem no meio da frase também aponta para a rota", %{
+      conn: conn,
+      material: material
+    } do
+      {:ok, _view, html} = live(conn, ~p"/contents/#{material.id}/3")
+
+      assert html =~ ~s|src="/contents/#{material.id}/images/OEBPS/Images/equacao.png"|
+    end
+
+    test "o diagrama transparente é marcado para inverter no tema escuro", %{
+      conn: conn,
+      material: material
+    } do
+      {:ok, _view, html} = live(conn, ~p"/contents/#{material.id}/2")
+
+      # A navbar tem o próprio logo; só interessam as imagens do livro.
+      [diagrama, captura] =
+        ~r/<img[^>]+>/
+        |> Regex.scan(html)
+        |> Enum.map(&hd/1)
+        |> Enum.filter(&(&1 =~ "/contents/"))
+
+      assert diagrama =~ "parafuso.png"
+      assert diagrama =~ "qreader-invertible"
+
+      # Captura de tela é opaca: inverter produziria um negativo.
+      assert captura =~ "captura.png"
+      refute captura =~ "qreader-invertible"
+    end
+
+    test "a imagem no meio da frase também é marcada", %{conn: conn, material: material} do
+      {:ok, _view, html} = live(conn, ~p"/contents/#{material.id}/3")
+
+      assert html =~ ~s|equacao.png" class="qreader-invertible"|
+    end
+
+    test "serve a imagem com tipo e cache longo", %{conn: conn, material: material} do
+      conn = get(conn, ~p"/contents/#{material.id}/images/OEBPS/Images/parafuso.png")
+
+      assert response_content_type(conn, :png) =~ "image/png"
+      assert get_resp_header(conn, "cache-control") == ["private, max-age=31536000, immutable"]
+      assert response(conn, 200) == EpubFixture.png()
+    end
+
+    test "caminho que não é do livro devolve 404", %{conn: conn, material: material} do
+      assert conn
+             |> get(~p"/contents/#{material.id}/images/OEBPS/Images/inexistente.png")
+             |> response(404)
+    end
+
+    test "não serve imagem de livro de outro usuário", %{conn: conn, user: user} do
+      {:ok, outro} =
+        QuizProject.Accounts.register_user(
+          %{
+            email: "outro#{System.unique_integer([:positive])}@teste.com",
+            password: "senha12345"
+          },
+          authorize?: false
+        )
+
+      {:ok, alheio} = AdaptiveStudy.create_material(outro, %{title: "Alheio", format: :epub})
+      {:ok, alheio} = Books.ingest(alheio, EpubFixture.build(), outro)
+
+      refute user.id == outro.id
+
+      assert conn
+             |> get(~p"/contents/#{alheio.id}/images/OEBPS/Images/parafuso.png")
+             |> response(404)
+    end
+
+    test "figura sem a imagem no pacote mostra o lugar reservado", %{conn: conn, user: user} do
+      {:ok, incompleto} =
+        AdaptiveStudy.create_material(user, %{title: "Incompleto", format: :epub})
+
+      {:ok, incompleto} =
+        Books.ingest(incompleto, EpubFixture.build(%{"OEBPS/Images/parafuso.png" => nil}), user)
+
+      {:ok, _view, html} = live(conn, ~p"/contents/#{incompleto.id}/2")
+
+      assert html =~ "Figura não incluída"
+      refute html =~ "images/OEBPS/Images/parafuso.png"
+    end
   end
 
   describe "sumário" do

@@ -93,6 +93,7 @@ defmodule QuizProjectWeb.Router do
     pipe_through [:browser, :require_authenticated_user]
 
     get "/contents/:id/book.css", BookStyleController, :show
+    get "/contents/:id/images/*path", BookImageController, :show
 
     live_session :authenticated,
       on_mount: [

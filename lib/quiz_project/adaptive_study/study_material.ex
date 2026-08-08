@@ -38,6 +38,7 @@ defmodule QuizProject.AdaptiveStudy.StudyMaterial do
         :format,
         :author,
         :reader_css,
+        :image_flags,
         :ingest_error
       ]
 
@@ -101,6 +102,14 @@ defmodule QuizProject.AdaptiveStudy.StudyMaterial do
     # própria com cache longo, em vez de ir junto do HTML a cada navegação —
     # ela carrega as fontes embutidas do livro.
     attribute :reader_css, :string
+
+    # Caminhos das imagens que podem ser invertidas no tema escuro. Só as
+    # invertíveis entram, então o mapa é esparso: 191 chaves no livro da
+    # Manning, 5 no do Ash.
+    attribute :image_flags, :map do
+      allow_nil? false
+      default %{}
+    end
 
     attribute :ingest_error, :string
 

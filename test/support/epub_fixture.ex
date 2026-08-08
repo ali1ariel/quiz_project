@@ -57,6 +57,24 @@ defmodule QuizProject.EpubFixture do
     build(%{"OEBPS/content.opf" => fixed})
   end
 
+  # PNG de 1x1 transparente: o menor arquivo que ainda é uma imagem de verdade,
+  # com cabeçalho válido, para o teste exercitar o caminho inteiro.
+  @png Base.decode64!(
+         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+       )
+
+  # PNG de 1x1 opaco, em RGB e sem canal alfa: é a forma que ferramenta de
+  # captura de tela exporta, e o contraponto do diagrama transparente.
+  @png_opaco Base.decode64!(
+               "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC"
+             )
+
+  @doc "Bytes do PNG transparente que a fixture embute."
+  def png, do: @png
+
+  @doc "Bytes do PNG opaco que a fixture embute."
+  def png_opaco, do: @png_opaco
+
   defp base_files do
     %{
       "mimetype" => "application/epub+zip",
@@ -65,6 +83,10 @@ defmodule QuizProject.EpubFixture do
       "OEBPS/toc.ncx" => ncx(),
       "OEBPS/Styles/style.css" => css(),
       "OEBPS/Fonts/mono.woff2" => "wOF2-conteudo-falso-de-fonte",
+      "OEBPS/Images/parafuso.png" => @png,
+      "OEBPS/Images/equacao.png" => @png,
+      "OEBPS/Images/captura.png" => @png_opaco,
+      "OEBPS/Images/nao-referenciada.png" => @png,
       "OEBPS/Text/copyright.xhtml" => copyright(),
       "OEBPS/Text/chapter-1.xhtml" => chapter_one(),
       "OEBPS/Text/chapter-2.xhtml" => chapter_two(),
@@ -100,6 +122,10 @@ defmodule QuizProject.EpubFixture do
         <item href="Text/index.xhtml" id="index" media-type="application/xhtml+xml"/>
         <item href="Styles/style.css" id="css" media-type="text/css"/>
         <item href="Fonts/mono.woff2" id="mono" media-type="font/woff2"/>
+        <item href="Images/parafuso.png" id="img-parafuso" media-type="image/png"/>
+        <item href="Images/equacao.png" id="img-equacao" media-type="image/png"/>
+        <item href="Images/captura.png" id="img-captura" media-type="image/png"/>
+        <item href="Images/nao-referenciada.png" id="img-sobra" media-type="image/png"/>
         <item href="toc.ncx" id="ncx" media-type="application/x-dtbncx+xml"/>
       </manifest>
       <spine toc="ncx">
@@ -270,13 +296,20 @@ defmodule QuizProject.EpubFixture do
       <img alt="Corte de um parafuso" src="../Images/parafuso.png"/>
       <h5 class="figure-container-h5">Figura 1.1 Corte longitudinal</h5>
     </div>
+    <div class="figure-container" id="p8">
+      <img alt="Tela da bancada" src="../Images/captura.png"/>
+      <h5 class="figure-container-h5">Figura 1.2 A bancada montada</h5>
+    </div>
     """)
   end
 
   defp chapter_two do
     page("""
     <div class="readable-text" id="p1"><h1>2 A dobradiça</h1></div>
-    <div class="readable-text" id="p2"><p>A dobradiça precede o parafuso.</p></div>
+    <div class="readable-text" id="p2">
+      <p>A dobradiça precede o parafuso, girando sobre o eixo
+         <img alt="eixo" src="../Images/equacao.png"/> descrito acima.</p>
+    </div>
     <div class="callout-container sidebar-container">
       <div class="readable-text" id="p3"><h5 class="callout-container-h5">Uma digressão sobre gonzos</h5></div>
       <div class="readable-text" id="p4"><p>Gonzo é o nome antigo da dobradiça.</p></div>

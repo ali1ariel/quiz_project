@@ -4,6 +4,7 @@ defmodule QuizProject.AdaptiveStudy.BooksTest do
   alias QuizProject.Accounts
   alias QuizProject.AdaptiveStudy
   alias QuizProject.AdaptiveStudy.Books
+  alias QuizProject.AdaptiveStudy.ImageStore
   alias QuizProject.Epub
   alias QuizProject.EpubFixture
 
@@ -95,6 +96,99 @@ defmodule QuizProject.AdaptiveStudy.BooksTest do
       assert_received {:ingest_progress, %{done: 1, total: 4}}
       assert_received {:ingest_progress, %{done: 4, total: 4, title: "Índice remissivo"}}
       assert_received {:ingest_finished, %{result: :ok}}
+    end
+  end
+
+  describe "imagens" do
+    test "grava em disco, com o tipo vindo do sufixo", %{material: material, user: user} do
+      material = ingest(material, user)
+
+      assert {:ok, file, "image/png"} =
+               ImageStore.fetch(material.id, "OEBPS/Images/parafuso.png")
+
+      assert File.read!(file) == EpubFixture.png()
+    end
+
+    test "mantém a estrutura de pastas do livro", %{material: material, user: user} do
+      material = ingest(material, user)
+
+      assert File.regular?(
+               Path.join(ImageStore.material_dir(material.id), "OEBPS/Images/parafuso.png")
+             )
+    end
+
+    test "o bloco de figura aponta para a imagem gravada", %{material: material, user: user} do
+      material = ingest(material, user)
+      {:ok, chapter} = Books.get_chapter(material.id, 2)
+
+      figura = chapter.id |> Books.list_blocks() |> Enum.find(&(&1.type == :figure))
+
+      assert figura.image_path == "OEBPS/Images/parafuso.png"
+      assert {:ok, _file, _type} = ImageStore.fetch(material.id, figura.image_path)
+    end
+
+    test "imagem não referenciada não vai para o disco", %{material: material, user: user} do
+      material = ingest(material, user)
+
+      assert ImageStore.fetch(material.id, "OEBPS/Images/nao-referenciada.png") == :error
+    end
+
+    test "reingerir substitui as imagens sem deixar órfã", %{material: material, user: user} do
+      material = ingest(material, user)
+
+      orfa = Path.join(ImageStore.material_dir(material.id), "OEBPS/Images/edicao-antiga.png")
+      File.write!(orfa, "sobra")
+
+      material = ingest(material, user)
+
+      assert {:ok, _file, _type} = ImageStore.fetch(material.id, "OEBPS/Images/parafuso.png")
+      refute File.exists?(orfa)
+    end
+
+    test "apagar o livro leva as imagens junto", %{material: material, user: user} do
+      material = ingest(material, user)
+      {:ok, _} = AdaptiveStudy.delete_material(material, user)
+
+      assert ImageStore.fetch(material.id, "OEBPS/Images/parafuso.png") == :error
+      refute File.exists?(ImageStore.material_dir(material.id))
+    end
+
+    test "não devolve imagem de outro livro", %{material: material, user: user} do
+      material = ingest(material, user)
+
+      {:ok, outro} = AdaptiveStudy.create_material(user, %{title: "Outro", format: :epub})
+
+      assert ImageStore.fetch(outro.id, "OEBPS/Images/parafuso.png") == :error
+    end
+
+    test "guarda quais imagens podem ser invertidas no tema escuro", %{
+      material: material,
+      user: user
+    } do
+      material = ingest(material, user)
+
+      assert material.image_flags == %{
+               "OEBPS/Images/parafuso.png" => true,
+               "OEBPS/Images/equacao.png" => true
+             }
+
+      refute Map.has_key?(material.image_flags, "OEBPS/Images/captura.png")
+    end
+
+    test "caminho que tenta sair da pasta do material é recusado", %{
+      material: material,
+      user: user
+    } do
+      material = ingest(material, user)
+
+      for tentativa <- [
+            "../#{material.id}/OEBPS/Images/parafuso.png",
+            "../../../etc/passwd",
+            "/etc/passwd",
+            "OEBPS/../../escapou.png"
+          ] do
+        assert ImageStore.fetch(material.id, tentativa) == :error
+      end
     end
   end
 

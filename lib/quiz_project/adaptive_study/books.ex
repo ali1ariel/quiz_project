@@ -13,6 +13,7 @@ defmodule QuizProject.AdaptiveStudy.Books do
 
   alias QuizProject.AdaptiveStudy.Block
   alias QuizProject.AdaptiveStudy.Chapter
+  alias QuizProject.AdaptiveStudy.ImageStore
   alias QuizProject.AdaptiveStudy.NodeBlock
   alias QuizProject.AdaptiveStudy.ReadingPosition
   alias QuizProject.AdaptiveStudy.ReadingPreference
@@ -65,6 +66,7 @@ defmodule QuizProject.AdaptiveStudy.Books do
     # estáveis, então a demarcação da IA volta a cair no lugar certo — mas os
     # uuid dos blocos mudam, e `node_blocks` cai junto por chave estrangeira.
     delete_chapters(material)
+    ImageStore.put_all(material.id, book.images)
 
     Enum.each(book.chapters, fn chapter ->
       {:ok, row} =
@@ -96,6 +98,7 @@ defmodule QuizProject.AdaptiveStudy.Books do
           author: book.author,
           format: :epub,
           reader_css: book.css,
+          image_flags: invertible_paths(book.images),
           status: "draft",
           ingest_error: nil
         },
@@ -128,6 +131,7 @@ defmodule QuizProject.AdaptiveStudy.Books do
         lang: block.lang,
         caption: block.caption,
         content: block.content,
+        image_path: block.image_path,
         annotations: block.annotations
       }
     end)
@@ -138,6 +142,12 @@ defmodule QuizProject.AdaptiveStudy.Books do
       stop_on_error?: true,
       batch_size: 500
     )
+  end
+
+  # Só as invertíveis entram no mapa: as opacas são a maioria em livro de
+  # capturas de tela, e guardar `false` para cada uma seria peso sem uso.
+  defp invertible_paths(images) do
+    for {path, %{invertible: true}} <- images, into: %{}, do: {path, true}
   end
 
   # O título que o usuário escreveu no upload manda sobre o do OPF; só o

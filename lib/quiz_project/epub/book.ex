@@ -13,7 +13,8 @@ defmodule QuizProject.Epub.Book do
     :identifier,
     :version,
     :css,
-    chapters: []
+    chapters: [],
+    images: %{}
   ]
 
   @type t :: %__MODULE__{
@@ -23,7 +24,8 @@ defmodule QuizProject.Epub.Book do
           identifier: String.t() | nil,
           version: String.t(),
           css: String.t() | nil,
-          chapters: [Chapter.t()]
+          chapters: [Chapter.t()],
+          images: %{String.t() => %{content_type: String.t(), data: binary()}}
         }
 
   @doc "Total de blocos do livro."

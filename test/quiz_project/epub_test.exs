@@ -156,11 +156,20 @@ defmodule QuizProject.EpubTest do
       assert block.content =~ "não é o mesmo que o avanço"
     end
 
-    test "figura guarda legenda e texto alternativo mesmo sem a imagem" do
+    test "figura guarda legenda, texto alternativo e o caminho da imagem" do
       block = book() |> blocks_of("1 O parafuso") |> Enum.find(&(&1.type == :figure))
 
       assert block.caption == "Figura 1.1 Corte longitudinal"
       assert block.annotations == ["Corte de um parafuso"]
+      assert block.image_path == "OEBPS/Images/parafuso.png"
+    end
+
+    test "imagem no meio da frase vira Markdown com o caminho resolvido" do
+      block = book() |> blocks_of("2 A dobradiça") |> Enum.at(1)
+
+      assert block.type == :paragraph
+      assert block.content =~ "![eixo](OEBPS/Images/equacao.png)"
+      assert block.content =~ "girando sobre o eixo"
     end
 
     test "barra lateral é um bloco só, com o título dentro" do
@@ -247,6 +256,76 @@ defmodule QuizProject.EpubTest do
       refute Book.body_text(book) =~ "Todos os direitos reservados"
       refute Book.body_text(book) =~ "dobradiça, 2"
       assert Book.body_text(book) =~ "O parafuso é"
+    end
+  end
+
+  describe "imagens" do
+    test "extrai só o que os blocos referenciam" do
+      images = book().images
+
+      assert Map.keys(images) |> Enum.sort() == [
+               "OEBPS/Images/captura.png",
+               "OEBPS/Images/equacao.png",
+               "OEBPS/Images/parafuso.png"
+             ]
+
+      refute Map.has_key?(images, "OEBPS/Images/nao-referenciada.png")
+    end
+
+    test "guarda o binário e o tipo de conteúdo" do
+      image = book().images["OEBPS/Images/parafuso.png"]
+
+      assert image.content_type == "image/png"
+      assert image.data == EpubFixture.png()
+    end
+
+    test "marca como invertível só o traço sobre fundo transparente" do
+      images = book().images
+
+      # Diagrama exportado com transparência: inverter devolve traço claro.
+      assert images["OEBPS/Images/parafuso.png"].invertible
+      assert images["OEBPS/Images/equacao.png"].invertible
+
+      # Captura de tela é opaca: invertê-la produziria um negativo.
+      refute images["OEBPS/Images/captura.png"].invertible
+    end
+
+    test "reconhece o canal alfa pelo cabeçalho, sem decodificar a imagem" do
+      assert Epub.invertible?("d.png", EpubFixture.png())
+      refute Epub.invertible?("c.png", EpubFixture.png_opaco())
+      refute Epub.invertible?("foto.jpg", EpubFixture.png())
+      assert Epub.invertible?("traco.svg", "<svg/>")
+      refute Epub.invertible?("quebrado.png", "isto não é um PNG")
+    end
+
+    test "a fonte do @font-face não entra como imagem" do
+      refute Map.has_key?(book().images, "OEBPS/Fonts/mono.woff2")
+    end
+
+    test "figura que aponta para imagem ausente do pacote perde o caminho" do
+      {:ok, book} = Epub.parse(EpubFixture.build(%{"OEBPS/Images/parafuso.png" => nil}))
+
+      figura =
+        book.chapters |> Enum.flat_map(& &1.blocks) |> Enum.find(&(&1.type == :figure))
+
+      # Sem o caminho o leitor mostra o lugar reservado, e a legenda e o texto
+      # alternativo continuam contando o que havia ali — melhor que um `img`
+      # apontando para 404.
+      assert figura.image_path == nil
+      assert figura.caption == "Figura 1.1 Corte longitudinal"
+      assert figura.annotations == ["Corte de um parafuso"]
+    end
+
+    test "imagem inline ausente do pacote vira o texto alternativo" do
+      {:ok, book} = Epub.parse(EpubFixture.build(%{"OEBPS/Images/equacao.png" => nil}))
+
+      block =
+        book.chapters
+        |> Enum.flat_map(& &1.blocks)
+        |> Enum.find(&(&1.content =~ "girando sobre o eixo"))
+
+      refute block.content =~ "!["
+      assert block.content =~ "girando sobre o eixo eixo descrito acima"
     end
   end
 

@@ -41,3 +41,6 @@ npm-debug.log
 # Documentos de planejamento em andamento, fora do histórico até amadurecerem.
 /priv/docs/in_progress/
 
+
+# Imagens extraídas dos EPUBs (regeneradas por reingestão)
+/priv/book_images/

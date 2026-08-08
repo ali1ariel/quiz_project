@@ -17,6 +17,7 @@ defmodule QuizProject.Epub.Block do
     :lang,
     :caption,
     :content,
+    :image_path,
     annotations: []
   ]
 
@@ -27,6 +28,7 @@ defmodule QuizProject.Epub.Block do
           lang: String.t() | nil,
           caption: String.t() | nil,
           content: String.t(),
+          image_path: String.t() | nil,
           annotations: [String.t()]
         }
 

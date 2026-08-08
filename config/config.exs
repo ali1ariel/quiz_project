@@ -87,6 +87,11 @@ config :phoenix_live_view,
 # at the `config/runtime.exs`.
 config :quiz_project, QuizProject.Mailer, adapter: Swoosh.Adapters.Local
 
+# Imagens dos livros ficam em disco, não no banco: são bytes estáticos, e servi-los
+# pelo Postgres gastaria uma conexão do pool por arquivo. Em produção o caminho
+# precisa apontar para um volume que sobreviva ao deploy (veja runtime.exs).
+config :quiz_project, :book_images_dir, Path.expand("priv/book_images")
+
 # Configure esbuild (the version is required)
 config :esbuild,
   version: "0.25.4",

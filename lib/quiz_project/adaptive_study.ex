@@ -131,13 +131,26 @@ defmodule QuizProject.AdaptiveStudy do
     end
   end
 
-  @doc "Deleta um material de estudo."
+  @doc """
+  Deleta um material de estudo.
+
+  As imagens do livro vivem em disco, então elas não caem por chave estrangeira
+  como o resto: apagá-las é responsabilidade deste ponto, que é por onde toda a
+  aplicação remove material.
+  """
   def delete_material(material, %{id: user_id}) do
     if material.user_id == user_id do
       case Ash.destroy(material, authorize?: false) do
-        :ok -> {:ok, material}
-        {:ok, result} -> {:ok, result}
-        error -> error
+        :ok ->
+          QuizProject.AdaptiveStudy.ImageStore.delete_all(material.id)
+          {:ok, material}
+
+        {:ok, result} ->
+          QuizProject.AdaptiveStudy.ImageStore.delete_all(material.id)
+          {:ok, result}
+
+        error ->
+          error
       end
     else
       {:error, :unauthorized}

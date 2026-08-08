@@ -748,11 +748,45 @@ h1, h2, h3 {
   margin-block-start: 0;
 }
 
-/* Imagens ficam fora da v1: o lugar delas fica reservado para a
-   página não perder o fio quando o texto cita "veja a figura". */
 .qreader-figure {
   margin-block: 0 1.4em;
   text-align: center;
+}
+
+.qreader-figure img,
+.qreader-block img {
+  margin-inline: auto;
+  /* Sem canto arredondado, ao contrário do resto do .qprose. Ali a
+     imagem é ilustração e o arredondado é enfeite; aqui é diagrama,
+     e `border-radius` num <img> recorta a imagem pintada — some com
+     o rótulo do eixo e com a quina da caixa do fluxograma. */
+  border-radius: 0;
+}
+
+/* Diagrama de livro técnico é traço preto sobre fundo transparente:
+   no tema escuro ele sumiria contra a página. A inversão devolve
+   traço claro sobre fundo escuro.
+
+   `hue-rotate(180deg)` acompanha a inversão para a matiz sobreviver:
+   sem ele o azul vira laranja, e o texto que diz "a curva azul
+   mostra..." passa a apontar para uma curva que não é mais azul.
+
+   Só entram as imagens que a ingestão marcou como traço sobre fundo
+   transparente. Captura de tela e foto são opacas, ficam de fora, e
+   é por isso que a marcação é por arquivo e não por livro. */
+[data-theme="dark"] .qreader-invertible {
+  filter: invert(1) hue-rotate(180deg);
+}
+.qreader-figure img {
+  margin-block-end: 0;
+}
+
+/* Imagem no meio da frase — nos livros de matemática são as
+   equações. Acompanha a linha em vez de virar bloco próprio. */
+.qreader-block p img {
+  display: inline-block;
+  vertical-align: middle;
+  margin-block: 0;
 }
 .qreader-figure-placeholder {
   display: grid;

@@ -51,6 +51,7 @@ defmodule QuizProject.AdaptiveStudy.Block do
         :lang,
         :caption,
         :content,
+        :image_path,
         :annotations
       ]
     end
@@ -87,6 +88,11 @@ defmodule QuizProject.AdaptiveStudy.Block do
     attribute :lang, :string
 
     attribute :caption, :string
+
+    # Caminho da imagem dentro do EPUB, para blocos `:figure`. Guarda o caminho
+    # e não a URL da aplicação: o bloco é a única cópia do texto e não deve
+    # depender do esquema de rotas.
+    attribute :image_path, :string
 
     # As duas restrições existem por motivos distintos e igualmente concretos.
     #

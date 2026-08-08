@@ -13,7 +13,9 @@ defmodule QuizProjectWeb.Components.Book do
   alias QuizProject.AdaptiveStudy.Block
 
   attr :blocks, :list, required: true
+  attr :material_id, :string, required: true
   attr :covered, :map, default: %{}
+  attr :invertible, :map, default: %{}
 
   @doc """
   O corpo do capítulo.
@@ -24,13 +26,21 @@ defmodule QuizProjectWeb.Components.Book do
   def chapter(assigns) do
     ~H"""
     <article class="qreader-book qprose">
-      <.block :for={block <- @blocks} block={block} nodes={Map.get(@covered, block.id, [])} />
+      <.block
+        :for={block <- @blocks}
+        block={block}
+        material_id={@material_id}
+        invertible={@invertible}
+        nodes={Map.get(@covered, block.id, [])}
+      />
     </article>
     """
   end
 
   attr :block, :map, required: true
+  attr :material_id, :string, required: true
   attr :nodes, :list, default: []
+  attr :invertible, :map, default: %{}
 
   def block(assigns) do
     assigns = assign(assigns, :covered?, assigns.nodes != [])
@@ -64,56 +74,77 @@ defmodule QuizProjectWeb.Components.Book do
 
   defp render_body(%{block: %{type: :figure}} = assigns) do
     ~H"""
-    <%!-- Imagens ficam fora da v1: o que sobrevive é a legenda e o texto
-          alternativo, para o leitor saber que havia uma figura ali. --%>
     <figure class="qreader-figure">
-      <div class="qreader-figure-placeholder">
-        <span>Figura não incluída nesta versão</span>
+      <%!-- `loading="lazy"` porque um capítulo denso traz dezenas de diagramas e
+            nem todos entram na tela. O lugar reservado cobre o EPUB que aponta
+            para uma imagem que o pacote não traz. --%>
+      <img
+        :if={@block.image_path}
+        src={image_url(@material_id, @block.image_path)}
+        alt={List.first(@block.annotations) || @block.caption || ""}
+        class={if Map.has_key?(@invertible, @block.image_path), do: "qreader-invertible"}
+        loading="lazy"
+        decoding="async"
+      />
+      <div :if={is_nil(@block.image_path)} class="qreader-figure-placeholder">
+        <span>Figura não incluída neste EPUB</span>
       </div>
       <figcaption :if={@block.caption}>{@block.caption}</figcaption>
-      <p :for={alt <- @block.annotations} class="qreader-figure-alt">{alt}</p>
     </figure>
     """
   end
 
   defp render_body(%{block: %{type: :sidebar}} = assigns) do
     ~H"""
-    <aside class="qreader-sidebar">{markdown(@block.content)}</aside>
+    <aside class="qreader-sidebar">{markdown(@block.content, @material_id, @invertible)}</aside>
     """
   end
 
   defp render_body(%{block: %{type: :callout}} = assigns) do
     ~H"""
-    <aside class="qreader-callout">{markdown(@block.content)}</aside>
+    <aside class="qreader-callout">{markdown(@block.content, @material_id, @invertible)}</aside>
     """
   end
 
   defp render_body(%{block: %{type: :list_item}} = assigns) do
     ~H"""
     <ul class="qreader-list">
-      <li>{markdown(@block.content)}</li>
+      <li>{markdown(@block.content, @material_id, @invertible)}</li>
     </ul>
     """
   end
 
   defp render_body(assigns) do
     ~H"""
-    {markdown(@block.content)}
+    {markdown(@block.content, @material_id, @invertible)}
     """
   end
 
   # O bloco já chega em Markdown, então a renderização é a mesma do resto do
   # material. As extensões ligadas aqui são as que a ingestão produz: tabela em
   # GFM, e nada de HTML cru vindo do arquivo do usuário.
-  defp markdown(content) do
+  defp markdown(content, material_id, invertible) do
     case MDEx.to_html(content,
            extension: [table: true, strikethrough: true],
            render: [escape: false, unsafe: false]
          ) do
-      {:ok, html} -> raw(html)
+      {:ok, html} -> html |> rewrite_images(material_id, invertible) |> raw()
       {:error, _reason} -> content
     end
   end
+
+  # A imagem no meio da frase guarda o caminho de dentro do EPUB, não uma URL da
+  # aplicação — o bloco é a única cópia do texto e não deve depender do esquema
+  # de rotas. A tradução acontece aqui, e só para caminho interno: `src` absoluto
+  # ou com esquema passa intacto.
+  defp rewrite_images(html, material_id, invertible) do
+    Regex.replace(~r/src="(?!https?:|data:|\/)([^"]*)"/, html, fn _match, path ->
+      classe = if Map.has_key?(invertible, path), do: ~s( class="qreader-invertible"), else: ""
+      ~s(src="#{image_url(material_id, path)}"#{classe})
+    end)
+  end
+
+  defp image_url(material_id, path), do: "/contents/#{material_id}/images/#{path}"
 
   attr :chapters, :list, required: true
   attr :current, :map, required: true

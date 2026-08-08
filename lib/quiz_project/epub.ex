@@ -108,18 +108,21 @@ defmodule QuizProject.Epub do
 
     chapters = chapters |> Enum.reverse() |> Enum.reject(&(&1.blocks == []))
 
+    images = images(files, chapters)
+
     if chapters == [] do
       {:error, :no_readable_content}
     else
       {:ok,
        %Book{
+         images: images,
          title: title(package),
          author: package.author,
          language: package.language,
          identifier: package.identifier,
          version: if(package.version == "", do: "2.0", else: package.version),
          css: stylesheet(files, package),
-         chapters: renumber(chapters)
+         chapters: chapters |> prune_missing_images(images) |> renumber()
        }}
     end
   end
@@ -248,6 +251,110 @@ defmodule QuizProject.Epub do
       [] -> nil
       sheets -> Enum.join(sheets, "\n\n")
     end
+  end
+
+  # Só o que os blocos de fato referenciam entra: o zip traz também a capa e os
+  # ícones de aviso, e guardar imagem que ninguém aponta é peso morto no banco.
+  #
+  # A lista sai dos próprios blocos — do `image_path` da figura e do
+  # `![alt](caminho)` das imagens no meio da frase — para não haver como o
+  # leitor pedir uma imagem que a ingestão não guardou.
+  @image_types %{
+    ".png" => "image/png",
+    ".jpg" => "image/jpeg",
+    ".jpeg" => "image/jpeg",
+    ".gif" => "image/gif",
+    ".svg" => "image/svg+xml",
+    ".webp" => "image/webp"
+  }
+
+  @inline_image ~r/!\[[^\]]*\]\(([^)\s]+)\)/
+
+  @doc "Tipo de conteúdo de uma imagem pelo sufixo, ou `:error` se não for imagem."
+  def image_content_type(path) do
+    Map.fetch(@image_types, path |> Path.extname() |> String.downcase())
+  end
+
+  defp images(files, chapters) do
+    chapters
+    |> Enum.flat_map(& &1.blocks)
+    |> Enum.flat_map(&referenced_paths/1)
+    |> Enum.uniq()
+    |> Enum.flat_map(fn path ->
+      with {:ok, content_type} <- image_content_type(path),
+           {:ok, data} <- Map.fetch(files, path) do
+        [{path, %{content_type: content_type, data: data, invertible: invertible?(path, data)}}]
+      else
+        :error -> []
+      end
+    end)
+    |> Map.new()
+  end
+
+  # EPUB mal montado aponta para imagem que não está no pacote. O bloco não pode
+  # ficar prometendo o que não existe: sem o caminho, o leitor mostra o lugar
+  # reservado, e a legenda e o texto alternativo continuam contando o que havia
+  # ali. Melhor que um `img` quebrado.
+  defp prune_missing_images(chapters, images) do
+    Enum.map(chapters, fn chapter ->
+      %{chapter | blocks: Enum.map(chapter.blocks, &prune_block(&1, images))}
+    end)
+  end
+
+  defp prune_block(block, images) do
+    block =
+      if block.image_path && not Map.has_key?(images, block.image_path),
+        do: %{block | image_path: nil},
+        else: block
+
+    %{block | content: prune_inline(block.content, images)}
+  end
+
+  defp prune_inline(content, images) do
+    Regex.replace(@inline_image, content, fn match, path ->
+      if Map.has_key?(images, path) do
+        match
+      else
+        Regex.run(~r/!\[([^\]]*)\]/, match) |> Enum.at(1, "")
+      end
+    end)
+  end
+
+  @doc """
+  Indica se a imagem é traço sobre fundo transparente, e portanto pode ser
+  invertida no tema escuro sem virar um negativo do que deveria mostrar.
+
+  O canal alfa é o sinal, e ele está no cabeçalho do PNG — não precisa decodificar
+  pixel. Nos dois livros medidos ele separa bem: os 191 diagramas da Manning são
+  RGBA, e as 31 capturas de tela do livro do Ash são opacas. Ferramenta de
+  diagrama exporta com transparência; ferramenta de captura, não.
+
+  Uma captura salva como PNG-32 seria invertida por engano. Nenhum dos livros
+  reais traz isso, e o preço do erro é uma figura estranha, não conteúdo perdido.
+  """
+  def invertible?(path, data) do
+    case String.downcase(Path.extname(path)) do
+      ".svg" -> true
+      ".png" -> png_with_alpha?(data)
+      _ -> false
+    end
+  end
+
+  defp png_with_alpha?(
+         <<137, 80, 78, 71, 13, 10, 26, 10, _length::32, "IHDR", _width::32, _height::32,
+           _depth::8, color_type::8, _rest::binary>> = data
+       ) do
+    # 4 = cinza+alfa, 6 = RGBA. A paleta (3) guarda a transparência num pedaço
+    # `tRNS` à parte, então ela precisa ser procurada no corpo do arquivo.
+    color_type in [4, 6] or String.contains?(data, "tRNS")
+  end
+
+  defp png_with_alpha?(_data), do: false
+
+  defp referenced_paths(block) do
+    inline = Regex.scan(@inline_image, block.content, capture: :all_but_first)
+
+    List.wrap(block.image_path) ++ Enum.concat(inline)
   end
 
   defp title(%{title: title}) when is_binary(title) and title != "", do: title
