@@ -15,17 +15,33 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Mindmap do
 
   alias QuizProject.AdaptiveStudy
 
+  # Lado do botão de explorar, em pixels. O valor entra no cálculo da posição
+  # (o botão é centrado na porta de saída do cartão) e precisa casar com a
+  # classe `size-[32px]` do próprio botão — o Tailwind só enxerga classe
+  # literal, então a medida não pode ser interpolada lá.
+  @explore_size 32
+
   attr :layout, :map, required: true
   attr :selected_id, :string, default: nil
   attr :origin_id, :string, default: nil
 
+  attr :entry_id, :string,
+    default: nil,
+    doc: "nó em que a visão se abre quando o mapa não cabe inteiro na tela"
+
   def canvas(assigns) do
     # Na árvore as relações transversais só entram em cena quando um nó é
     # selecionado: por padrão a tela mostra a formação da árvore e nada mais.
+    entry = Enum.find(assigns.layout.nodes, &(&1.id == assigns.entry_id))
+
     assigns =
       assign(assigns,
         relations: visible_relations(assigns.layout, assigns.selected_id),
-        ctx: context(assigns)
+        ctx: context(assigns),
+        entry: entry,
+        # Dentro do ~H, `@x` é `assigns.x`: o atributo de módulo precisa vir
+        # por aqui para o cálculo da posição enxergá-lo.
+        explore_size: @explore_size
       )
 
     ~H"""
@@ -34,6 +50,8 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Mindmap do
       phx-hook=".MindmapPanZoom"
       data-width={@layout.width}
       data-height={@layout.height}
+      data-entry-x={@entry && @entry.x}
+      data-entry-y={@entry && @entry.y}
       data-signature={@layout.signature}
       class="absolute inset-0 touch-none select-none overflow-hidden bg-base-200/60 [background-image:radial-gradient(circle,var(--color-base-300)_1px,transparent_1px)] [background-size:26px_26px]"
     >
@@ -109,14 +127,19 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Mindmap do
             "left:#{node.x - @layout.node_width / 2}px;top:#{node.y - @layout.node_height / 2}px;" <>
               "width:#{@layout.node_width}px;height:#{@layout.node_height}px"
           }
-          class={[
-            "group absolute flex items-center rounded-2xl border-2 bg-base-100 px-3 text-left",
-            "transition duration-200 hover:z-10 hover:opacity-100 hover:shadow-md",
-            node_surface(node, @ctx),
-            selected_outline(node, @ctx),
-            not AdaptiveStudy.node_enabled?(node.node) && "border-dashed",
-            node_opacity(node, @ctx)
-          ]}
+          class={
+            [
+              "group absolute flex items-center rounded-2xl border-2 px-3 text-left",
+              "transition duration-200 hover:z-10 hover:opacity-100 hover:shadow-md",
+              node_surface(node, @ctx),
+              selected_outline(node, @ctx),
+              not AdaptiveStudy.node_enabled?(node.node) && "border-dashed",
+              node_opacity(node, @ctx),
+              # Fundo recuado: sinaliza atalho em vez de peça do desenho, sem usar
+              # borda tracejada — ali tracejado já quer dizer "nó inativo".
+              if(detached?(node), do: "bg-base-200", else: "bg-base-100")
+            ]
+          }
         >
           <%!-- Badge da relação com o nó selecionado, pendurado na borda de cima
                para não roubar espaço do rótulo. --%>
@@ -129,6 +152,16 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Mindmap do
             ]}
           >
             {badge_label(@ctx.badges[node.id])}
+          </span>
+
+          <%!-- Âncora de volta: a raiz trazida para a cena sem fazer parte do
+               desenho. O rótulo é o que evita ler o cartão sem ligação como um
+               nó órfão do mapa. --%>
+          <span
+            :if={detached?(node)}
+            class="absolute -top-2.5 left-2 inline-flex items-center gap-0.5 rounded-full border border-primary/40 bg-base-100 px-1.5 py-px text-[0.58rem] font-bold uppercase leading-tight text-primary"
+          >
+            <.icon name="hero-home" class="size-2.5" /> raiz
           </span>
 
           <%!-- Marca de onde você veio, para o retorno ser óbvio. --%>
@@ -146,15 +179,27 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Mindmap do
             "flex w-full items-center gap-2 transition-opacity duration-200 group-hover:opacity-100",
             content_opacity(node, @ctx)
           ]}>
-            <span class={["size-2.5 shrink-0 rounded-full", priority_dot(node.node["priority"])]}></span>
+            <%!-- Prioridade e tipo na mesma marca: a bola dá a cor da prioridade
+                 e o ícone dentro dela diz o tipo. Antes eram dois símbolos em
+                 pontas opostas do cartão, e o da direita disputava espaço com o
+                 rótulo — que é o que de fato se lê. --%>
+            <span
+              class={[
+                "grid size-5 shrink-0 place-items-center rounded-full",
+                priority_dot(node.node["priority"])
+              ]}
+              title={
+                "#{priority_label(node.node["priority"])} · #{AdaptiveStudy.node_type_label(AdaptiveStudy.node_type(node.node))}"
+              }
+            >
+              <.icon name={type_icon(AdaptiveStudy.node_type(node.node))} class="size-3" />
+            </span>
 
             <span class="min-w-0 flex-1">
               <span class="line-clamp-2 text-xs font-semibold leading-tight">
                 {node.node["label"] || "Sem rótulo"}
               </span>
             </span>
-
-            <.icon name={type_icon(node.node)} class="size-3.5 shrink-0 opacity-40" />
           </span>
         </button>
 
@@ -195,9 +240,9 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Mindmap do
               do: "Voltar para este nó",
               else: "Explorar a vizinhança deste nó"
           }
-          style={"left:#{node.x + @layout.node_width / 2 - 11}px;top:#{node.y - 11}px"}
+          style={"left:#{node.x + @layout.node_width / 2 - @explore_size / 2}px;top:#{node.y - @explore_size / 2}px"}
           class={[
-            "absolute z-10 grid size-[22px] place-items-center rounded-full border-2 shadow-sm",
+            "absolute z-10 grid size-[32px] place-items-center rounded-full border-2 shadow-sm",
             "transition duration-200 hover:scale-110",
             if(node.id == @ctx.origin_id,
               do: "border-base-content/40 bg-base-content/10 text-base-content",
@@ -212,7 +257,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Mindmap do
                 do: "hero-arrow-uturn-left",
                 else: "hero-arrow-right-circle"
             }
-            class="size-3.5"
+            class="size-4"
           />
         </button>
       </div>
@@ -220,6 +265,11 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Mindmap do
       <script :type={Phoenix.LiveView.ColocatedHook} name=".MindmapPanZoom">
         const MIN_SCALE = 0.15;
         const MAX_SCALE = 2.5;
+        // Piso de legibilidade da abertura. Enquadrar um mapa de centenas de nós
+        // cabia tudo na tela a ~0.2 de escala, onde nenhum rótulo se lê. Ao abrir
+        // preferimos escala legível e mostrar um pedaço; o botão de enquadrar
+        // continua dando a visão geral, aí sim sem piso.
+        const MIN_READABLE = 0.6;
 
         export default {
           mounted() {
@@ -290,7 +340,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Mindmap do
             this.el.addEventListener("mindmap:fit", this.onFit);
             this.el.addEventListener("mindmap:zoom", this.onZoom);
 
-            this.fit();
+            this.frame(true);
           },
 
           updated() {
@@ -298,7 +348,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Mindmap do
             const signature = this.el.dataset.signature;
             if (signature !== this.signature) {
               this.signature = signature;
-              this.fit();
+              this.frame(true);
             } else {
               this.apply();
             }
@@ -326,19 +376,42 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Mindmap do
             }
           },
 
-          fit() {
+          // `readable` distingue as duas intenções: abrir o mapa (respeita o piso
+          // de legibilidade e centraliza no nó de entrada) e enquadrar sob
+          // demanda (cabe tudo, custe o tamanho que custar).
+          frame(readable) {
             const width = parseFloat(this.el.dataset.width) || 1;
             const height = parseFloat(this.el.dataset.height) || 1;
             const rect = this.el.getBoundingClientRect();
             if (!rect.width || !rect.height) return;
 
-            this.scale = Math.max(
-              MIN_SCALE,
-              Math.min(rect.width / width, rect.height / height, 1)
-            );
-            this.tx = (rect.width - width * this.scale) / 2;
-            this.ty = (rect.height - height * this.scale) / 2;
+            const fitScale = Math.min(rect.width / width, rect.height / height, 1);
+            this.scale = readable
+              ? Math.max(fitScale, MIN_READABLE)
+              : Math.max(MIN_SCALE, fitScale);
+
+            const scaledWidth = width * this.scale;
+            const scaledHeight = height * this.scale;
+            const entryX = parseFloat(this.el.dataset.entryX);
+            const entryY = parseFloat(this.el.dataset.entryY);
+
+            // Eixo a eixo: sobrando espaço, centraliza o mapa; faltando, mira o
+            // nó de entrada e limita para não abrir em cima do vazio de fora.
+            // O limite é o que faz a árvore abrir pelo topo (a raiz fica na borda
+            // superior) e a rede abrir pelo meio, sem regra especial por modo.
+            const place = (viewport, scaled, entry) => {
+              if (scaled <= viewport) return (viewport - scaled) / 2;
+              if (!Number.isFinite(entry)) return (viewport - scaled) / 2;
+              return Math.min(0, Math.max(viewport - scaled, viewport / 2 - entry * this.scale));
+            };
+
+            this.tx = place(rect.width, scaledWidth, entryX);
+            this.ty = place(rect.height, scaledHeight, entryY);
             this.apply();
+          },
+
+          fit() {
+            this.frame(false);
           },
 
           zoomAt(factor, cx, cy) {
@@ -360,8 +433,14 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Mindmap do
 
   def legend(assigns) do
     ~H"""
-    <%!-- Escondida no mobile: lá a gaveta do nó já ocupa a largura toda. --%>
-    <div class="pointer-events-none absolute bottom-3 left-3 hidden max-w-[22rem] rounded-2xl border border-base-300 bg-base-100/90 p-3 text-[0.65rem] shadow-sm backdrop-blur lg:block">
+    <%!-- Aparece a partir de `md` (768px), que é onde ela e a gaveta cabem lado
+         a lado: 22rem da legenda + 24rem da gaveta + margens dão 760px. Em 640px
+         a gaveta passaria por cima dela, e no telefone a gaveta é folha de baixo
+         e ocupa justamente este canto. --%>
+    <div
+      id="mindmap-legend"
+      class="pointer-events-none absolute bottom-3 left-3 hidden max-w-[22rem] rounded-2xl border border-base-300 bg-base-100/90 p-3 text-[0.65rem] shadow-sm backdrop-blur md:block"
+    >
       <p class="mb-2 flex items-center gap-1.5 font-bold uppercase tracking-wider opacity-60">
         <.icon name="hero-map" class="size-3.5" /> Legenda
       </p>
@@ -389,6 +468,34 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Mindmap do
         >
           <span class="inline-block h-0 w-4 border-t-2 border-dashed border-current"></span>
           {AdaptiveStudy.relation_label(type)}
+        </span>
+      </div>
+
+      <%!-- O ícone dentro da bola do cartão. A amostra repete o formato de lá
+           (círculo com o símbolo dentro) para a associação ser imediata; a cor
+           fica neutra porque quem a define é a prioridade, logo acima. --%>
+      <div class="mt-2 flex flex-wrap gap-x-3 gap-y-1 border-t border-base-300 pt-2">
+        <span :for={type <- node_types_present(@layout)} class="flex items-center gap-1.5">
+          <span class="grid size-4 shrink-0 place-items-center rounded-full bg-base-300 text-base-content/70">
+            <.icon name={type_icon(type)} class="size-2.5" />
+          </span>
+          {AdaptiveStudy.node_type_label(type)}
+        </span>
+      </div>
+
+      <%!-- Os dois botões redondos que ficam soltos sobre o mapa. --%>
+      <div class="mt-2 flex flex-wrap gap-x-3 gap-y-1 border-t border-base-300 pt-2">
+        <span class="flex items-center gap-1.5">
+          <span class="grid size-4 shrink-0 place-items-center rounded-full border-2 border-base-300 text-[9px] font-bold leading-none">
+            −
+          </span>
+          recolher ramo (o número mostra quantos nós ficam ocultos)
+        </span>
+        <span class="flex items-center gap-1.5">
+          <span class="grid size-4 shrink-0 place-items-center rounded-full border-2 border-base-300">
+            <.icon name="hero-arrow-right-circle" class="size-2.5" />
+          </span>
+          explorar a vizinhança deste nó
         </span>
       </div>
 
@@ -589,6 +696,9 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Mindmap do
   # Sem preenchimento translúcido no destacado (`bg-primary/10` substituiria o
   # `bg-base-100`): o destaque vem de borda, anel e sombra. Quem recua perde a
   # sombra — é ela que faz a caixa "flutuar" e chamar atenção.
+  # Nós de árvore e rede não têm a chave: só o foco monta a âncora de volta.
+  defp detached?(node), do: Map.get(node, :detached?, false)
+
   defp node_surface(node, ctx) do
     case node_state(node, ctx) do
       :center -> "border-primary shadow-lg ring-2 ring-primary/40"
@@ -613,18 +723,27 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Mindmap do
 
   defp selected_outline(_node, _ctx), do: nil
 
-  defp priority_dot("high"), do: "bg-primary"
-  defp priority_dot("low"), do: "bg-base-300"
-  defp priority_dot(_), do: "bg-warning"
+  # A cor do texto acompanha a do fundo: agora que a bola carrega um ícone
+  # dentro, herdar a cor do cartão deixaria o símbolo ilegível sobre o cheio.
+  defp priority_dot("high"), do: "bg-primary text-primary-content"
+  defp priority_dot("low"), do: "bg-base-300 text-base-content/70"
+  defp priority_dot(_), do: "bg-warning text-warning-content"
 
-  defp type_icon(node) do
-    case AdaptiveStudy.node_type(node) do
-      "definicao" -> "hero-book-open"
-      "processo" -> "hero-cog-6-tooth"
-      "exemplo" -> "hero-beaker"
-      "dado" -> "hero-chart-bar"
-      "advertencia" -> "hero-exclamation-triangle"
-      _ -> "hero-light-bulb"
-    end
+  defp priority_label("high"), do: "Prioridade alta"
+  defp priority_label("low"), do: "Prioridade baixa"
+  defp priority_label(_), do: "Prioridade média"
+
+  defp type_icon("definicao"), do: "hero-book-open"
+  defp type_icon("processo"), do: "hero-cog-6-tooth"
+  defp type_icon("exemplo"), do: "hero-beaker"
+  defp type_icon("dado"), do: "hero-chart-bar"
+  defp type_icon("advertencia"), do: "hero-exclamation-triangle"
+  defp type_icon(_), do: "hero-light-bulb"
+
+  # Só os tipos que aparecem no mapa, na ordem canônica do domínio: listar os
+  # seis sempre encheria a legenda de símbolo que não está em cena.
+  defp node_types_present(layout) do
+    present = MapSet.new(layout.nodes, &AdaptiveStudy.node_type(&1.node))
+    Enum.filter(AdaptiveStudy.node_types(), &MapSet.member?(present, &1))
   end
 end

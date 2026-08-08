@@ -62,6 +62,10 @@ defmodule QuizProject.AI do
         model = Application.get_env(:quiz_project, :gemini_model, "gemini-2.0-flash")
         "Gemini (modelo: #{model})"
 
+      QuizProject.AI.Claude ->
+        model = Application.get_env(:quiz_project, :anthropic_model, "claude-opus-5")
+        "Claude (modelo: #{model})"
+
       QuizProject.AI.Fake ->
         "Fake (heurística local sem IA externa)"
 

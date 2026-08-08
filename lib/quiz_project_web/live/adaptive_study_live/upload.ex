@@ -149,14 +149,21 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Upload do
             >{@raw_content}</textarea>
           </div>
 
-          <div class="flex justify-end gap-3 pt-4 border-t border-base-200">
-            <.link navigate={~p"/adaptive-study"} class="btn btn-ghost rounded-full px-6">
+          <%!-- Empilhado no telefone, com a ação principal em cima: lado a lado
+               os dois botões somam ~320px e estouram a tela de 320px.
+               `flex-col-reverse` mantém a ordem de tabulação com Cancelar antes
+               de enviar, sem deixá-lo por cima do botão principal. --%>
+          <div class="flex flex-col-reverse gap-3 border-t border-base-200 pt-4 sm:flex-row sm:justify-end">
+            <.link
+              navigate={~p"/adaptive-study"}
+              class="btn btn-ghost rounded-full px-6 max-sm:w-full"
+            >
               Cancelar
             </.link>
             <button
               type="submit"
               id="submit-generate-mindmap"
-              class="btn btn-primary rounded-full px-8 inline-flex items-center gap-2"
+              class="btn btn-primary inline-flex items-center justify-center gap-2 rounded-full px-8 max-sm:w-full"
               disabled={@loading?}
             >
               <%= if @loading? do %>

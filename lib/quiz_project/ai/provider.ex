@@ -1,8 +1,8 @@
 defmodule QuizProject.AI.Provider do
   @moduledoc """
   Contrato dos providers de IA. A regra de negócio fala apenas com
-  `QuizProject.AI`; o provider concreto (OpenAI, Gemini, Fake) é escolhido
-  por configuração.
+  `QuizProject.AI`; o provider concreto (OpenAI, Gemini, Claude, Fake) é
+  escolhido por configuração.
   """
 
   @doc """

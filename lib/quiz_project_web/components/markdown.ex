@@ -27,7 +27,7 @@ defmodule QuizProjectWeb.Components.Markdown do
     assigns = assign(assigns, :html, html)
 
     ~H"""
-    <div class={["prose prose-sm dark:prose-invert max-w-none break-words leading-relaxed", @class]}>
+    <div class={["qprose", @class]}>
       {raw(@html)}
     </div>
     """

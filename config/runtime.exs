@@ -22,16 +22,19 @@ end
 
 # Integração com IA: as API keys vêm de variáveis de ambiente do sistema
 # (não por usuário no protótipo). AI_PROVIDER escolhe explicitamente
-# ("openai", "gemini" ou "fake"); sem ela, usa o primeiro provider com chave
-# configurada, caindo no Fake (heurística local) se não houver nenhuma.
+# ("openai", "gemini", "claude" ou "fake"); sem ela, usa o primeiro provider com
+# chave configurada, caindo no Fake (heurística local) se não houver nenhuma.
 if config_env() != :test do
   openai_key = System.get_env("OPENAI_API_KEY") || System.get_env("OPEN_AI_KEY")
+  anthropic_key = System.get_env("ANTHROPIC_API_KEY")
 
   config :quiz_project,
     openai_api_key: openai_key,
     openai_model: System.get_env("OPENAI_MODEL", "gpt-5.5"),
     gemini_api_key: System.get_env("GEMINI_API_KEY"),
-    gemini_model: System.get_env("GEMINI_MODEL", "gemini-2.0-flash")
+    gemini_model: System.get_env("GEMINI_MODEL", "gemini-2.0-flash"),
+    anthropic_api_key: anthropic_key,
+    anthropic_model: System.get_env("ANTHROPIC_MODEL", "claude-opus-5")
 
   ai_provider =
     case System.get_env("AI_PROVIDER") do
@@ -41,18 +44,24 @@ if config_env() != :test do
       "gemini" ->
         QuizProject.AI.Gemini
 
+      provider when provider in ["claude", "anthropic"] ->
+        QuizProject.AI.Claude
+
       "fake" ->
         QuizProject.AI.Fake
 
       nil ->
+        # Claude entra por último na detecção automática para que quem já tinha
+        # OPENAI_API_KEY ou GEMINI_API_KEY exportada continue no mesmo provider.
         cond do
           openai_key not in [nil, ""] -> QuizProject.AI.OpenAI
           System.get_env("GEMINI_API_KEY") not in [nil, ""] -> QuizProject.AI.Gemini
+          anthropic_key not in [nil, ""] -> QuizProject.AI.Claude
           true -> QuizProject.AI.Fake
         end
 
       other ->
-        raise "AI_PROVIDER inválido: #{inspect(other)}. Use \"openai\", \"gemini\" ou \"fake\"."
+        raise "AI_PROVIDER inválido: #{inspect(other)}. Use \"openai\", \"gemini\", \"claude\" ou \"fake\"."
     end
 
   config :quiz_project, ai_provider: ai_provider

@@ -72,6 +72,133 @@ defmodule QuizProject.AdaptiveStudyTest do
     assert AdaptiveStudy.list_materials(user) == []
   end
 
+  describe "ensure_root/2" do
+    test "agrupa vários nós de primeiro nível sob uma raiz com o título do material" do
+      nodes = [
+        %{"id" => "a", "label" => "Bloco A", "children" => []},
+        %{"id" => "b", "label" => "Bloco B", "children" => []}
+      ]
+
+      assert [root] = AdaptiveStudy.ensure_root(nodes, "Compiladores")
+
+      assert root["label"] == "Compiladores"
+      assert root["content"] == ""
+      assert AdaptiveStudy.generated_root?(root)
+      assert Enum.map(root["children"], & &1["id"]) == ["a", "b"]
+    end
+
+    test "deixa intacta a árvore que já tem raiz única" do
+      nodes = [
+        %{
+          "id" => "raiz",
+          "label" => "Tema",
+          "children" => [%{"id" => "a", "label" => "A", "children" => []}]
+        }
+      ]
+
+      assert AdaptiveStudy.ensure_root(nodes, "Outro título") == nodes
+    end
+
+    test "é idempotente: chamar duas vezes não empilha raízes" do
+      nodes = [
+        %{"id" => "a", "label" => "A", "children" => []},
+        %{"id" => "b", "label" => "B", "children" => []}
+      ]
+
+      once = AdaptiveStudy.ensure_root(nodes, "Título")
+      assert AdaptiveStudy.ensure_root(once, "Título") == once
+    end
+
+    test "não colide com um ID 'root' que a IA já tenha usado" do
+      nodes = [
+        %{"id" => "root", "label" => "A", "children" => []},
+        %{"id" => "root_1", "label" => "B", "children" => []}
+      ]
+
+      assert [%{"id" => id}] = AdaptiveStudy.ensure_root(nodes, "Título")
+      refute id in ["root", "root_1"]
+    end
+
+    test "árvore vazia continua vazia" do
+      assert AdaptiveStudy.ensure_root([], "Título") == []
+    end
+
+    test "título em branco vira um rótulo genérico em vez de raiz sem nome" do
+      nodes = [
+        %{"id" => "a", "label" => "A", "children" => []},
+        %{"id" => "b", "label" => "B", "children" => []}
+      ]
+
+      assert [%{"label" => "Mapa do material"}] = AdaptiveStudy.ensure_root(nodes, "   ")
+      assert [%{"label" => "Mapa do material"}] = AdaptiveStudy.ensure_root(nodes, nil)
+    end
+
+    test "a raiz criada não entra na reconstrução do texto" do
+      nodes = [
+        %{"id" => "a", "label" => "A", "content" => "Um.", "order" => 1, "children" => []},
+        %{"id" => "b", "label" => "B", "content" => "Dois.", "order" => 2, "children" => []}
+      ]
+
+      with_root = AdaptiveStudy.ensure_root(nodes, "Título")
+
+      assert AdaptiveStudy.reconstruct_raw_text(%{"nodes" => with_root}) ==
+               AdaptiveStudy.reconstruct_raw_text(%{"nodes" => nodes})
+    end
+  end
+
+  describe "strip_frontmatter/1" do
+    test "remove o bloco de metadados da abertura" do
+      text = """
+      ---
+      title: "Deep Learning with Python, Third Edition"
+      author: "François Chollet"
+      source: "livro.epub"
+      ---
+
+      # 1 What is deep learning?
+
+      Over the past decade...
+      """
+
+      assert AdaptiveStudy.strip_frontmatter(text) ==
+               "# 1 What is deep learning?\n\nOver the past decade...\n"
+    end
+
+    test "aceita fechamento com reticências e sem linha final" do
+      assert AdaptiveStudy.strip_frontmatter("---\ntitle: X\n...") == ""
+    end
+
+    test "preserva linha horizontal de Markdown no início do texto" do
+      text = "---\n\nTexto que abre com uma régua horizontal.\n\n---\n\nResto."
+      assert AdaptiveStudy.strip_frontmatter(text) == text
+    end
+
+    test "preserva o texto quando o bloco não é fechado" do
+      text = "---\ntitle: X\nautor: Y\n\nO capítulo começa aqui sem fechar o bloco."
+      assert AdaptiveStudy.strip_frontmatter(text) == text
+    end
+
+    test "só remove na abertura, não no meio do material" do
+      text = "Introdução.\n\n---\ntitle: X\n---\n\nFim."
+      assert AdaptiveStudy.strip_frontmatter(text) == text
+    end
+
+    test "devolve entradas que não são texto sem alteração" do
+      assert AdaptiveStudy.strip_frontmatter(nil) == nil
+      assert AdaptiveStudy.strip_frontmatter("") == ""
+    end
+  end
+
+  test "create_material/2 grava o material já sem o frontmatter", %{user: user} do
+    assert {:ok, material} =
+             AdaptiveStudy.create_material(user, %{
+               title: "Livro",
+               raw_content: "---\ntitle: Livro\nsource: livro.epub\n---\n\nPrimeiro parágrafo."
+             })
+
+    assert material.raw_content == "Primeiro parágrafo."
+  end
+
   test "reconstruct_raw_text/1 reconstrói o texto original concatenando os nós folhas na ordem",
        %{user: _user} do
     tree = %{
@@ -132,38 +259,6 @@ defmodule QuizProject.AdaptiveStudyTest do
     assert AdaptiveStudy.reconstruct_raw_text(nodes) == "Um.\n\nDois."
   end
 
-  test "to_mermaid/1 descarta referências cruzadas para IDs inexistentes" do
-    nodes = [
-      %{
-        "id" => "n1",
-        "label" => "Raiz",
-        "related_node_ids" => ["n2", "fantasma", "n1"],
-        "children" => [%{"id" => "n2", "label" => "Filho", "children" => []}]
-      }
-    ]
-
-    mermaid = AdaptiveStudy.to_mermaid(nodes)
-
-    assert mermaid =~ "node_n1 --> node_n2"
-    assert mermaid =~ "node_n1 -. relacionado .-> node_n2"
-    refute mermaid =~ "fantasma"
-    # nó não referencia a si mesmo
-    refute mermaid =~ "-.-> node_n1"
-  end
-
-  test "to_mermaid/1 usa o tipo da relação como rótulo da aresta" do
-    nodes = [
-      %{
-        "id" => "n1",
-        "label" => "A",
-        "relations" => [%{"target_id" => "n2", "type" => "prerequisito"}],
-        "children" => [%{"id" => "n2", "label" => "B", "children" => []}]
-      }
-    ]
-
-    assert AdaptiveStudy.to_mermaid(nodes) =~ "node_n1 -. pré-requisito .-> node_n2"
-  end
-
   describe "node_relations/1" do
     test "normaliza o formato atual, com tipo e rótulo" do
       node = %{
@@ -213,20 +308,6 @@ defmodule QuizProject.AdaptiveStudyTest do
     assert AdaptiveStudy.node_type(%{"node_type" => "processo"}) == "processo"
     assert AdaptiveStudy.node_type(%{"node_type" => "inventado"}) == "conceito"
     assert AdaptiveStudy.node_type(%{}) == "conceito"
-  end
-
-  test "to_mermaid/1 marca nós desativados e sanitiza rótulos" do
-    nodes = [
-      %{"id" => "n1", "label" => "Diz \"olá\"\ne quebra linha", "children" => []},
-      %{"id" => "n2", "label" => String.duplicate("a", 100), "enabled" => false, "children" => []}
-    ]
-
-    mermaid = AdaptiveStudy.to_mermaid(nodes)
-
-    assert mermaid =~ "node_n1[\"Diz 'olá' e quebra linha\"]"
-    assert mermaid =~ "classDef disabled"
-    assert mermaid =~ "class node_n2 disabled"
-    refute mermaid =~ String.duplicate("a", 100)
   end
 
   test "node_enabled?/1 só considera desativado o false explícito" do

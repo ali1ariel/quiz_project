@@ -18,7 +18,16 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Curate do
 
     case AdaptiveStudy.get_material(id, user) do
       {:ok, material} ->
-        nodes = get_in(material.mindmap_tree, ["nodes"]) || []
+        # Também na leitura, e não só ao gerar: materiais processados antes desta
+        # normalização continuariam sem centro. Como a função é idempotente, o
+        # que já tem raiz passa direto, e a raiz criada aqui é gravada no próximo
+        # salvamento da curadoria.
+        nodes =
+          material.mindmap_tree
+          |> get_in(["nodes"])
+          |> Kernel.||([])
+          |> AdaptiveStudy.ensure_root(material.title)
+
         first = List.first(AdaptiveStudy.flatten_nodes(nodes))
 
         {:ok,
@@ -26,14 +35,18 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Curate do
          |> assign(
            page_title: "Curadoria: " <> material.title,
            material: material,
-           view_mode: :cards,
            map_mode: :tree,
            focus_center_id: nil,
            focus_origin_id: nil,
            collapsed_ids: MindmapLayout.initial_collapsed(nodes),
            editing_node?: false,
            dirty?: false,
-           show_reconstruction_modal?: false
+           show_reconstruction_modal?: false,
+           # No telefone o detalhamento é um modal, e o nó pré-selecionado abaixo
+           # abriria esse modal por cima do sumário já na carga da página. O modal
+           # só sobe depois de um clique; a coluna do desktop, essa sim, já nasce
+           # preenchida.
+           node_modal_open?: false
          )
          |> assign_tree(nodes, selected_node_id: first && first["id"])}
 
@@ -57,6 +70,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Curate do
           selected_node_id: nil,
           selected_node: nil,
           editing_node?: false,
+          node_modal_open?: false,
           focus_center_id: nil,
           focus_origin_id: nil
         )
@@ -65,18 +79,6 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Curate do
       end
 
     {:noreply, assign_map_layout(socket)}
-  end
-
-  @impl true
-  def handle_event("switch_view", %{"mode" => mode}, socket) do
-    new_mode =
-      case mode do
-        "outline" -> :outline
-        "mermaid" -> :mermaid
-        _ -> :cards
-      end
-
-    {:noreply, assign(socket, view_mode: new_mode)}
   end
 
   @impl true
@@ -101,6 +103,20 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Curate do
       end
 
     {:noreply, socket |> assign(map_mode: new_mode) |> assign_map_layout()}
+  end
+
+  @impl true
+  def handle_event("focus_root", _params, socket) do
+    # Retorno direto: limpa a origem porque voltar à raiz é recomeçar a
+    # navegação, não mais um salto com trilha de volta.
+    {:noreply,
+     socket
+     |> assign(
+       map_mode: :focus,
+       focus_center_id: root_node_id(socket.assigns.nodes),
+       focus_origin_id: nil
+     )
+     |> assign_map_layout()}
   end
 
   @impl true
@@ -135,7 +151,8 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Curate do
 
   @impl true
   def handle_event("collapse_all", _params, socket) do
-    # Mantém o primeiro nível aberto: recolher a raiz esconderia o mapa inteiro.
+    # A raiz fica de fora (profundidade mínima 1): recolhê-la apagaria o mapa,
+    # já que o nó recolhido some do desenho. O botão só existe no mapa imersivo.
     collapsed = MapSet.new(MindmapLayout.branch_ids(socket.assigns.nodes, 1))
 
     {:noreply, socket |> assign(collapsed_ids: collapsed) |> assign_map_layout()}
@@ -147,7 +164,12 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Curate do
 
     {:noreply,
      socket
-     |> assign(selected_node_id: id, selected_node: node, editing_node?: false)
+     |> assign(
+       selected_node_id: id,
+       selected_node: node,
+       editing_node?: false,
+       node_modal_open?: true
+     )
      |> assign_map_layout()}
   end
 
@@ -155,7 +177,12 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Curate do
   def handle_event("close_node_panel", _params, socket) do
     {:noreply,
      socket
-     |> assign(selected_node_id: nil, selected_node: nil, editing_node?: false)
+     |> assign(
+       selected_node_id: nil,
+       selected_node: nil,
+       editing_node?: false,
+       node_modal_open?: false
+     )
      |> assign_map_layout()}
   end
 
@@ -270,7 +297,12 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Curate do
     if material_id == material.id and socket.assigns.nodes == [] do
       case AdaptiveStudy.get_material(material_id, socket.assigns.current_user) do
         {:ok, reloaded} ->
-          nodes = get_in(reloaded.mindmap_tree, ["nodes"]) || []
+          nodes =
+            reloaded.mindmap_tree
+            |> get_in(["nodes"])
+            |> Kernel.||([])
+            |> AdaptiveStudy.ensure_root(reloaded.title)
+
           first = List.first(AdaptiveStudy.flatten_nodes(nodes))
 
           {:noreply,
@@ -307,8 +339,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Curate do
       selected_node_id: selected_id,
       selected_node: Enum.find(flattened, &(&1["id"] == selected_id)),
       stats: node_stats(flattened),
-      reconstructed_text: AdaptiveStudy.reconstruct_raw_text(nodes),
-      mermaid_code: AdaptiveStudy.to_mermaid(nodes)
+      reconstructed_text: AdaptiveStudy.reconstruct_raw_text(nodes)
     )
     |> assign_map_layout()
   end
@@ -413,6 +444,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Curate do
         selected_node_id={@selected_node_id}
         layout={@map_layout}
         stats={@stats}
+        at_root?={focus_center(assigns) == root_node_id(@nodes)}
       />
 
       <div class="relative flex-1 overflow-hidden">
@@ -428,20 +460,29 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Curate do
             layout={@map_layout}
             selected_id={@selected_node_id}
             origin_id={@focus_origin_id}
+            entry_id={focus_center(assigns)}
           />
           <Mindmap.legend layout={@map_layout} />
 
+          <%!-- No telefone a gaveta é uma folha de baixo, não uma coluna: com
+               24rem de largura em uma tela de 375px ela cobria o mapa inteiro,
+               e ler um nó significava perder de vista onde ele estava. Presa em
+               metade da altura, o mapa continua à mostra acima dela. De `sm`
+               para cima volta a ser a coluna da direita. --%>
           <aside
             :if={@selected_node}
             id={"map-drawer-#{@selected_node["id"]}"}
-            class="absolute bottom-3 right-3 top-3 z-20 flex w-[min(24rem,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-3xl border border-base-300 bg-base-100/95 shadow-xl backdrop-blur"
+            class="absolute inset-x-3 bottom-3 z-20 flex max-h-[55%] flex-col overflow-hidden rounded-3xl border border-base-300 bg-base-100/95 shadow-xl backdrop-blur sm:inset-x-auto sm:right-3 sm:top-3 sm:max-h-none sm:w-[min(24rem,calc(100vw-1.5rem))]"
           >
-            <div class="flex-1 space-y-4 overflow-y-auto p-4">
+            <%!-- `close_class` vazio: aqui a gaveta se fecha em qualquer
+                 largura, ao contrário da curadoria. --%>
+            <.node_panel_bar editing?={@editing_node?} close_class="" />
+
+            <div class="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-4">
               <.node_inspector
                 node={@selected_node}
                 editing?={@editing_node?}
                 flattened_nodes={@flattened_nodes}
-                closable?={true}
               />
             </div>
           </aside>
@@ -457,15 +498,21 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Curate do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_user={@current_user} active_nav={:adaptive_study} wide={true}>
-      <div class="space-y-5">
+      <%!-- A partir de `md` a curadoria vira uma área de trabalho de altura de
+           tela: a página em si não rola, o cabeçalho e a barra ficam parados e
+           as duas colunas rolam cada uma por dentro. É o que evita ter de rolar
+           a página inteira para chegar ao fim do detalhamento de um nó.
+           3.5rem da navbar (`min-h-14`) + 4rem do `py-8` do <main> = 7.5rem.
+           O corte é `md` (768px) e não `lg` porque tablet em retrato tem 768px:
+           em `lg` ele caía na pilha e herdava exatamente o problema que a área
+           de trabalho resolve. Abaixo de `md` as colunas empilham e a página
+           volta a rolar, que é o certo no telefone. --%>
+      <%!-- O piso cobre o telefone em paisagem, que passa de 768px de largura e
+           entra aqui com ~390px de altura: sem ele as colunas ficariam com uns
+           140px cada. Abaixo do piso a página volta a rolar até a área, e as
+           colunas rolam por dentro a partir dela. --%>
+      <div class="space-y-5 md:flex md:h-[calc(100dvh-7.5rem)] md:min-h-[30rem] md:flex-col md:gap-5 md:space-y-0 md:overflow-hidden">
         <.curation_header material={@material} dirty?={@dirty?} has_nodes?={@nodes != []} />
-
-        <.curation_toolbar
-          :if={@nodes != []}
-          view_mode={@view_mode}
-          stats={@stats}
-          material={@material}
-        />
 
         <%= if @nodes == [] do %>
           <div class="rounded-3xl border-2 border-dashed border-base-300 bg-base-200/40 p-12 text-center">
@@ -479,40 +526,103 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Curate do
             </p>
           </div>
         <% else %>
-          <div class="grid grid-cols-1 items-start gap-5 lg:grid-cols-12">
-            <%!-- Coluna de leitura da curadoria (cards, sumário ou diagrama) --%>
-            <div class="card qcard min-h-[450px] border border-base-300 bg-base-100 p-5 lg:col-span-7">
-              <%= cond do %>
-                <% @view_mode == :cards -> %>
-                  <.cards_view
-                    nodes={@nodes}
-                    selected_id={@selected_node_id}
-                    flattened_nodes={@flattened_nodes}
-                  />
-                <% @view_mode == :outline -> %>
-                  <.outline_view nodes={@nodes} selected_id={@selected_node_id} />
-                <% true -> %>
-                  <.mermaid_view mermaid_code={@mermaid_code} />
-              <% end %>
+          <%!-- `min-h-0` é o que permite as colunas encolherem abaixo do próprio
+               conteúdo; sem ele o grid cresceria e a rolagem voltaria a ser a
+               da página. Em tablet as colunas dividem meio a meio: com o corte
+               7/5 do desktop, o painel ficaria em ~300px e os controles do
+               cabeçalho do nó quebrariam em três linhas. --%>
+          <div class="grid grid-cols-1 items-start gap-5 md:min-h-0 md:flex-1 md:grid-cols-12 md:items-stretch">
+            <%!-- Coluna de leitura da curadoria. Mesma anatomia do painel do
+                 nó — barra parada no topo, conteúdo rolando por baixo —, que é
+                 o que permitiu recolher a barra de ferramentas solta que ficava
+                 acima das duas colunas. O acolchoamento menor no telefone
+                 devolve largura às linhas, que já perdem espaço para a
+                 indentação. --%>
+            <div class="card qcard flex min-h-[450px] flex-col overflow-hidden border border-base-300 bg-base-100 md:col-span-6 md:min-h-0 lg:col-span-7">
+              <div class="flex min-h-12 shrink-0 items-center gap-2 border-b border-base-300 px-4 py-2">
+                <h2 class="flex min-w-0 flex-1 items-center gap-2 truncate text-sm font-bold">
+                  <.icon name="hero-bars-3-bottom-left" class="size-4 shrink-0 text-primary" />
+                  Sumário do material
+                </h2>
+              </div>
+
+              <%!-- Rolagem própria só de `md` para cima, onde a coluna tem altura
+                   de tela. No telefone quem rola é a página: como caixa de
+                   rolagem, o sumário engolia o toque — `flex-1` com base zero o
+                   prendia na altura mínima do cartão, e o `overscroll-contain`
+                   ainda impedia o gesto de passar adiante, então o dedo não
+                   movia nem a lista nem a página. --%>
+              <div class="p-3 sm:p-5 md:min-h-0 md:flex-1 md:overflow-y-auto md:overscroll-contain">
+                <.outline_view
+                  nodes={@nodes}
+                  selected_id={@selected_node_id}
+                  flattened_nodes={@flattened_nodes}
+                  collapsed_ids={@collapsed_ids}
+                />
+              </div>
             </div>
 
-            <%!-- Painel lateral do nó selecionado --%>
-            <div class="card qcard border border-base-300 bg-base-100 p-5 lg:sticky lg:top-4 lg:col-span-5">
-              <%= if @selected_node do %>
-                <.node_inspector
-                  node={@selected_node}
-                  editing?={@editing_node?}
-                  flattened_nodes={@flattened_nodes}
-                  closable?={false}
-                />
-              <% else %>
-                <div class="space-y-2 py-12 text-center opacity-50">
-                  <.icon name="hero-cursor-arrow-rays" class="mx-auto size-8" />
-                  <p class="text-xs">
-                    Selecione um nó para visualizar e editar os dados.
-                  </p>
+            <%!-- Detalhamento do nó. No telefone é um modal em folha de baixo:
+                 empilhado abaixo do sumário, ler um nó custava rolar a página
+                 inteira até passar da árvore e depois voltar para escolher o
+                 próximo. De `md` para cima é a coluna da direita de sempre —
+                 mesmo markup, só as classes mudam, para não duplicar formulários
+                 e IDs no DOM. --%>
+            <div
+              :if={@selected_node}
+              id="node-detail-panel"
+              phx-window-keydown={@node_modal_open? && "close_node_panel"}
+              phx-key="Escape"
+              class={
+                [
+                  "md:col-span-6 md:min-h-0 lg:col-span-5",
+                  if(@node_modal_open?,
+                    # z-40 e não z-50 de propósito: as mensagens de flash também
+                    # ficam em z-40 e vêm depois no DOM, então continuam por cima
+                    # da folha — é nelas que aparece a confirmação de "nó
+                    # atualizado" e de "anotação registrada", disparadas de dentro
+                    # do próprio painel.
+                    do: "fixed inset-0 z-40 flex flex-col justify-end md:static md:z-auto md:block",
+                    else: "hidden md:block"
+                  )
+                ]
+              }
+            >
+              <button
+                type="button"
+                phx-click="close_node_panel"
+                aria-label="Fechar detalhamento"
+                class="absolute inset-0 bg-base-content/40 backdrop-blur-[1px] md:hidden"
+              ></button>
+
+              <%!-- Barra parada no topo e conteúdo rolando por baixo: o fim de um
+                   trecho longo fica sempre a uma rolagem de distância, e o
+                   fechar não vai embora junto com o texto. --%>
+              <div class="card qcard relative mx-2 mb-2 flex max-h-[90dvh] flex-col overflow-hidden border border-base-300 bg-base-100 md:mx-0 md:mb-0 md:h-full md:max-h-none">
+                <%!-- De `md` para cima o painel é a coluna fixa da direita: não
+                     há nada a fechar, então sobra só o título na barra. --%>
+                <.node_panel_bar editing?={@editing_node?} close_class="md:hidden" />
+
+                <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 md:p-5">
+                  <.node_inspector
+                    node={@selected_node}
+                    editing?={@editing_node?}
+                    flattened_nodes={@flattened_nodes}
+                  />
                 </div>
-              <% end %>
+              </div>
+            </div>
+
+            <div
+              :if={is_nil(@selected_node)}
+              class="card qcard hidden border border-base-300 bg-base-100 p-5 md:col-span-6 md:block md:min-h-0 lg:col-span-5"
+            >
+              <div class="space-y-2 py-12 text-center opacity-50">
+                <.icon name="hero-cursor-arrow-rays" class="mx-auto size-8" />
+                <p class="text-xs">
+                  Selecione um nó para visualizar e editar os dados.
+                </p>
+              </div>
             </div>
           </div>
         <% end %>
@@ -532,15 +642,22 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Curate do
   defp map_topbar(assigns) do
     ~H"""
     <header class="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-base-300 bg-base-100/95 px-3 py-2 backdrop-blur">
+      <%!-- No telefone o rótulo sai e fica só a seta: são 11 controles nesta
+           barra, e com o texto ela quebrava em quatro linhas, comendo a altura
+           que é do mapa (o canvas é o `flex-1` logo abaixo). --%>
       <.link
         id="exit-mindmap-btn"
         patch={~p"/adaptive-study/#{@material.id}/curate"}
+        title="Sair do mapa"
         class="btn btn-ghost btn-sm gap-1 rounded-full"
       >
-        <.icon name="hero-arrow-left" class="size-4" /> Sair do mapa
+        <.icon name="hero-arrow-left" class="size-4" />
+        <span class="hidden sm:inline">Sair do mapa</span>
       </.link>
 
-      <div class="min-w-0 flex-1">
+      <%!-- O bloco de título só aparece quando há largura para ele: no telefone
+           ele tomava uma linha inteira sozinho. --%>
+      <div class="hidden min-w-0 flex-1 sm:block">
         <p class="truncate text-sm font-bold leading-tight">{@material.title}</p>
         <p class="truncate text-[0.65rem] opacity-60">
           {@stats.total} nós · {length(@layout.relations)} conexões transversais<span :if={
@@ -556,23 +673,27 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Curate do
           id="map-mode-tree"
           phx-click="switch_map_mode"
           phx-value-mode="tree"
+          title="Formação hierárquica da árvore"
           class={[
             "btn join-item btn-sm gap-1.5",
             if(@map_mode == :tree, do: "btn-primary", else: "btn-ghost")
           ]}
         >
-          <.icon name="hero-share" class="size-4 rotate-90" /> Árvore
+          <.icon name="hero-share" class="size-4 rotate-90" />
+          <span class="hidden sm:inline">Árvore</span>
         </button>
         <button
           id="map-mode-radial"
           phx-click="switch_map_mode"
           phx-value-mode="radial"
+          title="Anéis por profundidade em torno da raiz"
           class={[
             "btn join-item btn-sm gap-1.5",
             if(@map_mode == :radial, do: "btn-primary", else: "btn-ghost")
           ]}
         >
-          <.icon name="hero-globe-alt" class="size-4" /> Rede
+          <.icon name="hero-globe-alt" class="size-4" />
+          <span class="hidden sm:inline">Rede</span>
         </button>
         <button
           id="map-mode-focus"
@@ -584,9 +705,24 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Curate do
             if(@map_mode == :focus, do: "btn-primary", else: "btn-ghost")
           ]}
         >
-          <.icon name="hero-viewfinder-circle" class="size-4" /> Foco
+          <.icon name="hero-viewfinder-circle" class="size-4" />
+          <span class="hidden sm:inline">Foco</span>
         </button>
       </div>
+
+      <%!-- Só no foco, e só quando há de onde voltar: navegando de nó em nó
+           pelo botão de explorar, a raiz fica a muitos saltos de distância e o
+           cartão de origem só desfaz um salto por vez. --%>
+      <button
+        :if={@map_mode == :focus and not @at_root?}
+        id="map-focus-root-btn"
+        phx-click="focus_root"
+        title="Voltar o foco para a raiz do mapa"
+        class="btn btn-ghost btn-sm gap-1.5"
+      >
+        <.icon name="hero-home" class="size-4" />
+        <span class="hidden sm:inline">Raiz</span>
+      </button>
 
       <div class="join">
         <button
@@ -654,7 +790,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Curate do
     <%!-- A chave por ID força a troca da subárvore ao mudar de nó, evitando que
          inputs e textareas fiquem com o valor do nó anterior. --%>
     <div id={"node-panel-#{@node["id"]}"} class="space-y-4">
-      <.node_panel_header node={@node} editing?={@editing?} closable?={@closable?} />
+      <.node_panel_header node={@node} editing?={@editing?} />
 
       <%= if @editing? do %>
         <.node_edit_form node={@node} />
@@ -673,7 +809,10 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Curate do
 
   defp curation_header(assigns) do
     ~H"""
-    <div class="flex flex-col gap-4 border-b border-base-300 pb-4 md:flex-row md:items-end md:justify-between">
+    <%!-- Sem fixação: de `md` para cima ele é o topo de uma área de trabalho que
+         não rola, e abaixo disso empilha em várias linhas — congelado, comeria
+         a tela do telefone. --%>
+    <div class="flex flex-col gap-4 border-b border-base-300 pb-4 md:flex-row md:items-end md:justify-between md:shrink-0">
       <div class="min-w-0 space-y-1.5">
         <.link
           navigate={~p"/adaptive-study"}
@@ -707,17 +846,21 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Curate do
           :if={@has_nodes?}
           id="open-mindmap-btn"
           patch={~p"/adaptive-study/#{@material.id}/curate/map"}
+          title="Abrir o Mapa Mental em tela cheia"
           class="btn btn-sm inline-flex items-center gap-1.5 rounded-full border-primary/40 bg-primary/10 text-primary hover:bg-primary/20"
         >
-          <.icon name="hero-map" class="size-4" /> Abrir Mapa Mental
+          <.icon name="hero-map" class="size-4" />
+          Mapa<span class="hidden sm:inline">&nbsp;Mental</span>
         </.link>
 
         <button
           id="reconstruct-text-btn"
           phx-click="toggle_reconstruction_modal"
+          title="Preview do texto reconstruído"
           class="btn btn-outline btn-sm inline-flex items-center gap-1.5 rounded-full"
         >
-          <.icon name="hero-document-magnifying-glass" class="size-4" /> Preview do Texto
+          <.icon name="hero-document-magnifying-glass" class="size-4" />
+          Preview<span class="hidden sm:inline">&nbsp;do Texto</span>
         </button>
 
         <button
@@ -729,182 +872,22 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Curate do
             if(@dirty?, do: "btn-primary", else: "btn-primary btn-outline")
           ]}
         >
-          <.icon name="hero-check" class="size-4" /> Salvar Curadoria
+          <.icon name="hero-check" class="size-4" />
+          Salvar<span class="hidden sm:inline">&nbsp;Curadoria</span>
         </button>
       </div>
     </div>
     """
   end
 
-  defp curation_toolbar(assigns) do
-    ~H"""
-    <div class="flex flex-col gap-3 rounded-2xl border border-base-300 bg-base-200/60 p-2 sm:flex-row sm:items-center sm:justify-between">
-      <%!-- Estas três são visões de leitura da curadoria, não de navegação: os
-           nomes antigos ("Grafo", "Árvore") prometiam um mapa que elas não
-           entregam. O mapa navegável mora no modo imersivo. --%>
-      <div class="join">
-        <.view_tab
-          id="view-cards-mode"
-          mode="cards"
-          active?={@view_mode == :cards}
-          icon="hero-rectangle-stack"
-        >
-          Cards
-        </.view_tab>
-        <.view_tab
-          id="view-outline-mode"
-          mode="outline"
-          active?={@view_mode == :outline}
-          icon="hero-bars-3-bottom-left"
-        >
-          Sumário
-        </.view_tab>
-        <.view_tab
-          id="view-mermaid-mode"
-          mode="mermaid"
-          active?={@view_mode == :mermaid}
-          icon="hero-chart-bar"
-        >
-          Diagrama
-        </.view_tab>
-      </div>
-
-      <div class="flex flex-wrap items-center gap-x-4 gap-y-1 px-2 text-xs font-medium">
-        <span class="opacity-70">{@stats.total} nós mapeados</span>
-        <span class="inline-flex items-center gap-1.5">
-          <span class="inline-block size-1.5 rounded-full bg-success"></span>
-          {@stats.enabled} ativos
-        </span>
-        <span :if={@stats.disabled > 0} class="inline-flex items-center gap-1.5 opacity-70">
-          <span class="inline-block size-1.5 rounded-full bg-base-content/40"></span>
-          {@stats.disabled} fora da reconstrução
-        </span>
-      </div>
-    </div>
-    """
-  end
-
-  defp view_tab(assigns) do
-    ~H"""
-    <button
-      id={@id}
-      phx-click="switch_view"
-      phx-value-mode={@mode}
-      class={[
-        "btn join-item btn-sm inline-flex items-center gap-2",
-        if(@active?, do: "btn-primary", else: "btn-ghost")
-      ]}
-    >
-      <.icon name={@icon} class="size-4" />
-      {render_slot(@inner_block)}
-    </button>
-    """
-  end
-
   ## Visões de leitura da curadoria
-
-  defp cards_view(assigns) do
-    ~H"""
-    <div class="space-y-4">
-      <div class="flex flex-wrap items-center justify-between gap-2 border-b border-base-200 pb-2 text-xs opacity-70">
-        <span>Clique em um nó para editar ou gerenciar referências.</span>
-        <div class="flex items-center gap-3">
-          <span class="flex items-center gap-1">
-            <span class="inline-block size-2.5 rounded-full bg-primary"></span> Alta
-          </span>
-          <span class="flex items-center gap-1">
-            <span class="inline-block size-2.5 rounded-full bg-warning"></span> Média
-          </span>
-          <span class="flex items-center gap-1">
-            <span class="inline-block size-2.5 rounded-full bg-base-300"></span> Baixa
-          </span>
-        </div>
-      </div>
-
-      <div id="curation-cards-list" class="space-y-3 pt-1">
-        <.card_node
-          :for={root_node <- @nodes}
-          node={root_node}
-          selected_id={@selected_id}
-          flattened_nodes={@flattened_nodes}
-          depth={0}
-        />
-      </div>
-    </div>
-    """
-  end
-
-  defp card_node(assigns) do
-    ~H"""
-    <div class={["space-y-3", @depth > 0 && "ml-4 border-l-2 border-primary/15 pl-4"]}>
-      <div
-        id={"node-card-#{@node["id"]}"}
-        phx-click="select_node"
-        phx-value-id={@node["id"]}
-        class={[
-          "max-w-full cursor-pointer space-y-2 overflow-hidden rounded-2xl border p-3.5 transition",
-          if(@selected_id == @node["id"],
-            do: "border-primary bg-primary/10 shadow-sm",
-            else: "border-base-300 bg-base-100 hover:border-primary/50 hover:bg-base-200/40"
-          ),
-          not AdaptiveStudy.node_enabled?(@node) && "border-dashed opacity-50"
-        ]}
-      >
-        <div class="flex items-center justify-between gap-3">
-          <div class="flex min-w-0 items-center gap-2">
-            <span class={["size-2.5 shrink-0 rounded-full", priority_dot_class(priority(@node))]}></span>
-            <span class="truncate text-sm font-bold">{@node["label"]}</span>
-          </div>
-
-          <div class="flex shrink-0 items-center gap-1">
-            <span
-              :if={not AdaptiveStudy.node_enabled?(@node)}
-              class="badge badge-xs badge-ghost text-[0.6rem] font-semibold uppercase"
-            >
-              Inativo
-            </span>
-            <span class={[
-              "badge badge-xs text-[0.6rem] font-semibold uppercase",
-              priority_badge_class(priority(@node))
-            ]}>
-              {priority_label(priority(@node))}
-            </span>
-          </div>
-        </div>
-
-        <div :if={relations(@node) != []} class="flex items-center gap-1.5 overflow-x-auto pb-1">
-          <span class="flex shrink-0 items-center gap-1 text-[0.65rem] font-semibold uppercase tracking-wider opacity-60">
-            <.icon name="hero-link" class="size-3 text-primary" /> Conexões:
-          </span>
-          <span
-            :for={relation <- relations(@node)}
-            class="badge badge-sm badge-secondary shrink-0 px-2 py-1 text-[0.68rem] font-medium"
-            title={AdaptiveStudy.relation_label(relation["type"])}
-          >
-            {find_node_label(@flattened_nodes, relation["target_id"])}
-          </span>
-        </div>
-      </div>
-
-      <div :if={children(@node) != []} class="space-y-3">
-        <.card_node
-          :for={child <- children(@node)}
-          node={child}
-          selected_id={@selected_id}
-          flattened_nodes={@flattened_nodes}
-          depth={@depth + 1}
-        />
-      </div>
-    </div>
-    """
-  end
 
   defp outline_view(assigns) do
     ~H"""
     <div class="space-y-3">
-      <h3 class="flex items-center gap-2 border-b border-base-200 pb-2 text-sm font-bold text-primary">
-        <.icon name="hero-bars-3-bottom-left" class="size-4" /> Sumário Hierárquico do Conteúdo
-      </h3>
+      <p class="text-xs opacity-60">
+        Clique em um nó para editar o conteúdo ou gerenciar suas conexões.
+      </p>
 
       <div class="space-y-1">
         <.outline_node
@@ -912,6 +895,8 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Curate do
           node={root_node}
           number={to_string(index)}
           selected_id={@selected_id}
+          flattened_nodes={@flattened_nodes}
+          collapsed_ids={@collapsed_ids}
           depth={0}
         />
       </div>
@@ -920,177 +905,176 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Curate do
   end
 
   defp outline_node(assigns) do
+    assigns =
+      assign(assigns, :collapsed?, outline_collapsed?(assigns.collapsed_ids, assigns.node))
+
     ~H"""
-    <div class={["space-y-1", @depth > 0 && "ml-3 border-l border-base-300 pl-3"]}>
-      <div
-        id={"tree-node-#{@node["id"]}"}
-        phx-click="select_node"
-        phx-value-id={@node["id"]}
-        class={[
-          "flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-2 transition",
-          if(@selected_id == @node["id"],
-            do: "border-primary bg-primary/10",
-            else: "border-transparent hover:border-base-300 hover:bg-base-200/50"
-          ),
-          not AdaptiveStudy.node_enabled?(@node) && "opacity-50"
-        ]}
-      >
-        <span class="mt-0.5 shrink-0 font-mono text-[0.7rem] font-bold text-primary/70">
-          {@number}
-        </span>
-
-        <div class="min-w-0 flex-1">
-          <p class="truncate text-sm font-semibold leading-snug">{@node["label"]}</p>
-          <p :if={node_preview(@node) != ""} class="truncate text-xs opacity-60">
-            {node_preview(@node)}
-          </p>
-        </div>
-
-        <div class="flex shrink-0 items-center gap-1">
-          <span
-            :if={children(@node) != []}
-            class="badge badge-xs badge-ghost font-mono text-[0.6rem]"
-            title="Subnós"
-          >
-            {length(children(@node))}
-          </span>
-          <span class={[
-            "badge badge-xs rounded-full text-[0.6rem] font-bold uppercase",
-            priority_badge_class(priority(@node))
-          ]}>
-            {priority_label(priority(@node))}
-          </span>
-        </div>
-      </div>
-
-      <.outline_node
-        :for={{child, index} <- Enum.with_index(children(@node), 1)}
-        node={child}
-        number={"#{@number}.#{index}"}
-        selected_id={@selected_id}
-        depth={@depth + 1}
-      />
-    </div>
-    """
-  end
-
-  defp mermaid_view(assigns) do
-    ~H"""
-    <div class="space-y-4">
-      <p class="border-b border-base-200 pb-2 text-xs font-medium opacity-70">
-        Diagrama dinâmico em Mermaid (hierarquia sólida, referências cruzadas tracejadas).
-      </p>
-
-      <div
-        id="mermaid-diagram-container"
-        phx-hook=".MermaidDiagram"
-        data-mermaid={@mermaid_code}
-        class="w-full rounded-2xl border border-base-300 bg-base-200/40 p-4"
-      >
-        <%!-- phx-update="ignore": sem isso, cada patch da LiveView apagava o SVG
-             renderizado pelo Mermaid e a área voltava para o estado de carregamento. --%>
-        <div
-          id="mermaid-diagram-target"
-          phx-update="ignore"
-          class="flex min-h-[380px] w-full items-center justify-center overflow-x-auto"
+    <%!-- A indentação encolhe no telefone: a 1.5rem por nível, um ramo de quatro
+         níveis comia metade da largura útil e a linha estourava a borda do
+         cartão. --%>
+    <div class={["space-y-1", @depth > 0 && "ml-1.5 border-l border-base-300 pl-2 sm:ml-3 sm:pl-3"]}>
+      <div class="flex items-start gap-1">
+        <%!-- O chevron é irmão do bloco clicável, não filho: o JS da LiveView
+             não expõe stopPropagation, então aninhá-lo faria um clique para
+             recolher também selecionar o nó. --%>
+        <button
+          :if={children(@node) != []}
+          type="button"
+          id={"toggle-outline-#{@node["id"]}"}
+          phx-click="toggle_collapse"
+          phx-value-id={@node["id"]}
+          aria-expanded={to_string(not @collapsed?)}
+          aria-controls={"outline-children-#{@node["id"]}"}
+          title={if @collapsed?, do: "Expandir subnós", else: "Recolher subnós"}
+          class="mt-2 grid size-5 shrink-0 place-items-center rounded-md opacity-60 transition hover:bg-base-300 hover:opacity-100"
         >
-          <span class="flex items-center gap-2 text-xs opacity-50">
-            <.icon name="hero-arrow-path" class="size-4 animate-spin" />
-            Renderizando diagrama Mermaid...
+          <.icon
+            name={if @collapsed?, do: "hero-chevron-right", else: "hero-chevron-down"}
+            class="size-3.5"
+          />
+        </button>
+        <%!-- Folha ocupa o mesmo espaço do chevron para os rótulos do nível
+             alinharem entre si. --%>
+        <span :if={children(@node) == []} class="size-5 shrink-0"></span>
+
+        <div
+          id={"tree-node-#{@node["id"]}"}
+          phx-click="select_node"
+          phx-value-id={@node["id"]}
+          class={
+            [
+              # `min-w-0` é o que deixa a linha encolher junto com o cartão: sem ele
+              # o item de flex tem largura mínima automática e o conteúdo mais largo
+              # (as conexões transversais) empurrava a borda para fora.
+              "flex min-w-0 flex-1 cursor-pointer items-start gap-2 rounded-xl border px-2 py-2 transition sm:gap-3 sm:px-3",
+              if(@selected_id == @node["id"],
+                do: "border-primary bg-primary/10",
+                else: "border-transparent hover:border-base-300 hover:bg-base-200/50"
+              ),
+              not AdaptiveStudy.node_enabled?(@node) && "opacity-50"
+            ]
+          }
+        >
+          <span class="mt-0.5 shrink-0 font-mono text-[0.62rem] font-bold text-primary/70 sm:text-[0.7rem]">
+            {@number}
           </span>
+
+          <div class="min-w-0 flex-1">
+            <p class="truncate text-sm font-semibold leading-snug">{@node["label"]}</p>
+            <%!-- Duas linhas em vez de uma: numa prévia de uma linha só o texto
+                 era cortado antes de dizer do que o nó trata. --%>
+            <p
+              :if={node_preview(@node) != ""}
+              class="line-clamp-2 text-xs leading-relaxed opacity-70"
+            >
+              {node_preview(@node)}
+            </p>
+
+            <%!-- As conexões transversais vinham dos cards. Aqui elas quebram em
+                 várias linhas em vez de rolar na horizontal: numa lista hierárquica
+                 a rolagem lateral escondia conexão dentro de linha estreita. --%>
+            <div :if={relations(@node) != []} class="mt-1.5 flex flex-wrap items-center gap-1">
+              <.icon name="hero-link" class="size-3 shrink-0 text-primary/70" />
+              <%!-- O badge do daisyUI não quebra linha, então um rótulo de nó
+                   longo saía pela borda do cartão em vez de esticar a caixa.
+                   Preso à largura disponível, ele corta com reticências — o
+                   rótulo inteiro fica no `title`. --%>
+              <span
+                :for={relation <- relations(@node)}
+                class="badge badge-xs badge-secondary max-w-full px-1.5 text-[0.62rem] font-medium"
+                title={
+                  "#{AdaptiveStudy.relation_label(relation["type"])}: #{find_node_label(@flattened_nodes, relation["target_id"])}"
+                }
+              >
+                <span class="truncate">
+                  {find_node_label(@flattened_nodes, relation["target_id"])}
+                </span>
+              </span>
+            </div>
+          </div>
+
+          <%!-- Empilhados no telefone: lado a lado, os dois badges tomavam ~75px
+               de uma linha que já perdeu largura para a indentação. --%>
+          <div class="flex shrink-0 flex-col items-end gap-1 sm:flex-row sm:items-center">
+            <%!-- Recolhido, o contador deixa de ser informação de apoio e passa
+                 a ser a única pista do que sumiu — por isso ganha destaque. --%>
+            <span
+              :if={children(@node) != []}
+              class={[
+                "badge badge-xs font-mono text-[0.6rem]",
+                if(@collapsed?, do: "badge-primary", else: "badge-ghost")
+              ]}
+              title={
+                if @collapsed?,
+                  do: "#{length(children(@node))} subnó(s) recolhido(s)",
+                  else: "#{length(children(@node))} subnó(s)"
+              }
+            >
+              {length(children(@node))}
+            </span>
+            <span class={[
+              "badge badge-xs rounded-full text-[0.6rem] font-bold uppercase",
+              priority_badge_class(priority(@node))
+            ]}>
+              {priority_label(priority(@node))}
+            </span>
+          </div>
         </div>
       </div>
 
-      <script :type={Phoenix.LiveView.ColocatedHook} name=".MermaidDiagram">
-        export default {
-          mounted() {
-            this.renderDiagram();
-          },
-          updated() {
-            this.renderDiagram();
-          },
-          loadMermaid() {
-            if (window.mermaid) return Promise.resolve(window.mermaid);
-
-            if (!window.__mermaidLoader) {
-              window.__mermaidLoader = new Promise((resolve, reject) => {
-                const script = document.createElement("script");
-                script.src = "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js";
-                script.onload = () => resolve(window.mermaid);
-                script.onerror = () => reject(new Error("Falha ao carregar a biblioteca Mermaid."));
-                document.head.appendChild(script);
-              });
-            }
-
-            return window.__mermaidLoader;
-          },
-          async renderDiagram() {
-            const target = this.el.querySelector("#mermaid-diagram-target");
-            const code = this.el.getAttribute("data-mermaid");
-            if (!target || !code) return;
-
-            const theme = document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "default";
-            if (code === this.lastCode && theme === this.lastTheme) return;
-
-            const renderId = "mermaid-svg-" + Math.random().toString(36).slice(2);
-
-            try {
-              const mermaid = await this.loadMermaid();
-              mermaid.initialize({startOnLoad: false, theme: theme, securityLevel: "strict"});
-              const {svg} = await mermaid.render(renderId, code);
-              target.innerHTML = svg;
-              this.lastCode = code;
-              this.lastTheme = theme;
-            } catch (error) {
-              // O Mermaid deixa o nó de trabalho no body quando a renderização falha.
-              document.getElementById("d" + renderId)?.remove();
-              this.lastCode = null;
-              target.innerHTML = "";
-              const message = document.createElement("div");
-              message.className = "text-xs text-error font-mono p-3";
-              message.textContent = "Erro ao renderizar diagrama Mermaid: " + error.message;
-              target.appendChild(message);
-            }
-          }
-        }
-      </script>
-
-      <details class="rounded-xl border border-base-300 bg-base-200/30 p-3 text-xs">
-        <summary class="cursor-pointer font-mono font-bold opacity-70">
-          Ver Código-Fonte Mermaid (.mmd)
-        </summary>
-        <pre class="mt-2 overflow-x-auto whitespace-pre rounded-lg bg-base-300 p-3 font-mono text-[0.7rem]">{@mermaid_code}</pre>
-      </details>
+      <div :if={not @collapsed?} id={"outline-children-#{@node["id"]}"} class="space-y-1">
+        <.outline_node
+          :for={{child, index} <- Enum.with_index(children(@node), 1)}
+          node={child}
+          number={"#{@number}.#{index}"}
+          selected_id={@selected_id}
+          flattened_nodes={@flattened_nodes}
+          collapsed_ids={@collapsed_ids}
+          depth={@depth + 1}
+        />
+      </div>
     </div>
     """
   end
 
   ## Painel lateral
 
+  # Barra do painel: fica fora da área de rolagem, então o título e o fechar não
+  # somem no meio de um trecho longo — que era o problema de ter o "X" espremido
+  # entre os botões de ação, dentro do conteúdo que rola.
+  defp node_panel_bar(assigns) do
+    ~H"""
+    <div class="flex min-h-12 shrink-0 items-center gap-2 border-b border-base-300 px-4 py-2">
+      <h3 class="min-w-0 flex-1 truncate text-sm font-bold">
+        {if @editing?, do: "Editar Conteúdo", else: "Detalhamento do Nó"}
+      </h3>
+
+      <%!-- `btn-sm btn-circle` são 2rem de alvo, contra os 1.5rem do `btn-xs`
+           que ele tinha quando morava junto das ações. --%>
+      <button
+        type="button"
+        id="close-node-panel-btn"
+        phx-click="close_node_panel"
+        aria-label="Fechar detalhamento"
+        title="Fechar (Esc)"
+        class={["btn btn-ghost btn-sm btn-circle -mr-1.5 shrink-0", @close_class]}
+      >
+        <.icon name="hero-x-mark" class="size-5" />
+      </button>
+    </div>
+    """
+  end
+
   defp node_panel_header(assigns) do
     ~H"""
-    <div class="flex items-start justify-between gap-3 border-b border-base-200 pb-3">
-      <div class="min-w-0 space-y-0.5">
-        <span class="block truncate font-mono text-[0.68rem] font-bold text-primary">
-          NÓ ID: {@node["id"]}
-        </span>
-        <h3 class="text-base font-bold leading-tight">
-          {if @editing?, do: "Editar Conteúdo", else: "Detalhamento do Nó"}
-        </h3>
-      </div>
+    <%!-- O ID encolhe antes dos botões e corta com reticências: em nó de ID
+         longo era ele que jogava as ações para uma segunda linha. --%>
+    <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-base-200 pb-3">
+      <span class="min-w-0 flex-1 truncate font-mono text-[0.68rem] font-bold text-primary">
+        NÓ ID: {@node["id"]}
+      </span>
 
       <div class="flex shrink-0 items-center gap-2">
-        <button
-          :if={@closable?}
-          type="button"
-          id="close-node-panel-btn"
-          phx-click="close_node_panel"
-          title="Fechar painel (Esc)"
-          class="btn btn-ghost btn-xs btn-circle"
-        >
-          <.icon name="hero-x-mark" class="size-4" />
-        </button>
-
         <button
           id={"toggle-node-enabled-#{@node["id"]}"}
           phx-click="toggle_node_enabled"
@@ -1101,7 +1085,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Curate do
               else: "Nó excluído da reconstrução do texto"
           }
           class={[
-            "btn btn-xs rounded-full font-semibold",
+            "btn btn-sm rounded-full font-semibold",
             if(AdaptiveStudy.node_enabled?(@node),
               do: "btn-success",
               else: "btn-outline btn-error"
@@ -1115,12 +1099,12 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Curate do
           id="edit-node-btn"
           phx-click="toggle_edit_node"
           class={[
-            "btn btn-xs inline-flex items-center gap-1 rounded-lg font-semibold",
+            "btn btn-sm inline-flex items-center gap-1 rounded-lg font-semibold",
             if(@editing?, do: "btn-ghost text-error", else: "btn-outline btn-primary")
           ]}
           title={if @editing?, do: "Cancelar edição", else: "Editar nó"}
         >
-          <.icon name={if @editing?, do: "hero-x-mark", else: "hero-pencil-square"} class="size-3.5" />
+          <.icon name={if @editing?, do: "hero-x-mark", else: "hero-pencil-square"} class="size-4" />
           {if @editing?, do: "Cancelar", else: "Editar"}
         </button>
       </div>
@@ -1179,22 +1163,23 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Curate do
         }
       />
 
-      <div class="space-y-2 rounded-2xl border border-base-300 bg-base-200/40 p-4">
-        <div class="flex items-center justify-between border-b border-base-200 pb-2 text-xs opacity-70">
-          <span class="flex items-center gap-1 font-bold text-primary">
-            <.icon name="hero-document-text" class="size-3.5" /> Conteúdo Atômico (MD)
+      <%!-- O trecho é o único bloco desta coluna feito para ser lido de ponta a
+           ponta, não escaneado: fica sem fundo tingido e sem moldura, separado
+           só por uma régua, para o texto competir com o mínimo possível. --%>
+      <div class="space-y-3 pt-1">
+        <div class="flex items-center justify-between border-b border-base-300 pb-2 text-[0.65rem] uppercase tracking-wider opacity-60">
+          <span class="flex items-center gap-1.5 font-bold">
+            <.icon name="hero-document-text" class="size-3.5" /> Trecho do material
           </span>
-          <span class="font-mono text-[0.65rem]">
+          <span class="font-mono normal-case">
             {String.length(@node["content"] || "")} chars
           </span>
         </div>
 
-        <p :if={(@node["content"] || "") == ""} class="pt-1 text-xs italic opacity-50">
+        <p :if={(@node["content"] || "") == ""} class="text-xs italic opacity-50">
           Este nó não carrega trecho de texto — serve apenas para agrupar subnós.
         </p>
-        <div :if={(@node["content"] || "") != ""} class="pt-1">
-          <.markdown content={@node["content"]} />
-        </div>
+        <.markdown :if={(@node["content"] || "") != ""} content={@node["content"]} />
       </div>
     </div>
     """
@@ -1420,11 +1405,13 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Curate do
           </span>
         </p>
 
-        <div class="max-h-[450px] overflow-y-auto rounded-2xl border border-base-300 bg-base-200/60 p-5">
+        <%!-- Aqui se lê o material inteiro de uma vez, então a altura sobe e a
+             coluna de texto é centralizada na medida de leitura do .qprose. --%>
+        <div class="max-h-[65vh] overflow-y-auto rounded-2xl border border-base-300 px-6 py-7">
           <p :if={@text == ""} class="text-xs italic opacity-60">
             Nenhum conteúdo ativo para reconstruir.
           </p>
-          <.markdown :if={@text != ""} content={@text} />
+          <.markdown :if={@text != ""} content={@text} class="mx-auto" />
         </div>
 
         <div class="modal-action items-center justify-between">
@@ -1475,10 +1462,6 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Curate do
   defp priority_badge_class("low"), do: "badge-ghost"
   defp priority_badge_class(_), do: "badge-warning"
 
-  defp priority_dot_class("high"), do: "bg-primary"
-  defp priority_dot_class("low"), do: "bg-base-300"
-  defp priority_dot_class(_), do: "bg-warning"
-
   defp complexity_label("easy"), do: "Fácil"
   defp complexity_label("complex"), do: "Avançado"
   defp complexity_label(_), do: "Intermediário"
@@ -1507,4 +1490,9 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Curate do
       node -> node["label"] || id
     end
   end
+
+  # Só nó com filhos pode estar recolhido: um ID de folha em `collapsed_ids`
+  # (resíduo de uma edição que removeu os subnós) não deve esconder nada.
+  defp outline_collapsed?(collapsed_ids, node),
+    do: children(node) != [] and MapSet.member?(collapsed_ids, node["id"])
 end

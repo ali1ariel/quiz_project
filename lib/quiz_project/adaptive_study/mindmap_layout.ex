@@ -102,13 +102,13 @@ defmodule QuizProject.AdaptiveStudy.MindmapLayout do
 
     case index[selected_id] do
       nil -> build(nodes, :tree)
-      center -> focus_layout(flat, index, center)
+      center -> focus_layout(flat, index, center, List.first(nodes))
     end
   end
 
   def focus(_nodes, _selected_id), do: build([], :tree)
 
-  defp focus_layout(flat, index, center) do
+  defp focus_layout(flat, index, center, root) do
     center_id = center["id"]
     parents = parent_index(flat)
     {node_width, node_height} = @focus_size
@@ -127,6 +127,8 @@ defmodule QuizProject.AdaptiveStudy.MindmapLayout do
     placed =
       [focus_placed(center, 0.0, 0.0, 0)] ++
         fan(left, :math.pi(), radius) ++ fan(right, 0.0, radius)
+
+    placed = placed ++ detached_root(root, placed, radius, node_height)
 
     {placed, width, height} = normalize(placed, node_width, node_height)
     positions = Map.new(placed, &{&1.id, &1})
@@ -214,6 +216,28 @@ defmodule QuizProject.AdaptiveStudy.MindmapLayout do
     end)
   end
 
+  # Âncora de volta: mergulhando de nó em nó, a raiz sai da vizinhança e o mapa
+  # perde a referência de onde se está. Ela reaparece acima do centro, sem
+  # aresta, só como ponto de retorno — `detached?` é o que diz ao desenho para
+  # não procurar ligação para ela.
+  #
+  # Quando a raiz tem ligação de verdade com o centro (é o pai dele, ou alvo de
+  # uma relação), ela já entrou pelo caminho normal e nada é acrescentado: a
+  # ligação real vale mais que o atalho.
+  defp detached_root(nil, _placed, _radius, _node_height), do: []
+
+  defp detached_root(root, placed, radius, node_height) do
+    if Enum.any?(placed, &(&1.id == root["id"])) do
+      []
+    else
+      [
+        root
+        |> focus_placed(0.0, -(radius + node_height * 1.5))
+        |> Map.put(:detached?, true)
+      ]
+    end
+  end
+
   defp focus_radius(count, _node_height) when count <= 1, do: @focus_min_radius * 1.0
 
   defp focus_radius(count, node_height) do
@@ -228,6 +252,7 @@ defmodule QuizProject.AdaptiveStudy.MindmapLayout do
       y: y,
       depth: depth,
       collapsed?: false,
+      detached?: false,
       children_count: length(Map.get(node, "children") || [])
     }
   end

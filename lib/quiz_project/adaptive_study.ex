@@ -14,9 +14,60 @@ defmodule QuizProject.AdaptiveStudy do
 
   @doc "Cria um material de estudo para o usuário."
   def create_material(%{id: user_id}, attrs) when is_map(attrs) do
+    attrs =
+      case attrs do
+        %{raw_content: raw} -> %{attrs | raw_content: strip_frontmatter(raw)}
+        _ -> attrs
+      end
+
+    attrs = Map.put(attrs, :user_id, user_id)
+
     StudyMaterial
-    |> Ash.Changeset.for_create(:create, Map.put(attrs, :user_id, user_id), authorize?: false)
+    |> Ash.Changeset.for_create(:create, attrs, authorize?: false)
     |> Ash.create()
+  end
+
+  # Delimitador de abertura na primeira linha e fechamento em "---" ou "..."
+  # sozinhos numa linha, como em Jekyll/Pandoc.
+  @frontmatter ~r/\A---[ \t]*\r?\n(.*?)\r?\n(?:---|\.\.\.)[ \t]*(?:\r?\n|\z)/s
+  @yaml_key ~r/\A[A-Za-z_][\w.\- ]*:(\s|\z)/
+
+  @doc """
+  Remove o bloco de frontmatter YAML da abertura do material.
+
+  Metadados de exportação (`title`, `author`, `source`) não são conteúdo de
+  estudo, mas a diretriz de decomposição sem perda obriga a IA a alocá-los em
+  algum nó do mapa — e o bloco acaba virando um nó de destaque no lugar do
+  primeiro tópico real.
+
+  Um `---` isolado também abre uma linha horizontal em Markdown, então o bloco
+  só é removido quando sua primeira linha é de fato uma chave YAML; sem isso o
+  texto volta intacto.
+  """
+  def strip_frontmatter(text) when is_binary(text) do
+    case Regex.run(@frontmatter, text) do
+      [block, body] ->
+        if yaml_frontmatter?(body) do
+          text |> String.replace_prefix(block, "") |> String.trim_leading()
+        else
+          text
+        end
+
+      nil ->
+        text
+    end
+  end
+
+  def strip_frontmatter(other), do: other
+
+  defp yaml_frontmatter?(body) do
+    body
+    |> String.split(~r/\r?\n/)
+    |> Enum.find(&(String.trim(&1) != ""))
+    |> case do
+      nil -> false
+      first_line -> Regex.match?(@yaml_key, first_line)
+    end
   end
 
   @doc "Lista todos os materiais de estudo do usuário."
@@ -99,7 +150,7 @@ defmodule QuizProject.AdaptiveStudy do
                 title: final_title,
                 summary: summary,
                 key_concepts: %{"concepts" => key_concepts},
-                mindmap_tree: %{"nodes" => mindmap},
+                mindmap_tree: %{"nodes" => ensure_root(mindmap, final_title)},
                 status: "draft"
               },
               user
@@ -187,6 +238,9 @@ defmodule QuizProject.AdaptiveStudy do
   @doc "Tipos de relação transversal aceitos entre nós."
   def relation_types, do: @relation_types
 
+  @doc "Tipos de nó aceitos, na ordem em que devem aparecer para o leitor."
+  def node_types, do: @node_types
+
   @doc """
   Relações transversais do nó, sempre no formato
   `%{"target_id" => id, "type" => tipo, "label" => texto}`.
@@ -232,6 +286,14 @@ defmodule QuizProject.AdaptiveStudy do
 
   defp normalize_relation(_), do: []
 
+  @doc "Rótulo legível do tipo de um nó."
+  def node_type_label("definicao"), do: "Definição"
+  def node_type_label("processo"), do: "Processo"
+  def node_type_label("exemplo"), do: "Exemplo"
+  def node_type_label("dado"), do: "Dado"
+  def node_type_label("advertencia"), do: "Advertência"
+  def node_type_label(_), do: "Conceito"
+
   @doc "Rótulo legível de um tipo de relação transversal."
   def relation_label("prerequisito"), do: "pré-requisito"
   def relation_label("aprofunda"), do: "aprofunda"
@@ -239,6 +301,76 @@ defmodule QuizProject.AdaptiveStudy do
   def relation_label("exemplifica"), do: "exemplifica"
   def relation_label("aplica"), do: "aplica"
   def relation_label(_), do: "relacionado"
+
+  @doc """
+  Garante um único nó raiz na árvore, criando um quando a IA não entregou.
+
+  O prompt pede que a raiz seja o tema central do material, mas a IA
+  frequentemente devolve vários nós de primeiro nível em vez disso. Sem um
+  centro, o modo rede não tem de onde irradiar, "voltar à raiz" não tem para
+  onde voltar e o sumário abre em várias listas paralelas.
+
+  Uma árvore que já tem raiz única — ou que está vazia — passa intacta, então
+  chamar isto duas vezes não empilha raízes.
+  """
+  def ensure_root(nodes, title) when is_list(nodes) do
+    case nodes do
+      [] -> []
+      [_only_one] -> nodes
+      branches -> [synthetic_root(branches, title)]
+    end
+  end
+
+  def ensure_root(%{"nodes" => nodes}, title) when is_list(nodes),
+    do: ensure_root(nodes, title)
+
+  def ensure_root(_nodes, _title), do: []
+
+  @doc """
+  Indica se o nó foi criado por `ensure_root/2` em vez de vir da IA.
+  """
+  def generated_root?(node) when is_map(node), do: Map.get(node, "generated_root") == true
+  def generated_root?(_), do: false
+
+  defp synthetic_root(branches, title) do
+    %{
+      "id" => unused_root_id(branches),
+      "label" => root_label(title),
+      "description" =>
+        "Tema central do material, agrupando os #{length(branches)} blocos de primeiro nível.",
+      # Sem conteúdo de propósito: é nó de agrupamento, então não entra na
+      # reconstrução do texto (que só concatena folhas).
+      "content" => "",
+      "order" => 0,
+      "node_type" => "conceito",
+      "priority" => "high",
+      "complexity" => "moderate",
+      "user_notes" => "",
+      "enabled" => true,
+      "generated_root" => true,
+      "relations" => [],
+      "children" => branches
+    }
+  end
+
+  defp root_label(title) do
+    case String.trim(to_string(title || "")) do
+      "" -> "Mapa do material"
+      label -> label
+    end
+  end
+
+  # A IA escolhe os IDs, então "root" pode já estar tomado.
+  defp unused_root_id(branches) do
+    taken = branches |> flatten_nodes() |> MapSet.new(& &1["id"])
+
+    Stream.iterate(0, &(&1 + 1))
+    |> Stream.map(fn
+      0 -> "root"
+      n -> "root_#{n}"
+    end)
+    |> Enum.find(&(not MapSet.member?(taken, &1)))
+  end
 
   @doc "Retorna uma lista plana de todos os nós (pais e filhos) do mapa mental."
   def flatten_nodes(nodes) when is_list(nodes) do
@@ -251,95 +383,4 @@ defmodule QuizProject.AdaptiveStudy do
   def flatten_nodes(%{"nodes" => nodes}) when is_list(nodes), do: flatten_nodes(nodes)
   def flatten_nodes(%{"children" => children}) when is_list(children), do: flatten_nodes(children)
   def flatten_nodes(_), do: []
-
-  @empty_mermaid "graph TD\n  empty[\"Nenhum nó disponível\"]"
-
-  @doc """
-  Gera uma string no formato de diagrama Mermaid (graph TD) a partir dos nós do mapa mental.
-  Inclui a hierarquia entre pais e filhos e as conexões tracejadas de referências cruzadas (`related_node_ids`).
-
-  Referências para IDs inexistentes são descartadas — senão o Mermaid criaria uma
-  caixa órfã e sem rótulo para cada ID inválido devolvido pela IA.
-  """
-  def to_mermaid(nodes) when is_list(nodes) or is_map(nodes) do
-    flat = nodes |> flatten_nodes() |> Enum.uniq_by(& &1["id"])
-
-    if flat == [] do
-      @empty_mermaid
-    else
-      known_ids = MapSet.new(flat, & &1["id"])
-
-      node_lines =
-        Enum.map(flat, fn node ->
-          "  #{sanitize_mermaid_id(node["id"])}[\"#{mermaid_label(node)}\"]"
-        end)
-
-      parent_child_lines =
-        Enum.flat_map(flat, fn parent ->
-          p_id = sanitize_mermaid_id(parent["id"])
-          children = parent["children"] || []
-
-          Enum.map(children, fn child ->
-            c_id = sanitize_mermaid_id(child["id"])
-            "  #{p_id} --> #{c_id}"
-          end)
-        end)
-
-      cross_ref_lines =
-        Enum.flat_map(flat, fn node ->
-          src_id = sanitize_mermaid_id(node["id"])
-
-          node
-          |> node_relations()
-          |> Enum.filter(
-            &(MapSet.member?(known_ids, &1["target_id"]) and &1["target_id"] != node["id"])
-          )
-          |> Enum.map(fn relation ->
-            target = sanitize_mermaid_id(relation["target_id"])
-            "  #{src_id} -. #{relation_label(relation["type"])} .-> #{target}"
-          end)
-        end)
-
-      lines =
-        ["graph TD"] ++
-          node_lines ++ parent_child_lines ++ cross_ref_lines ++ disabled_style(flat)
-
-      Enum.join(lines, "\n")
-    end
-  end
-
-  def to_mermaid(_), do: @empty_mermaid
-
-  defp disabled_style(flat) do
-    case flat |> Enum.reject(&node_enabled?/1) |> Enum.map(&sanitize_mermaid_id(&1["id"])) do
-      [] ->
-        []
-
-      ids ->
-        [
-          "  classDef disabled stroke-dasharray:4 3,opacity:0.45",
-          "  class #{Enum.join(ids, ",")} disabled"
-        ]
-    end
-  end
-
-  # Rótulos longos viram caixas gigantes que estouram o SVG; aspas quebram a sintaxe.
-  defp mermaid_label(node) do
-    label =
-      (node["label"] || "")
-      |> to_string()
-      |> String.replace("\"", "'")
-      |> String.replace(~r/\s+/, " ")
-      |> String.trim()
-
-    cond do
-      label == "" -> "Nó"
-      String.length(label) > 60 -> String.slice(label, 0, 59) <> "…"
-      true -> label
-    end
-  end
-
-  defp sanitize_mermaid_id(id) do
-    "node_" <> (to_string(id) |> String.replace(~r/[^a-zA-Z0-9_]/, "_"))
-  end
 end

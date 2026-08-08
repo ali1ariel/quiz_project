@@ -477,6 +477,133 @@ h1, h2, h3 {
   }
 }
 
+/* ============================================================
+   .qprose — tipografia de leitura para o markdown dos materiais
+   de estudo (trechos dos nós e texto reconstruído).
+
+   O projeto não usa @tailwindcss/typography, e o Preflight do
+   Tailwind zera margem de parágrafo, iguala o tamanho dos títulos
+   ao do corpo e tira o marcador das listas. Sem estas regras o
+   markdown sai como um bloco corrido indistinguível.
+
+   Medidas seguem o corpo do texto (em), não pixels, para a escala
+   inteira acompanhar quem sobrescrever o font-size do contêiner.
+   ============================================================ */
+.qprose {
+  font-family: var(--skin-font-body, system-ui, sans-serif);
+  font-size: 1rem;
+  line-height: 1.75;
+  color: var(--color-base-content);
+  /* Medida de leitura. Nas colunas estreitas o limite é inerte; no
+     modal de reconstrução é ele que evita a linha longa demais. */
+  max-width: 68ch;
+  overflow-wrap: break-word;
+}
+
+.qprose > :first-child { margin-block-start: 0; }
+.qprose > :last-child { margin-block-end: 0; }
+
+.qprose p { margin-block: 0 1.15em; }
+
+.qprose h1, .qprose h2, .qprose h3,
+.qprose h4, .qprose h5, .qprose h6 {
+  font-family: var(--skin-font-display, system-ui, sans-serif);
+  font-weight: var(--skin-display-weight, 700);
+  letter-spacing: var(--skin-display-tracking, 0);
+  line-height: 1.3;
+  margin-block: 1.8em 0.6em;
+  text-wrap: balance;
+}
+.qprose h1 { font-size: 1.5em; }
+.qprose h2 { font-size: 1.3em; }
+.qprose h3 { font-size: 1.15em; }
+.qprose h4 { font-size: 1.05em; }
+/* No material de estudo os níveis 5 e 6 costumam ser legenda de
+   figura ou de tabela, não seção: menores que o corpo e discretos. */
+.qprose h5, .qprose h6 {
+  font-size: 0.9em;
+  opacity: 0.75;
+  margin-block: 1.4em 0.4em;
+}
+
+.qprose ul, .qprose ol {
+  margin-block: 0 1.15em;
+  padding-inline-start: 1.5em;
+}
+.qprose ul { list-style: disc; }
+.qprose ol { list-style: decimal; }
+.qprose li { margin-block: 0.4em; padding-inline-start: 0.2em; }
+.qprose li::marker { color: color-mix(in oklab, var(--color-base-content) 45%, transparent); }
+/* Listas aninhadas ficam mais compactas que a de primeiro nível. */
+.qprose li > ul, .qprose li > ol { margin-block: 0.4em; }
+.qprose li > p { margin-block: 0 0.5em; }
+
+.qprose strong { font-weight: 650; }
+.qprose em { font-style: italic; }
+
+.qprose a {
+  color: var(--color-primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.qprose blockquote {
+  margin-block: 0 1.15em;
+  padding-inline-start: 1em;
+  border-inline-start: 3px solid color-mix(in oklab, var(--color-primary) 45%, transparent);
+  color: color-mix(in oklab, var(--color-base-content) 80%, transparent);
+  font-style: italic;
+}
+
+.qprose code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.875em;
+  padding: 0.15em 0.4em;
+  border-radius: 0.3rem;
+  background-color: color-mix(in oklab, var(--color-base-content) 8%, transparent);
+}
+.qprose pre {
+  margin-block: 0 1.15em;
+  padding: 0.9em 1.1em;
+  border-radius: var(--skin-radius-box, 0.5rem);
+  background-color: color-mix(in oklab, var(--color-base-content) 7%, transparent);
+  overflow-x: auto;
+  line-height: 1.6;
+}
+/* Dentro do bloco o fundo já vem do <pre>; repetir no <code> criaria
+   um retângulo dentro do outro. */
+.qprose pre code {
+  padding: 0;
+  background: none;
+  font-size: 0.875em;
+}
+
+.qprose hr {
+  margin-block: 2em;
+  border: 0;
+  border-top: 1px solid var(--skin-card-line, var(--color-base-300));
+}
+
+.qprose img {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--skin-radius-box, 0.5rem);
+  margin-block: 0 1.15em;
+}
+
+.qprose table {
+  width: 100%;
+  margin-block: 0 1.15em;
+  border-collapse: collapse;
+  font-size: 0.9em;
+}
+.qprose th, .qprose td {
+  padding: 0.5em 0.7em;
+  border: 1px solid var(--skin-card-line, var(--color-base-300));
+  text-align: start;
+}
+.qprose th { background-color: color-mix(in oklab, var(--color-base-content) 5%, transparent); }
+
 /* Botões sem sombra, com microinteração definida por cada skin. */
 .btn:not(.btn-ghost):not(.btn-link) {
   border-width: var(--skin-border-w);

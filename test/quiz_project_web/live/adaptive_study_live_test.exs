@@ -75,7 +75,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLiveTest do
     {:ok, view, _html} = live(conn, ~p"/adaptive-study/#{material.id}/curate")
 
     # Seleciona o nó 1 e clica em editar
-    view |> element("#node-card-node_1") |> render_click()
+    view |> element("#tree-node-node_1") |> render_click()
     view |> element("#edit-node-btn") |> render_click()
 
     # Edita os dados do nó
@@ -93,8 +93,9 @@ defmodule QuizProjectWeb.AdaptiveStudyLiveTest do
     updated = AdaptiveStudy.get_material!(material.id, user)
     assert updated.status == "curated"
 
-    nodes = get_in(updated.mindmap_tree, ["nodes"])
-    node_1 = Enum.find(nodes, &(&1["id"] == "node_1"))
+    # A árvore veio com dois nós de topo, então ganhou uma raiz sintética: o nó
+    # editado não está mais no primeiro nível.
+    node_1 = fetch_node(material.id, user, "node_1")
     assert node_1["label"] == "Nó 1 Editado"
     assert node_1["content"] == "Conteúdo 1 Atualizado."
     assert node_1["priority"] == "low"
@@ -104,7 +105,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLiveTest do
     {:ok, material} = curated_material(user)
     {:ok, view, _html} = live(conn, ~p"/adaptive-study/#{material.id}/curate")
 
-    view |> element("#node-card-node_1") |> render_click()
+    view |> element("#tree-node-node_1") |> render_click()
 
     view
     |> form("#user-notes-form-node_1", %{"user_notes" => "Revisar antes da prova."})
@@ -127,7 +128,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLiveTest do
     {:ok, material} = curated_material(user)
     {:ok, view, _html} = live(conn, ~p"/adaptive-study/#{material.id}/curate")
 
-    view |> element("#node-card-node_2") |> render_click()
+    view |> element("#tree-node-node_2") |> render_click()
     view |> element("#toggle-node-enabled-node_2") |> render_click()
 
     view |> element("#reconstruct-text-btn") |> render_click()
@@ -142,13 +143,62 @@ defmodule QuizProjectWeb.AdaptiveStudyLiveTest do
     {:ok, material} = curated_material(user, node_1_refs: ["node_2"])
     {:ok, view, _html} = live(conn, ~p"/adaptive-study/#{material.id}/curate")
 
-    view |> element("#node-card-node_1") |> render_click()
+    view |> element("#tree-node-node_1") |> render_click()
     assert has_element?(view, "#remove-cross-ref-node_1-node_2")
 
     view |> element("#remove-cross-ref-node_1-node_2") |> render_click()
     view |> element("#save-curation-btn") |> render_click()
 
     assert fetch_node(material.id, user, "node_1")["related_node_ids"] == []
+  end
+
+  describe "detalhamento do nó como modal no telefone" do
+    test "abre fechado na carga da página, mesmo com o nó pré-selecionado", %{
+      conn: conn,
+      user: user
+    } do
+      {:ok, material} = curated_material(user)
+      {:ok, view, _html} = live(conn, ~p"/adaptive-study/#{material.id}/curate")
+
+      # O painel já vem preenchido (é a coluna da direita no desktop), mas sem as
+      # classes de modal: no telefone ele fica escondido até o primeiro clique.
+      assert has_element?(view, "#node-detail-panel.hidden")
+      refute has_element?(view, "#node-detail-panel.fixed")
+    end
+
+    test "clicar em um nó sobe a folha e o fechar a derruba", %{conn: conn, user: user} do
+      {:ok, material} = curated_material(user)
+      {:ok, view, _html} = live(conn, ~p"/adaptive-study/#{material.id}/curate")
+
+      view |> element("#tree-node-node_2") |> render_click()
+      assert has_element?(view, "#node-detail-panel.fixed")
+      assert render(view) =~ "NÓ ID: node_2"
+
+      view |> element("#close-node-panel-btn") |> render_click()
+      refute has_element?(view, "#node-detail-panel")
+      assert render(view) =~ "Selecione um nó para visualizar e editar os dados."
+    end
+
+    test "editar e anotar não derrubam a folha", %{conn: conn, user: user} do
+      {:ok, material} = curated_material(user)
+      {:ok, view, _html} = live(conn, ~p"/adaptive-study/#{material.id}/curate")
+
+      view |> element("#tree-node-node_1") |> render_click()
+
+      view
+      |> form("#user-notes-form-node_1", %{"user_notes" => "Rever depois."})
+      |> render_submit()
+
+      assert has_element?(view, "#node-detail-panel.fixed")
+
+      view |> element("#edit-node-btn") |> render_click()
+
+      view
+      |> form("#node-edit-form", %{"label" => "Nó 1", "content" => "Conteúdo 1."})
+      |> render_submit()
+
+      assert has_element?(view, "#node-detail-panel.fixed")
+    end
   end
 
   test "sobrevive às mensagens PubSub de tentativas e de mapa mental", %{conn: conn, user: user} do
@@ -191,33 +241,139 @@ defmodule QuizProjectWeb.AdaptiveStudyLiveTest do
     broadcast(user, {:mindmap_generated, %{material_id: material.id}})
 
     assert render(view) =~ "Nó Gerado"
-    assert has_element?(view, "#node-card-node_1")
+    assert has_element?(view, "#tree-node-node_1")
   end
 
-  test "alterna as visões de leitura da curadoria", %{conn: conn, user: user} do
+  test "o sumário mostra as conexões transversais pelo rótulo do nó de destino", %{
+    conn: conn,
+    user: user
+  } do
     {:ok, material} =
       AdaptiveStudy.create_material(user, %{
-        title: "Material Modos",
+        title: "Material Conexões",
         raw_content: "Texto",
         mindmap_tree: %{
-          "nodes" => [%{"id" => "n1", "label" => "Nó A", "content" => "Texto", "children" => []}]
+          "nodes" => [
+            %{
+              "id" => "n1",
+              "label" => "Nó A",
+              "content" => "Texto",
+              "relations" => [%{"target_id" => "n2", "type" => "prerequisito"}],
+              "children" => [%{"id" => "n2", "label" => "Nó B", "children" => []}]
+            }
+          ]
         }
       })
 
-    {:ok, view, _html} = live(conn, ~p"/adaptive-study/#{material.id}/curate")
+    {:ok, view, html} = live(conn, ~p"/adaptive-study/#{material.id}/curate")
 
-    # Alterna para o sumário
-    view |> element("#view-outline-mode") |> render_click()
-    assert render(view) =~ "Sumário Hierárquico do Conteúdo"
+    assert has_element?(view, "#tree-node-n1")
+    # A conexão aparece pelo rótulo do alvo, não pelo ID cru: o título traz o
+    # tipo da relação e o badge, o rótulo do nó de destino.
+    assert html =~ "pré-requisito: Nó B"
+    assert has_element?(view, ~s(#tree-node-n1 .badge-secondary), "Nó B")
+  end
 
-    # Alterna para o diagrama Mermaid
-    view |> element("#view-mermaid-mode") |> render_click()
-    assert has_element?(view, "#mermaid-diagram-container[data-mermaid]")
-    assert has_element?(view, "#mermaid-diagram-target[phx-update=ignore]")
+  test "material sem raiz gerada pela IA ganha uma na abertura da curadoria", %{
+    conn: conn,
+    user: user
+  } do
+    {:ok, material} =
+      AdaptiveStudy.create_material(user, %{
+        title: "Compiladores",
+        raw_content: "Texto",
+        mindmap_tree: %{
+          "nodes" => [
+            %{"id" => "a", "label" => "Analisador léxico", "children" => []},
+            %{"id" => "b", "label" => "Analisador sintático", "children" => []}
+          ]
+        }
+      })
 
-    # Alterna de volta para os cards
-    view |> element("#view-cards-mode") |> render_click()
-    assert has_element?(view, "#curation-cards-list")
+    {:ok, view, html} = live(conn, ~p"/adaptive-study/#{material.id}/curate")
+
+    # A raiz entra como único nó de primeiro nível, com o título do material.
+    assert has_element?(view, "#tree-node-root")
+    assert html =~ "Compiladores"
+    assert has_element?(view, "#toggle-outline-root")
+
+    # E é gravada ao salvar a curadoria, normalizando o material já existente.
+    view |> element("#save-curation-btn") |> render_click()
+
+    saved = AdaptiveStudy.get_material!(material.id, user)
+    assert [%{"id" => "root", "generated_root" => true}] = get_in(saved.mindmap_tree, ["nodes"])
+  end
+
+  describe "expandir e recolher no sumário" do
+    setup %{user: user} do
+      {:ok, material} =
+        AdaptiveStudy.create_material(user, %{
+          title: "Material Ramos",
+          raw_content: "Texto",
+          mindmap_tree: %{
+            "nodes" => [
+              %{
+                "id" => "n1",
+                "label" => "Ramo",
+                "children" => [%{"id" => "n1_1", "label" => "Subnó", "children" => []}]
+              },
+              %{"id" => "n2", "label" => "Folha", "children" => []}
+            ]
+          }
+        })
+
+      %{material: material}
+    end
+
+    test "recolher um ramo esconde os subnós e expandir os traz de volta", %{
+      conn: conn,
+      material: material
+    } do
+      {:ok, view, _html} = live(conn, ~p"/adaptive-study/#{material.id}/curate")
+
+      # Árvore pequena começa inteira aberta.
+      assert has_element?(view, "#tree-node-n1_1")
+
+      view |> element("#toggle-outline-n1") |> render_click()
+      refute has_element?(view, "#tree-node-n1_1")
+
+      view |> element("#toggle-outline-n1") |> render_click()
+      assert has_element?(view, "#tree-node-n1_1")
+    end
+
+    test "o chevron recolhe sem trocar o nó selecionado", %{conn: conn, material: material} do
+      {:ok, view, _html} = live(conn, ~p"/adaptive-study/#{material.id}/curate")
+
+      view |> element("#tree-node-n2") |> render_click()
+      assert render(view) =~ "NÓ ID: n2"
+
+      view |> element("#toggle-outline-n1") |> render_click()
+
+      # O chevron é irmão do bloco clicável justamente para o clique não
+      # borbulhar até o `select_node`.
+      assert render(view) =~ "NÓ ID: n2"
+      refute has_element?(view, "#tree-node-n1_1")
+    end
+
+    test "folha não ganha chevron", %{conn: conn, material: material} do
+      {:ok, view, _html} = live(conn, ~p"/adaptive-study/#{material.id}/curate")
+
+      assert has_element?(view, "#toggle-outline-n1")
+      refute has_element?(view, "#toggle-outline-n2")
+    end
+
+    test "o sumário não repete os controles de recolher tudo do mapa", %{
+      conn: conn,
+      material: material
+    } do
+      {:ok, view, _html} = live(conn, ~p"/adaptive-study/#{material.id}/curate")
+
+      # Recolher e expandir em massa só existem no mapa imersivo; no sumário o
+      # chevron de cada ramo dá conta, e a coluna ganhou um header limpo.
+      refute has_element?(view, "#outline-collapse-all-btn")
+      refute has_element?(view, "#outline-expand-all-btn")
+      assert has_element?(view, "#toggle-outline-n1")
+    end
   end
 
   describe "mapa mental em tela cheia" do
@@ -266,7 +422,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLiveTest do
       {:ok, view, _html} = live(conn, ~p"/adaptive-study/#{material.id}/curate")
 
       # altera sem salvar e navega para o mapa
-      view |> element("#node-card-b2") |> render_click()
+      view |> element("#tree-node-b2") |> render_click()
       view |> element("#toggle-node-enabled-b2") |> render_click()
 
       view |> element("#open-mindmap-btn") |> render_click()
@@ -484,6 +640,139 @@ defmodule QuizProjectWeb.AdaptiveStudyLiveTest do
       view |> element("#map-explore-root") |> render_click()
       assert has_element?(view, "#map-node-b2")
       assert view |> element("#map-node-b1") |> render() =~ "origem"
+    end
+
+    test "o botão de raiz volta o foco em um salto, de qualquer profundidade", %{
+      conn: conn,
+      material: material
+    } do
+      {:ok, view, _html} = live(conn, ~p"/adaptive-study/#{material.id}/curate/map")
+
+      view |> element("#map-mode-focus") |> render_click()
+      # centrado na raiz, não há para onde voltar
+      refute has_element?(view, "#map-focus-root-btn")
+
+      # dois saltos para longe da raiz
+      view |> element("#map-explore-b1") |> render_click()
+      view |> element("#map-explore-b1_1") |> render_click()
+      assert has_element?(view, "#map-focus-root-btn")
+
+      view |> element("#map-focus-root-btn") |> render_click()
+
+      # de volta ao centro original, com os dois ramos à vista e o neto fora
+      assert has_element?(view, "#map-node-b1")
+      assert has_element?(view, "#map-node-b2")
+      refute has_element?(view, "#map-node-b1_1")
+
+      # e sem trilha de volta pendurada: voltar à raiz recomeça a navegação
+      refute view |> element("#map-node-b1") |> render() =~ "origem"
+      refute has_element?(view, "#map-focus-root-btn")
+    end
+
+    test "no fundo do foco a raiz continua em cena, marcada e explorável", %{
+      conn: conn,
+      material: material
+    } do
+      {:ok, view, _html} = live(conn, ~p"/adaptive-study/#{material.id}/curate/map")
+
+      view |> element("#map-mode-focus") |> render_click()
+      view |> element("#map-explore-b1") |> render_click()
+      view |> element("#map-explore-b1_1") |> render_click()
+
+      # b1_1 é neto da raiz: ela não é vizinha, mas segue disponível
+      assert has_element?(view, "#map-node-root")
+      assert view |> element("#map-node-root") |> render() =~ "raiz"
+      assert has_element?(view, "#map-explore-root")
+
+      # e o clique nela recentraliza
+      view |> element("#map-explore-root") |> render_click()
+      assert has_element?(view, "#map-node-b2")
+    end
+
+    test "o botão de raiz só existe no foco", %{conn: conn, material: material} do
+      {:ok, view, _html} = live(conn, ~p"/adaptive-study/#{material.id}/curate/map")
+
+      refute has_element?(view, "#map-focus-root-btn")
+
+      view |> element("#map-mode-radial") |> render_click()
+      refute has_element?(view, "#map-focus-root-btn")
+    end
+
+    test "a legenda traduz só os tipos de nó presentes no mapa", %{
+      conn: conn,
+      user: user
+    } do
+      {:ok, material} =
+        AdaptiveStudy.create_material(user, %{
+          title: "Material Tipos",
+          raw_content: "Texto",
+          mindmap_tree: %{
+            "nodes" => [
+              %{
+                "id" => "root",
+                "label" => "Raiz",
+                "node_type" => "conceito",
+                "children" => [
+                  %{"id" => "d", "label" => "Números", "node_type" => "dado", "children" => []}
+                ]
+              }
+            ]
+          }
+        })
+
+      {:ok, view, _html} = live(conn, ~p"/adaptive-study/#{material.id}/curate/map")
+      legend = view |> element("#mindmap-legend") |> render()
+
+      assert legend =~ "Conceito"
+      assert legend =~ "Dado"
+      assert legend =~ "hero-chart-bar"
+      # tipos ausentes do mapa não entram na legenda
+      refute legend =~ "Advertência"
+      refute legend =~ "Processo"
+    end
+
+    test "a bola do cartão carrega cor da prioridade e ícone do tipo", %{
+      conn: conn,
+      user: user
+    } do
+      {:ok, material} =
+        AdaptiveStudy.create_material(user, %{
+          title: "Material Marca",
+          raw_content: "Texto",
+          mindmap_tree: %{
+            "nodes" => [
+              %{
+                "id" => "root",
+                "label" => "Raiz",
+                "priority" => "high",
+                "node_type" => "dado",
+                "children" => []
+              }
+            ]
+          }
+        })
+
+      {:ok, view, _html} = live(conn, ~p"/adaptive-study/#{material.id}/curate/map")
+      card = view |> element("#map-node-root") |> render()
+
+      # cor da prioridade e contraste do texto na mesma marca do ícone do tipo
+      assert card =~ "bg-primary"
+      assert card =~ "text-primary-content"
+      assert card =~ "hero-chart-bar"
+      assert card =~ "Prioridade alta · Dado"
+    end
+
+    test "o canvas informa o nó de entrada para a abertura da visão", %{
+      conn: conn,
+      material: material
+    } do
+      {:ok, view, _html} = live(conn, ~p"/adaptive-study/#{material.id}/curate/map")
+
+      # Sem as coordenadas do nó de entrada o JS não tem como abrir mirando nele
+      # e cairia no enquadramento do mapa inteiro.
+      canvas = view |> element("#mindmap-canvas") |> render()
+      assert canvas =~ "data-entry-x"
+      assert canvas =~ "data-entry-y"
     end
 
     test "fechar a gaveta no foco não desfaz a navegação", %{conn: conn, material: material} do

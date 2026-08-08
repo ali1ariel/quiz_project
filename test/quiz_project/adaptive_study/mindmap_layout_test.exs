@@ -249,6 +249,59 @@ defmodule QuizProject.AdaptiveStudy.MindmapLayoutTest do
       assert layout.width > 0
     end
 
+    test "longe da raiz, ela entra solta como âncora de volta" do
+      nodes = [
+        %{
+          "id" => "root",
+          "label" => "Raiz",
+          "children" => [
+            %{
+              "id" => "a",
+              "label" => "A",
+              "children" => [%{"id" => "a1", "label" => "A1", "children" => []}]
+            }
+          ]
+        }
+      ]
+
+      layout = MindmapLayout.focus(nodes, "a1")
+      root = Enum.find(layout.nodes, &(&1.id == "root"))
+
+      assert root.detached?
+      # solta de verdade: nenhuma aresta nem relação a menciona
+      ligados =
+        Enum.flat_map(layout.edges, &[&1.from_id, &1.to_id]) ++
+          Enum.flat_map(layout.relations, &[&1.from_id, &1.to_id])
+
+      refute "root" in ligados
+      # e acima do centro, para não se misturar aos vizinhos dos lados
+      assert root.y < Enum.find(layout.nodes, &(&1.id == "a1")).y
+    end
+
+    test "com ligação real, a raiz entra ligada e não duplica" do
+      nodes = [
+        %{
+          "id" => "root",
+          "label" => "Raiz",
+          "children" => [%{"id" => "a", "label" => "A", "children" => []}]
+        }
+      ]
+
+      layout = MindmapLayout.focus(nodes, "a")
+      root = Enum.find(layout.nodes, &(&1.id == "root"))
+
+      refute root.detached?
+      assert Enum.count(layout.nodes, &(&1.id == "root")) == 1
+      assert Enum.any?(layout.edges, &(&1.from_id == "root" and &1.to_id == "a"))
+    end
+
+    test "centrado na própria raiz, ela não vira âncora de si mesma" do
+      layout = MindmapLayout.focus(tree(), "root")
+
+      assert Enum.count(layout.nodes, &(&1.id == "root")) == 1
+      refute Enum.find(layout.nodes, &(&1.id == "root")).detached?
+    end
+
     test "sem seleção válida cai para a árvore inteira" do
       assert MindmapLayout.focus(tree(), nil).mode == :tree
       assert MindmapLayout.focus(tree(), "fantasma").mode == :tree

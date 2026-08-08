@@ -67,7 +67,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Index do
         </div>
 
         <%= if @materials == [] do %>
-          <div class="rounded-3xl border-2 border-dashed border-base-300 p-12 text-center space-y-4 bg-base-200/50">
+          <div class="space-y-4 rounded-3xl border-2 border-dashed border-base-300 bg-base-200/50 p-8 text-center sm:p-12">
             <div class="grid size-16 place-items-center rounded-2xl bg-primary/10 text-primary mx-auto">
               <.icon name="hero-academic-cap" class="size-8" />
             </div>
@@ -128,7 +128,10 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Index do
                 </p>
               </div>
 
-              <div class="pt-2 flex items-center justify-between border-t border-base-200 text-xs opacity-70">
+              <%!-- Quebra em duas linhas quando não cabe: a data por extenso mais
+                   o link somam ~285px, e o cartão tem ~250px de conteúdo num
+                   telefone de 320px. --%>
+              <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-base-200 pt-2 text-xs opacity-70">
                 <span>Criado em {Calendar.strftime(material.inserted_at, "%d/%m/%Y às %H:%M")}</span>
                 <.link
                   id={"curate-link-#{material.id}"}
