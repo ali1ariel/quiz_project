@@ -448,8 +448,12 @@ defmodule QuizProject.AdaptiveStudy.Books do
       {:ok, material} ->
         try do
           case QuizProject.AdaptiveStudy.curate_material_with_ai(material, user, opts) do
-            {:ok, updated_material, usage} -> {:done, updated_material.id, usage}
-            {:error, _reason} -> discard_material(chapter, material, user)
+            {:ok, updated_material, usage} ->
+              demarcate_leaves(chapter, updated_material)
+              {:done, updated_material.id, usage}
+
+            {:error, _reason} ->
+              discard_material(chapter, material, user)
           end
         rescue
           error ->
@@ -469,6 +473,47 @@ defmodule QuizProject.AdaptiveStudy.Books do
       log_unexpected_failure(chapter, error, __STACKTRACE__)
       {:failed, nil, nil}
   end
+
+  # Grava a demarcação de cada nó folha sobre os blocos que a IA apontou.
+  # `chapter.material_id` é o material do LIVRO — é nele que os blocos e o
+  # índice de `demarcate/4` vivem — e não o `material_id` do material de texto
+  # gerado para a curadoria, que só existe para carregar o mapa mental.
+  defp demarcate_leaves(chapter, material) do
+    valid_positions = chapter.id |> list_blocks() |> MapSet.new(& &1.position)
+
+    material.mindmap_tree
+    |> Map.get("nodes", [])
+    |> leaf_nodes()
+    |> Enum.each(&demarcate_leaf(chapter, valid_positions, &1))
+  end
+
+  defp demarcate_leaf(chapter, valid_positions, node) do
+    requested = node["blocks"] || []
+    positions = Enum.filter(requested, &(is_integer(&1) and MapSet.member?(valid_positions, &1)))
+    invalid = requested -- positions
+
+    if invalid != [] do
+      Logger.warning(
+        "[Books] Capítulo #{chapter.id}: nó #{inspect(node["id"])} referenciou posições " <>
+          "inválidas #{inspect(invalid)}, descartadas."
+      )
+    end
+
+    if positions != [] do
+      demarcate(chapter.material_id, node["id"], positions)
+    end
+  end
+
+  defp leaf_nodes(nodes) when is_list(nodes) do
+    Enum.flat_map(nodes, fn node ->
+      case node["children"] do
+        children when is_list(children) and children != [] -> leaf_nodes(children)
+        _ -> [node]
+      end
+    end)
+  end
+
+  defp leaf_nodes(_), do: []
 
   # A tentativa fracassada não deixa lixo na Estudo Adaptativo: sem isso, cada
   # novo clique em "tentar novamente" empilharia mais um material de estudo
@@ -517,6 +562,21 @@ defmodule QuizProject.AdaptiveStudy.Books do
 
   def chapter_ai_state(%Chapter{}), do: :none
 
+  @doc """
+  Capítulo cuja curadoria de IA gerou este material de texto, se houver.
+
+  É o caminho inverso de `curated_material_id`: a tela de curadoria usa isto
+  para saber se o `content` de um nó deve ser lido direto ou resolvido a
+  partir dos blocos do livro (`blocks_for_node/2`) — `material.format` não
+  serve para essa distinção, porque o material de texto gerado por capítulo
+  tem o mesmo `format: :text` de um upload manual.
+  """
+  def chapter_for_curated_material(material_id) do
+    Chapter
+    |> Ash.Query.filter(curated_material_id == ^material_id)
+    |> Ash.read_one(authorize?: false)
+  end
+
   @doc "Total de blocos do livro."
   def block_count(material_id) do
     Block
@@ -562,9 +622,11 @@ defmodule QuizProject.AdaptiveStudy.Books do
   defp join_blocks(blocks), do: Enum.map_join(blocks, @separator, & &1.content)
 
   @doc """
-  Como `chapter_text/1`, mas preparado para a curadoria por IA: bloco de código
-  sai cercado, com legenda e anotações — `chapter_text/1` não pode carregar essa
-  marcação sem deixar de ser a reconstrução verbatim que promete.
+  Como `chapter_text/1`, mas preparado para a curadoria por IA: cada bloco sai
+  marcado com `[#posição]` antes do conteúdo, para a IA devolver referências em
+  vez de cópia do texto (ver `Books.demarcate/4`); bloco de código sai cercado,
+  com legenda e anotações — `chapter_text/1` não pode carregar essa marcação
+  sem deixar de ser a reconstrução verbatim que promete.
   """
   def chapter_text_for_curation(chapter_id) do
     chapter_id
@@ -573,12 +635,17 @@ defmodule QuizProject.AdaptiveStudy.Books do
   end
 
   defp curation_text(%Block{type: :code} = block) do
-    [block.caption, code_fence(block), annotations_list(block.annotations)]
-    |> Enum.reject(&is_nil/1)
-    |> Enum.join("\n\n")
+    body =
+      [block.caption, code_fence(block), annotations_list(block.annotations)]
+      |> Enum.reject(&is_nil/1)
+      |> Enum.join("\n\n")
+
+    "[##{block.position}]\n#{body}"
   end
 
-  defp curation_text(%Block{content: content}), do: content
+  defp curation_text(%Block{position: position, content: content}) do
+    "[##{position}]\n#{content}"
+  end
 
   defp code_fence(%Block{lang: lang, content: content}), do: "```#{lang}\n#{content}\n```"
 

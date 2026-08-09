@@ -101,11 +101,14 @@ defmodule QuizProject.AI.Fake do
       |> Enum.map(fn {chunk, branch_idx} ->
         leaves =
           Enum.map(chunk, fn {paragraph, idx} ->
+            {positions, body} = extract_positions(paragraph)
+
             %{
               "id" => "node_#{branch_idx}_#{idx}",
-              "label" => fake_label(paragraph, idx),
+              "label" => fake_label(body, idx),
               "description" => "Conteúdo do parágrafo #{idx}",
-              "content" => paragraph,
+              "blocks" => positions,
+              "content" => if(positions == [], do: body, else: ""),
               "order" => idx,
               "node_type" => if(rem(idx, 2) == 0, do: "exemplo", else: "conceito"),
               "priority" => if(rem(idx, 2) == 0, do: "high", else: "medium"),
@@ -187,6 +190,17 @@ defmodule QuizProject.AI.Fake do
     case paragraph |> String.slice(0, 40) |> String.trim() do
       "" -> "Tópico #{idx}"
       label -> label <> "..."
+    end
+  end
+
+  # Espelha o transporte por posição que a IA real usa quando o texto vem de
+  # `Books.chapter_text_for_curation/1`: `[#12]` no começo do parágrafo vira
+  # `blocks: [12]` e some do corpo, para o teste de demarcação não depender de
+  # um provedor de verdade.
+  defp extract_positions(paragraph) do
+    case Regex.run(~r/\A\[#(\d+)\]\n(.*)\z/s, paragraph) do
+      [_, position, body] -> {[String.to_integer(position)], body}
+      nil -> {[], paragraph}
     end
   end
 

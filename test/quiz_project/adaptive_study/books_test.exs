@@ -294,14 +294,31 @@ defmodule QuizProject.AdaptiveStudy.BooksTest do
       assert texto =~ "O parafuso é *simples* e **antigo**"
     end
 
-    test "capítulo sem bloco de código é igual à reconstrução verbatim", %{
+    test "cada bloco sai marcado com a própria posição absoluta", %{
+      material: material,
+      user: user
+    } do
+      material = ingest(material, user)
+      {:ok, chapter} = Books.get_chapter(material.id, 2)
+
+      posicoes = chapter.id |> Books.list_blocks() |> Enum.map(& &1.position)
+      texto = Books.chapter_text_for_curation(chapter.id)
+
+      for posicao <- posicoes, do: assert(texto =~ "[##{posicao}]")
+    end
+
+    test "sem os marcadores de posição, o texto é igual à reconstrução verbatim", %{
       material: material,
       user: user
     } do
       material = ingest(material, user)
       {:ok, indice} = Books.get_chapter(material.id, 4)
 
-      assert Books.chapter_text_for_curation(indice.id) == Books.chapter_text(indice.id)
+      sem_marcadores =
+        Books.chapter_text_for_curation(indice.id)
+        |> String.replace(~r/\[#\d+\]\n/, "")
+
+      assert sem_marcadores == Books.chapter_text(indice.id)
     end
   end
 
@@ -515,6 +532,42 @@ defmodule QuizProject.AdaptiveStudy.BooksTest do
 
       assert {:ok, reprocessando} = Books.curate_chapter_async(orfao, user)
       assert reprocessando.curation_status == :processing
+    end
+
+    test "todo bloco de corpo do capítulo fica coberto por ao menos um nó folha", %{
+      chapter: chapter,
+      user: user
+    } do
+      {:ok, _} = Books.curate_chapter_async(chapter, user)
+
+      coverage = Books.coverage(chapter.id)
+      blocos = Books.list_blocks(chapter.id)
+
+      for bloco <- blocos do
+        assert Map.get(coverage, bloco.id, []) != [],
+               "bloco na posição #{bloco.position} não foi coberto por nenhum nó"
+      end
+    end
+
+    test "posição inválida devolvida pela IA não grava nada e não estoura", %{
+      chapter: chapter,
+      user: user
+    } do
+      {:ok, _} = Books.curate_chapter_async(chapter, user)
+
+      finished = Enum.find(Books.list_chapters(chapter.material_id), &(&1.id == chapter.id))
+      {:ok, gerado} = AdaptiveStudy.get_material(finished.curated_material_id, user)
+
+      # Redemarca um nó que já existe com uma posição de outro capítulo, como se
+      # a IA tivesse errado — não deve estourar, e a posição inválida não entra.
+      node_id =
+        gerado.mindmap_tree["nodes"]
+        |> AdaptiveStudy.flatten_nodes()
+        |> Enum.find(&(&1["children"] in [[], nil]))
+        |> Map.fetch!("id")
+
+      assert Books.demarcate(chapter.material_id, node_id, [999_999]) == 0
+      assert Books.blocks_for_node(chapter.material_id, node_id) == []
     end
   end
 

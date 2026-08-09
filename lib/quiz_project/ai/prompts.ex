@@ -104,7 +104,7 @@ defmodule QuizProject.AI.Prompts do
           "id": "node_1",
           "label": "<rótulo curto: 2 a 5 palavras>",
           "description": "<uma frase explicando o nó>",
-          "content": "<trecho do texto>",
+          "blocks": [1, 2, 3],
           "order": 1,
           "node_type": "conceito",
           "priority": "high",
@@ -121,7 +121,7 @@ defmodule QuizProject.AI.Prompts do
               "id": "node_1_1",
               "label": "<subtópico>",
               "description": "<explicação>",
-              "content": "<trecho exato do texto original>",
+              "blocks": [4],
               "order": 2,
               "node_type": "exemplo",
               "priority": "medium",
@@ -139,10 +139,11 @@ defmodule QuizProject.AI.Prompts do
     }
 
     Diretrizes cruciais:
-    - DECOMPOSIÇÃO ATÔMICA SEM PERDA: Todo o texto original deve ser distribuído entre os nós folhas. A concatenação dos campos 'content' dos nós folhas (na ordem dos nós) deve permitir reconstruir o texto original completo.
+    - TRANSPORTE DO TEXTO: Se o texto de entrada trouxer marcadores `[#N]` antes de cada bloco, ele já está numerado — devolva em cada nó folha `"blocks": [N, ...]` com as posições dos blocos que aquele nó cobre, e NÃO inclua o campo 'content'. Se o texto de entrada NÃO tiver esses marcadores, devolva em vez disso `"content": "<trecho exato do texto original>"` em cada nó folha, no lugar de 'blocks'.
+    - DECOMPOSIÇÃO ATÔMICA SEM PERDA: Com marcadores `[#N]`, todo bloco do texto deve aparecer na lista 'blocks' de exatamente um nó folha — nenhum de fora, nenhum repetido entre folhas diferentes. Sem marcadores, a concatenação dos campos 'content' dos nós folhas (na ordem dos nós) deve permitir reconstruir o texto original completo.
     - FORMATO DE MAPA MENTAL: A raiz deve ser o tema central do material. Prefira de 3 a 7 ramos principais e profundidade de 2 a 4 níveis. Evite listas rasas com dezenas de irmãos no mesmo nível — agrupe irmãos semelhantes sob um nó intermediário que sintetize o agrupamento.
-    - RÓTULOS: 'label' é o texto que aparece dentro da caixa do mapa; escreva de 2 a 5 palavras, sem pontuação final e sem repetir o rótulo do pai. Coloque a explicação em 'description' e o texto original em 'content'.
-    - NÓS INTERMEDIÁRIOS: Nós com filhos servem para agrupar; deixe o 'content' deles vazio ("") e distribua o texto entre as folhas.
+    - RÓTULOS: 'label' é o texto que aparece dentro da caixa do mapa; escreva de 2 a 5 palavras, sem pontuação final e sem repetir o rótulo do pai. Coloque a explicação em 'description'.
+    - NÓS INTERMEDIÁRIOS: Nós com filhos servem para agrupar; deixe 'blocks' (ou 'content', conforme o transporte em uso) vazio e distribua entre as folhas.
     - TIPO DO NÓ: Em 'node_type', use exatamente um de: "conceito", "definicao", "processo", "exemplo", "dado", "advertencia".
     - PRIORIDADES: Atribua "high", "medium" ou "low" para a prioridade de estudo do nó e explique no campo 'priority_reason'.
     - COMPLEXIDADE DO TÓPICO: Atribua "easy" (Fácil), "moderate" (Intermediário) ou "complex" (Avançado) para a complexidade do nó e explique o motivo no campo 'complexity_reason'.

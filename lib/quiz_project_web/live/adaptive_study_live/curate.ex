@@ -5,6 +5,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Curate do
 
   alias Phoenix.LiveView.JS
   alias QuizProject.AdaptiveStudy
+  alias QuizProject.AdaptiveStudy.Books
   alias QuizProject.AdaptiveStudy.MindmapLayout
   alias QuizProjectWeb.AdaptiveStudyLive.Mindmap
 
@@ -35,6 +36,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Curate do
          |> assign(
            page_title: "Curadoria: " <> material.title,
            material: material,
+           book_material_id: book_material_id(material.id),
            map_mode: :tree,
            focus_center_id: nil,
            focus_origin_id: nil,
@@ -310,6 +312,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Curate do
            |> assign(
              material: reloaded,
              page_title: "Curadoria: " <> reloaded.title,
+             book_material_id: book_material_id(reloaded.id),
              collapsed_ids: MindmapLayout.initial_collapsed(nodes)
            )
            |> assign_tree(nodes, selected_node_id: first && first["id"])
@@ -325,6 +328,39 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Curate do
 
   @impl true
   def handle_info(_message, socket), do: {:noreply, socket}
+
+  # `nil` para material de upload manual ou de material antigo já com `content`
+  # gravado; o id do material do LIVRO quando este material de texto veio de
+  # curadoria de capítulo — é o que `node_text/2` usa para decidir se resolve o
+  # trecho do nó a partir dos blocos.
+  defp book_material_id(material_id) do
+    case Books.chapter_for_curated_material(material_id) do
+      {:ok, %{material_id: book_id}} -> book_id
+      _ -> nil
+    end
+  end
+
+  # `content` continua valendo quando presente — materiais já curados antes
+  # desta mudança, e o upload manual de texto (que não tem blocos), gravam o
+  # trecho ali. Só quando o nó veio vazio de um material de livro é que o
+  # texto é resolvido a partir dos blocos que a curadoria demarcou.
+  defp node_text(node, book_material_id) do
+    case node["content"] do
+      content when is_binary(content) and content != "" ->
+        content
+
+      _ ->
+        resolve_from_blocks(node["id"], book_material_id)
+    end
+  end
+
+  defp resolve_from_blocks(_node_id, nil), do: ""
+
+  defp resolve_from_blocks(node_id, book_material_id) do
+    book_material_id
+    |> Books.blocks_for_node(node_id)
+    |> Enum.map_join("\n\n", & &1.content)
+  end
 
   # Recalcula tudo que deriva da árvore em um só lugar (antes cada handler
   # repetia — e esquecia — parte dos assigns derivados).
@@ -483,6 +519,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Curate do
                 node={@selected_node}
                 editing?={@editing_node?}
                 flattened_nodes={@flattened_nodes}
+                book_material_id={@book_material_id}
               />
             </div>
           </aside>
@@ -608,6 +645,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Curate do
                     node={@selected_node}
                     editing?={@editing_node?}
                     flattened_nodes={@flattened_nodes}
+                    book_material_id={@book_material_id}
                   />
                 </div>
               </div>
@@ -793,9 +831,9 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Curate do
       <.node_panel_header node={@node} editing?={@editing?} />
 
       <%= if @editing? do %>
-        <.node_edit_form node={@node} />
+        <.node_edit_form node={@node} book_material_id={@book_material_id} />
       <% else %>
-        <.node_details node={@node} />
+        <.node_details node={@node} book_material_id={@book_material_id} />
       <% end %>
 
       <.cross_references node={@node} flattened_nodes={@flattened_nodes} />
@@ -1113,6 +1151,8 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Curate do
   end
 
   defp node_details(assigns) do
+    assigns = assign(assigns, :node_text, node_text(assigns.node, assigns.book_material_id))
+
     ~H"""
     <div class="space-y-4">
       <div class="space-y-2">
@@ -1172,14 +1212,14 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Curate do
             <.icon name="hero-document-text" class="size-3.5" /> Trecho do material
           </span>
           <span class="font-mono normal-case">
-            {String.length(@node["content"] || "")} chars
+            {String.length(@node_text)} chars
           </span>
         </div>
 
-        <p :if={(@node["content"] || "") == ""} class="text-xs italic opacity-50">
+        <p :if={@node_text == ""} class="text-xs italic opacity-50">
           Este nó não carrega trecho de texto — serve apenas para agrupar subnós.
         </p>
-        <.markdown :if={(@node["content"] || "") != ""} content={@node["content"]} />
+        <.markdown :if={@node_text != ""} content={@node_text} />
       </div>
     </div>
     """
@@ -1267,7 +1307,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Curate do
         >{@node["complexity_reason"]}</textarea>
       </div>
 
-      <div class="space-y-1">
+      <div :if={is_nil(@book_material_id)} class="space-y-1">
         <label class="block text-xs font-semibold opacity-80">
           Trecho de Texto Completo (content MD)
         </label>
@@ -1277,6 +1317,10 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Curate do
           class="textarea textarea-bordered w-full rounded-xl font-mono text-xs leading-relaxed"
         >{@node["content"]}</textarea>
       </div>
+
+      <p :if={@book_material_id} class="text-xs italic opacity-60">
+        O trecho deste nó vem dos blocos demarcados no livro — não é editável aqui.
+      </p>
 
       <div class="flex items-center gap-2 pt-1">
         <button
