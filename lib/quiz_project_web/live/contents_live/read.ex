@@ -19,6 +19,7 @@ defmodule QuizProjectWeb.ContentsLive.Read do
 
   alias QuizProject.AdaptiveStudy
   alias QuizProject.AdaptiveStudy.Books
+  alias QuizProject.AI
 
   @impl true
   def mount(%{"id" => id}, _session, socket) do
@@ -41,7 +42,9 @@ defmodule QuizProjectWeb.ContentsLive.Read do
            results: [],
            ingest_progress: nil,
            contents_open?: false,
-           appearance_open?: false
+           appearance_open?: false,
+           confirm_chapter: nil,
+           curation_choice: AI.default_selection()
          )}
 
       _ ->
@@ -170,35 +173,68 @@ defmodule QuizProjectWeb.ContentsLive.Read do
     {:noreply, assign(socket, search_term: "", results: [])}
   end
 
-  # Botão de IA da barra do capítulo. `curate_chapter_async/2` garante em
-  # banco que um capítulo só entra em processamento uma vez — aqui só refletimos
-  # o estado devolvido, mesmo que o clique tenha chegado tarde demais.
+  # O botão de IA abre o resumo do processamento antes de gastar: quem clica
+  # decide olhando tamanho, provedor, modelo e custo, não só o ícone.
+  def handle_event("confirm_curation", %{"id" => chapter_id}, socket) do
+    {:noreply,
+     assign(socket,
+       confirm_chapter: Enum.find(socket.assigns.chapters, &(&1.id == chapter_id)),
+       curation_choice: AI.default_selection()
+     )}
+  end
+
+  def handle_event("cancel_curation", _params, socket) do
+    {:noreply, assign(socket, confirm_chapter: nil)}
+  end
+
+  # Trocar de provedor zera o modelo: o modelo do provedor anterior não existe
+  # no novo, e `AI.resolve/2` cai no padrão do provedor escolhido.
+  #
+  # Combinação que não existe no catálogo é descartada em vez de virar estado,
+  # para a tela nunca mostrar uma escolha e o botão agir sobre outra.
+  def handle_event("pick_curation", %{"provider" => slug} = params, socket) do
+    model = if slug == socket.assigns.curation_choice.provider, do: params["model"]
+
+    case AI.resolve(slug, model) do
+      {:ok, _info} -> {:noreply, assign(socket, curation_choice: %{provider: slug, model: model})}
+      {:error, _motivo} -> {:noreply, socket}
+    end
+  end
+
+  # Confirmado. `curate_chapter_async/2` garante em banco que um capítulo só
+  # entra em processamento uma vez — aqui só refletimos o estado devolvido,
+  # mesmo que o clique tenha chegado tarde demais.
   def handle_event("curate_chapter", %{"id" => chapter_id}, socket) do
     user = socket.assigns.current_user
+    escolha = socket.assigns.curation_choice
+    socket = assign(socket, confirm_chapter: nil)
 
-    case Enum.find(socket.assigns.chapters, &(&1.id == chapter_id)) do
-      nil ->
-        {:noreply, socket}
+    with chapter when not is_nil(chapter) <-
+           Enum.find(socket.assigns.chapters, &(&1.id == chapter_id)),
+         {:ok, %{available?: true} = info} <- AI.resolve(escolha.provider, escolha.model) do
+      case Books.curate_chapter_async(chapter, user, provider: info.module, model: info.model) do
+        {:ok, updated} ->
+          chapters =
+            Enum.map(socket.assigns.chapters, fn c ->
+              if c.id == updated.id, do: updated, else: c
+            end)
 
-      chapter ->
-        case Books.curate_chapter_async(chapter, user) do
-          {:ok, updated} ->
-            chapters =
-              Enum.map(socket.assigns.chapters, fn c ->
-                if c.id == updated.id, do: updated, else: c
-              end)
+          socket = assign(socket, chapters: chapters)
 
-            socket = assign(socket, chapters: chapters)
-
-            if socket.assigns.chapter.id == updated.id do
-              {:noreply, assign(socket, chapter: updated)}
-            else
-              {:noreply, socket}
-            end
-
-          {:error, :already_processing} ->
+          if socket.assigns.chapter.id == updated.id do
+            {:noreply, assign(socket, chapter: updated)}
+          else
             {:noreply, socket}
-        end
+          end
+
+        {:error, :already_processing} ->
+          {:noreply, socket}
+      end
+    else
+      # Provedor sem chave, modelo que não é do provedor, capítulo que sumiu: o
+      # botão já estava desabilitado para o primeiro caso, mas o evento chega
+      # pelo socket e não se confia nele.
+      _ -> {:noreply, socket}
     end
   end
 
@@ -304,6 +340,12 @@ defmodule QuizProjectWeb.ContentsLive.Read do
         <.toolbar chapter={@chapter} chapters={@chapters} />
 
         <.appearance_sheet preference={@preference} open?={@appearance_open?} />
+
+        <.curation_dialog
+          :if={@confirm_chapter}
+          chapter={@confirm_chapter}
+          choice={@curation_choice}
+        />
 
         <%!-- O sumário é navegação, não leitura: fica fora da tela até ser
              chamado, em vez de comer uma coluna fixa ao lado do texto. --%>
@@ -617,7 +659,11 @@ defmodule QuizProjectWeb.ContentsLive.Read do
           {@chapter.title}
         </p>
 
-        <.chapter_ai_button chapter={@chapter} state={@ai_state} />
+        <.chapter_ai_button
+          chapter={@chapter}
+          state={@ai_state}
+          risky?={Books.curation_risky?(@chapter.estimated_tokens)}
+        />
 
         <button
           type="button"
@@ -644,6 +690,7 @@ defmodule QuizProjectWeb.ContentsLive.Read do
 
   attr :chapter, :map, required: true
   attr :state, :atom, required: true
+  attr :risky?, :boolean, default: false
 
   # `:none`/`:failed` disparam o processamento; `:processing` só mostra o
   # andamento (o clique não repete a chamada, o guard já está no servidor);
@@ -680,13 +727,16 @@ defmodule QuizProjectWeb.ContentsLive.Read do
     <button
       type="button"
       id={"chapter-ai-#{@chapter.id}"}
-      phx-click="curate_chapter"
+      phx-click="confirm_curation"
       phx-value-id={@chapter.id}
-      class="qreader-tool bg-error/15"
-      title="Falhou — tentar novamente"
+      class={["qreader-tool bg-error/15", counted?(@chapter) && "qreader-tool-wide"]}
+      title={"Falhou — tentar novamente. " <> curation_hint(@chapter, @risky?)}
       aria-label="Falhou — tentar novamente"
     >
       <.icon name="hero-exclamation-triangle" class="size-5" />
+      <span :if={counted?(@chapter)} class="qreader-tool-count">
+        {compact_tokens(@chapter.estimated_tokens)}
+      </span>
     </button>
     """
   end
@@ -696,15 +746,278 @@ defmodule QuizProjectWeb.ContentsLive.Read do
     <button
       type="button"
       id={"chapter-ai-#{@chapter.id}"}
-      phx-click="curate_chapter"
+      phx-click="confirm_curation"
       phx-value-id={@chapter.id}
-      class="qreader-tool bg-info/15"
-      title="Processar capítulo com IA"
-      aria-label="Processar capítulo com IA"
+      class={[
+        "qreader-tool",
+        if(@risky?, do: "bg-warning/20", else: "bg-info/15"),
+        counted?(@chapter) && "qreader-tool-wide"
+      ]}
+      title={curation_hint(@chapter, @risky?)}
+      aria-label={curation_hint(@chapter, @risky?)}
     >
       <.icon name="hero-sparkles" class="size-5" />
+      <span :if={counted?(@chapter)} class="qreader-tool-count">
+        {compact_tokens(@chapter.estimated_tokens)}
+      </span>
     </button>
     """
+  end
+
+  # O tamanho do capítulo aparece antes do clique, e não depois da falha: o
+  # prompt exige decomposição sem perda, então a resposta devolve o texto inteiro
+  # e é ela — não a entrada — que arrisca bater no teto do provedor.
+  defp curation_hint(chapter, risky?) do
+    tamanho = "≈#{format_tokens(chapter.estimated_tokens)} tokens"
+
+    if risky?,
+      do: "Processar capítulo com IA (#{tamanho} — capítulo grande, a resposta pode truncar)",
+      else: "Processar capítulo com IA (#{tamanho})"
+  end
+
+  defp format_tokens(tokens) when tokens >= 1_000_000,
+    do: "#{Float.round(tokens / 1_000_000, 1)}M"
+
+  defp format_tokens(tokens) when tokens >= 1_000, do: "#{Float.round(tokens / 1000, 1)}k"
+  defp format_tokens(tokens), do: to_string(tokens)
+
+  # O número só aparece enquanto ele decide alguma coisa. Depois de processado o
+  # botão vira link para o material gerado, e o tamanho do capítulo deixou de ser
+  # uma escolha a fazer.
+  defp counted?(%{estimated_tokens: tokens}), do: tokens > 0
+
+  # Provedor local não gasta nada, e modelo fora da tabela de preços não tem
+  # custo conhecido — são duas ausências diferentes e a tela diz qual é qual.
+  defp cost_label(%{model: nil}, _cost), do: "sem custo — provedor local"
+  defp cost_label(_info, :unknown), do: "modelo sem preço tabelado"
+  defp cost_label(_info, {:ok, usd}) when usd < 0.01, do: "menos de US$ 0,01"
+
+  defp cost_label(_info, {:ok, usd}) do
+    "US$ " <> (usd |> :erlang.float_to_binary(decimals: 2) |> String.replace(".", ","))
+  end
+
+  attr :chapter, :map, required: true
+  attr :choice, :map, required: true
+
+  # Confirmação antes de gastar. O que decide o clique é o conjunto — tamanho do
+  # capítulo, quem vai processar e quanto custa —, então tudo aparece junto, e o
+  # que não dá para saber aparece como não sabido.
+  #
+  # A escolha de provedor e modelo vale só para esta chamada: a configuração
+  # global continua mandando em tags, correção, referência e progressão.
+  defp curation_dialog(assigns) do
+    forecast = Books.curation_forecast(assigns.chapter.estimated_tokens)
+    info = resolve_choice(assigns.choice)
+
+    assigns =
+      assign(assigns,
+        info: info,
+        catalog: AI.catalog(),
+        forecast: forecast,
+        cost: cost_label(info, AI.estimate_cost(info, forecast.input, forecast.output)),
+        risky?: Books.curation_risky?(assigns.chapter.estimated_tokens),
+        overflow?: info.context != nil and forecast.input > info.context
+      )
+
+    ~H"""
+    <div
+      id="curation-backdrop"
+      phx-click="cancel_curation"
+      phx-window-keydown="cancel_curation"
+      phx-key="escape"
+      class="fixed inset-0 z-[80] touch-none bg-base-content/30 backdrop-blur-[1px]"
+      aria-hidden="true"
+    >
+    </div>
+
+    <div
+      id="curation-dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="curation-dialog-title"
+      class={[
+        "fixed inset-x-0 bottom-0 z-[90] mx-auto max-h-[90vh] w-full max-w-md overflow-y-auto",
+        "rounded-t-3xl border border-base-300 bg-base-100 shadow-2xl",
+        "sm:inset-y-auto sm:top-1/2 sm:-translate-y-1/2 sm:rounded-3xl"
+      ]}
+    >
+      <div class="flex items-start justify-between gap-2 px-5 pt-4">
+        <div class="min-w-0">
+          <h2 id="curation-dialog-title" class="text-sm font-semibold">Processar com IA</h2>
+          <p class="truncate text-xs opacity-60">{@chapter.title}</p>
+        </div>
+        <button
+          type="button"
+          id="close-curation"
+          phx-click="cancel_curation"
+          class="qreader-tool"
+          aria-label="Fechar"
+        >
+          <.icon name="hero-x-mark" class="size-5" />
+        </button>
+      </div>
+
+      <%!-- Os provedores sem chave continuam na lista, e desabilitados: dá para
+           comparar preço com quem não está contratado sem poder disparar. --%>
+      <form
+        id="curation-picker"
+        phx-change="pick_curation"
+        class="grid gap-3 px-5 pt-4 sm:grid-cols-2"
+      >
+        <label class="space-y-1.5">
+          <span class="text-xs font-semibold uppercase tracking-wide opacity-60">Provedor</span>
+          <select name="provider" class="select select-bordered w-full rounded-full">
+            <option
+              :for={provider <- @catalog}
+              value={provider.slug}
+              selected={provider.slug == @info.slug}
+            >
+              {provider.name}{if provider.available?, do: "", else: " — sem chave"}
+            </option>
+          </select>
+        </label>
+
+        <label class="space-y-1.5">
+          <span class="text-xs font-semibold uppercase tracking-wide opacity-60">Modelo</span>
+          <select name="model" id="curation-model" class="select select-bordered w-full rounded-full">
+            <option :if={models_of(@catalog, @info.slug) == []} value="">—</option>
+            <option
+              :for={model <- models_of(@catalog, @info.slug)}
+              value={model.id}
+              selected={model.id == @info.model}
+            >
+              {model.id}
+            </option>
+          </select>
+        </label>
+      </form>
+
+      <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 px-5 pt-4 text-sm">
+        <dt class="opacity-60">Entrada</dt>
+        <dd class="text-right font-medium tabular-nums">
+          ≈{format_tokens(@forecast.input)} tokens
+        </dd>
+
+        <dt class="opacity-60">Saída prevista</dt>
+        <dd id="curation-output" class="text-right font-medium tabular-nums">
+          ≈{format_tokens(@forecast.output)} tokens
+          <span class="block text-[0.65rem] font-normal opacity-60">
+            {basis_label(@forecast.basis)}
+          </span>
+        </dd>
+
+        <dt class="opacity-60">Janela de entrada</dt>
+        <dd id="curation-context" class="text-right font-medium tabular-nums">
+          {if @info.context, do: "#{format_tokens(@info.context)} tokens", else: "—"}
+        </dd>
+
+        <dt class="opacity-60">Preço do modelo</dt>
+        <dd id="curation-price" class="text-right font-medium tabular-nums">
+          {price_label(@info.pricing)}
+        </dd>
+
+        <dt class="opacity-60">Custo estimado</dt>
+        <dd id="curation-cost" class="text-right font-medium">{@cost}</dd>
+
+        <dt class="opacity-60">Saldo da conta</dt>
+        <dd class="text-right font-medium opacity-60">indisponível</dd>
+      </dl>
+
+      <p
+        :if={not @info.available?}
+        id="curation-unavailable"
+        class="mx-5 mt-4 rounded-xl bg-base-200 px-3 py-2 text-xs"
+      >
+        Sem chave de API configurada para este provedor: dá para comparar o preço, não para
+        processar.
+      </p>
+
+      <p :if={@overflow?} class="mx-5 mt-4 rounded-xl bg-error/20 px-3 py-2 text-xs">
+        O capítulo é maior que a janela de entrada deste modelo: a chamada deve falhar.
+      </p>
+
+      <p
+        :if={@info.tier == :light}
+        id="curation-weak-model"
+        class="mx-5 mt-4 rounded-xl bg-warning/20 px-3 py-2 text-xs"
+      >
+        Modelo da faixa econômica. A decomposição exige devolver o capítulo inteiro em JSON
+        estruturado, e modelos assim costumam truncar ou devolver formato inválido — o
+        processamento falha, o capítulo volta para o estado anterior e o custo já foi gasto.
+      </p>
+
+      <p :if={@risky?} class="mx-5 mt-4 rounded-xl bg-warning/20 px-3 py-2 text-xs">
+        Capítulo grande: a resposta precisa devolver o texto inteiro decomposto e pode truncar
+        antes do fim.
+      </p>
+
+      <%!-- Dito na tela porque a ausência é a informação: sem isto, "saldo:
+           indisponível" parece falha de integração, e não limite da API. --%>
+      <p class="px-5 pt-4 text-xs leading-relaxed opacity-60">
+        A contagem de tokens é estimada, e o custo sai do preço de tabela do modelo — a fatura pode
+        diferir. A API de inferência não expõe saldo nem créditos; o relatório de uso fica na Admin
+        API, que exige uma chave de administrador separada.
+      </p>
+
+      <div class="flex gap-2 px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-4">
+        <button type="button" phx-click="cancel_curation" class="btn btn-ghost flex-1 rounded-full">
+          Cancelar
+        </button>
+        <button
+          type="button"
+          id="start-curation"
+          phx-click="curate_chapter"
+          phx-value-id={@chapter.id}
+          disabled={not @info.available?}
+          class="btn btn-primary flex-1 rounded-full"
+        >
+          Processar
+        </button>
+      </div>
+    </div>
+    """
+  end
+
+  # Renderização não pode quebrar por causa de uma escolha ruim: `pick_curation`
+  # já barra o que não existe, e aqui fica a rede embaixo dela.
+  defp resolve_choice(%{provider: slug, model: model}) do
+    case AI.resolve(slug, model) do
+      {:ok, info} ->
+        info
+
+      {:error, _motivo} ->
+        padrao = AI.default_selection()
+        {:ok, info} = AI.resolve(padrao.provider, padrao.model)
+        info
+    end
+  end
+
+  # A previsão de saída começa como suposição e vira média medida assim que há
+  # curadoria feita. Dizer qual das duas está valendo é o que separa um número
+  # que se pode conferir de um número que se aceita.
+  defp basis_label(:assumed), do: "estimado"
+  defp basis_label({:measured, 1}), do: "medido em 1 curadoria"
+  defp basis_label({:measured, n}), do: "média de #{n} curadorias"
+
+  defp models_of(catalog, slug) do
+    case Enum.find(catalog, &(&1.slug == slug)) do
+      %{models: models} -> models
+      nil -> []
+    end
+  end
+
+  # Dólares por milhão de tokens, que é a unidade em que os três fabricantes
+  # publicam — comparar dois modelos aqui é comparar dois números da mesma
+  # tabela, sem conversão no meio. Fica em linha própria, e não dentro da opção
+  # do `<select>`, onde o texto ficava espremido e ilegível no telefone.
+  defp price_label(nil), do: "—"
+
+  defp price_label(%{input: entrada, output: saida}) do
+    "US$ #{trim_zero(entrada)}/#{trim_zero(saida)} por Mtok"
+  end
+
+  defp trim_zero(valor) do
+    valor |> :erlang.float_to_binary(decimals: 2) |> String.replace(~r/\.?0+$/, "")
   end
 
   attr :preference, :map, required: true

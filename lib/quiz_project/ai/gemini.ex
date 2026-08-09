@@ -11,14 +11,14 @@ defmodule QuizProject.AI.Gemini do
 
   @impl true
   def generate_tags(statement) do
-    with {:ok, body} <- generate(Prompts.tags_system(), Prompts.tags_user(statement)) do
+    with {:ok, body, _usage} <- generate(Prompts.tags_system(), Prompts.tags_user(statement)) do
       SharedParsers.parse_tags(body)
     end
   end
 
   @impl true
   def grade_text_answer(statement, reference, answer) do
-    with {:ok, body} <-
+    with {:ok, body, _usage} <-
            generate(Prompts.grade_system(), Prompts.grade_user(statement, reference, answer)) do
       SharedParsers.parse_grade(body)
     end
@@ -26,37 +26,39 @@ defmodule QuizProject.AI.Gemini do
 
   @impl true
   def generate_reference(statement) do
-    with {:ok, body} <- generate(Prompts.reference_system(), Prompts.reference_user(statement)) do
+    with {:ok, body, _usage} <-
+           generate(Prompts.reference_system(), Prompts.reference_user(statement)) do
       SharedParsers.parse_reference(body)
     end
   end
 
   @impl true
   def evaluate_progression(summary) do
-    with {:ok, body} <-
+    with {:ok, body, _usage} <-
            generate(Prompts.progression_system(), Prompts.progression_user(summary)) do
       SharedParsers.parse_evaluation(body)
     end
   end
 
   @impl true
-  def curate_mindmap(text) do
-    with {:ok, body} <-
-           generate(Prompts.curate_mindmap_system(), Prompts.curate_mindmap_user(text)) do
-      SharedParsers.parse_mindmap(body)
+  def curate_mindmap(text, opts \\ []) do
+    with {:ok, body, usage} <-
+           generate(Prompts.curate_mindmap_system(), Prompts.curate_mindmap_user(text), opts),
+         {:ok, resultado} <- SharedParsers.parse_mindmap(body) do
+      {:ok, resultado, usage}
     end
   end
 
   require Logger
 
-  defp generate(system, user) do
+  defp generate(system, user, opts \\ []) do
     api_key = Application.get_env(:quiz_project, :gemini_api_key)
 
     if is_nil(api_key) or api_key == "" do
       Logger.error("[AI.Gemini] Chave de API ausente! Verifique a variável GEMINI_API_KEY.")
       {:error, :missing_api_key}
     else
-      model = Application.get_env(:quiz_project, :gemini_model, "gemini-2.0-flash")
+      model = Keyword.get(opts, :model) || Application.get_env(:quiz_project, :gemini_model)
       Logger.info("[AI.Gemini] Enviando requisição para Google Gemini (modelo: #{model})...")
 
       request =
@@ -88,7 +90,9 @@ defmodule QuizProject.AI.Gemini do
               "text"
             ])
 
-          decode_json_content(content)
+          with {:ok, mapa} <- decode_json_content(content) do
+            {:ok, mapa, usage(body)}
+          end
 
         {:ok, %Req.Response{status: status, body: body}} ->
           Logger.error("[AI.Gemini] Erro HTTP #{status} retornado pelo Gemini: #{inspect(body)}")
@@ -109,4 +113,16 @@ defmodule QuizProject.AI.Gemini do
   end
 
   defp decode_json_content(other), do: {:error, {:unexpected_response, other}}
+
+  defp usage(%{
+         "usageMetadata" => %{
+           "promptTokenCount" => entrada,
+           "candidatesTokenCount" => saida
+         }
+       })
+       when is_integer(entrada) and is_integer(saida) do
+    %{input: entrada, output: saida}
+  end
+
+  defp usage(_body), do: nil
 end

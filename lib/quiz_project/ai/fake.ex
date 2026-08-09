@@ -81,7 +81,7 @@ defmodule QuizProject.AI.Fake do
   end
 
   @impl true
-  def curate_mindmap(text) do
+  def curate_mindmap(text, _opts \\ []) do
     paragraphs =
       text
       |> String.split(~r/\n\s*\n/)
@@ -149,33 +149,38 @@ defmodule QuizProject.AI.Fake do
 
     title = if first_words == "", do: "Material de Estudo", else: "Estudo: " <> first_words
 
-    {:ok,
-     %{
-       "suggested_title" => title,
-       "summary" => "Resumo do conteúdo com #{length(paragraphs)} seções identificadas.",
-       "key_concepts" => [
-         %{
-           "term" => "Conceito 1",
-           "definition" => "Definição do conceito principal extraído do texto."
-         }
-       ],
-       "mindmap" => [
-         %{
-           "id" => "node_root",
-           "label" => "Visão Geral do Conteúdo",
-           "description" => "Estrutura principal do texto",
-           "content" => "",
-           "order" => 0,
-           "node_type" => "conceito",
-           "priority" => "high",
-           "complexity" => "moderate",
-           "user_notes" => "",
-           "enabled" => true,
-           "relations" => [],
-           "children" => children
-         }
-       ]
-     }}
+    {
+      :ok,
+      %{
+        "suggested_title" => title,
+        "summary" => "Resumo do conteúdo com #{length(paragraphs)} seções identificadas.",
+        "key_concepts" => [
+          %{
+            "term" => "Conceito 1",
+            "definition" => "Definição do conceito principal extraído do texto."
+          }
+        ],
+        "mindmap" => [
+          %{
+            "id" => "node_root",
+            "label" => "Visão Geral do Conteúdo",
+            "description" => "Estrutura principal do texto",
+            "content" => "",
+            "order" => 0,
+            "node_type" => "conceito",
+            "priority" => "high",
+            "complexity" => "moderate",
+            "user_notes" => "",
+            "enabled" => true,
+            "relations" => [],
+            "children" => children
+          }
+        ]
+      },
+      # Provedor local não consome token de ninguém, e `nil` diz exatamente isso —
+      # zero afirmaria uma medição que não houve.
+      nil
+    }
   end
 
   defp fake_label(paragraph, idx) do

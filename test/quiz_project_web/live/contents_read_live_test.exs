@@ -476,7 +476,8 @@ defmodule QuizProjectWeb.ContentsReadLiveTest do
       assert has_element?(view, "#chapter-ai-#{chapter.id}")
       refute html =~ "Processando com IA..."
 
-      html = view |> element("#chapter-ai-#{chapter.id}") |> render_click()
+      view |> element("#chapter-ai-#{chapter.id}") |> render_click()
+      html = view |> element("#start-curation") |> render_click()
 
       assert html =~ "Processando com IA..."
 
@@ -485,6 +486,38 @@ defmodule QuizProjectWeb.ContentsReadLiveTest do
 
       html = render(view)
       assert html =~ ~s|href="/adaptive-study/#{finished.curated_material_id}/curate"|
+    end
+
+    test "o botão mostra o tamanho do capítulo, e some com ele ao terminar", %{
+      conn: conn,
+      material: material
+    } do
+      {:ok, view, html} = live(conn, ~p"/contents/#{material.id}/2")
+      {:ok, chapter} = Books.get_chapter(material.id, 2)
+
+      assert chapter.estimated_tokens > 0
+      assert html =~ "qreader-tool-count"
+      assert has_element?(view, ".qreader-tool-count", to_string(chapter.estimated_tokens))
+
+      view |> element("#chapter-ai-#{chapter.id}") |> render_click()
+      view |> element("#start-curation") |> render_click()
+
+      # Processado, o botão vira link para o material gerado: o tamanho do
+      # capítulo deixou de ser uma escolha a fazer.
+      html = render(view)
+      refute html =~ "qreader-tool-count"
+    end
+
+    test "capítulo sem blocos não mostra contador zerado", %{conn: conn, material: material} do
+      {:ok, chapter} = Books.get_chapter(material.id, 2)
+
+      chapter
+      |> Ash.Changeset.for_update(:update, %{estimated_tokens: 0}, authorize?: false)
+      |> Ash.update!()
+
+      {:ok, _view, html} = live(conn, ~p"/contents/#{material.id}/2")
+
+      refute html =~ "qreader-tool-count"
     end
 
     test "clicar de novo depois de pronto não reprocessa", %{
@@ -496,11 +529,147 @@ defmodule QuizProjectWeb.ContentsReadLiveTest do
       {:ok, chapter} = Books.get_chapter(material.id, 2)
 
       view |> element("#chapter-ai-#{chapter.id}") |> render_click()
-      view |> element("#chapter-ai-#{chapter.id}") |> render_click()
+      view |> element("#start-curation") |> render_click()
+
+      # Já processado, o botão virou link: reprocessar exigiria uma segunda
+      # confirmação, e não há botão para abri-la.
+      refute has_element?(view, "#chapter-ai-#{chapter.id}[phx-click]")
 
       materiais_gerados = AdaptiveStudy.list_materials(user) |> Enum.count(&(&1.format == :text))
 
       assert materiais_gerados == 1
+    end
+
+    test "o botão abre a confirmação em vez de processar direto", %{
+      conn: conn,
+      material: material
+    } do
+      {:ok, view, _html} = live(conn, ~p"/contents/#{material.id}/2")
+      {:ok, chapter} = Books.get_chapter(material.id, 2)
+
+      html = view |> element("#chapter-ai-#{chapter.id}") |> render_click()
+
+      assert html =~ "Processar com IA"
+      assert has_element?(view, "#curation-dialog")
+      refute html =~ "Processando com IA..."
+
+      intocado = Enum.find(Books.list_chapters(material.id), &(&1.id == chapter.id))
+      refute intocado.curation_status == :done
+    end
+
+    test "a confirmação mostra tamanho, provedor, modelo e custo", %{
+      conn: conn,
+      material: material
+    } do
+      {:ok, view, _html} = live(conn, ~p"/contents/#{material.id}/2")
+      {:ok, chapter} = Books.get_chapter(material.id, 2)
+
+      html = view |> element("#chapter-ai-#{chapter.id}") |> render_click()
+
+      assert html =~ "Entrada"
+      assert html =~ "Saída prevista"
+      assert html =~ "Janela de entrada"
+
+      # Em teste o provider é o Fake: local, sem modelo e sem custo — e a tela
+      # diz isso em vez de mostrar zero.
+      assert html =~ "Fake"
+      assert has_element?(view, "#curation-cost", "sem custo")
+      assert has_element?(view, "#curation-context", "—")
+
+      # O saldo não existe na API de inferência de nenhum provedor; a ausência
+      # é dita na tela para não parecer integração quebrada.
+      assert html =~ "indisponível"
+    end
+
+    test "cancelar fecha a confirmação sem processar", %{conn: conn, material: material} do
+      {:ok, view, _html} = live(conn, ~p"/contents/#{material.id}/2")
+      {:ok, chapter} = Books.get_chapter(material.id, 2)
+
+      view |> element("#chapter-ai-#{chapter.id}") |> render_click()
+      html = view |> element("#close-curation") |> render_click()
+
+      refute has_element?(view, "#curation-dialog")
+      refute html =~ "Processando com IA..."
+
+      intocado = Enum.find(Books.list_chapters(material.id), &(&1.id == chapter.id))
+      refute intocado.curation_status == :done
+    end
+
+    test "a confirmação deixa escolher provedor e modelo", %{conn: conn, material: material} do
+      {:ok, view, _html} = live(conn, ~p"/contents/#{material.id}/2")
+      {:ok, chapter} = Books.get_chapter(material.id, 2)
+
+      view |> element("#chapter-ai-#{chapter.id}") |> render_click()
+
+      # Em teste o provider global é o Fake, e é ele que abre selecionado.
+      assert has_element?(view, "#curation-picker option[value=fake][selected]")
+
+      # Os outros provedores continuam na lista mesmo sem chave: dá para
+      # comparar preço com quem não está contratado.
+      assert has_element?(view, "#curation-picker option[value=claude]")
+      assert has_element?(view, "#curation-picker option[value=openai]")
+      assert has_element?(view, "#curation-picker option[value=gemini]")
+
+      html =
+        view
+        |> form("#curation-picker", %{"provider" => "claude", "model" => ""})
+        |> render_change()
+
+      # Trocar de provedor troca a lista de modelos e mostra o preço de tabela.
+      assert has_element?(view, ~s(#curation-model option[value="claude-opus-5"]))
+      refute has_element?(view, ~s(#curation-model option[value="gpt-5.6-sol"]))
+      assert html =~ "por Mtok"
+      assert has_element?(view, "#curation-price", "US$ 5/25")
+      assert has_element?(view, "#curation-cost", "US$")
+      assert has_element?(view, "#curation-context", "1.0M")
+    end
+
+    test "provedor sem chave mostra o preço mas não processa", %{
+      conn: conn,
+      material: material
+    } do
+      {:ok, view, _html} = live(conn, ~p"/contents/#{material.id}/2")
+      {:ok, chapter} = Books.get_chapter(material.id, 2)
+
+      view |> element("#chapter-ai-#{chapter.id}") |> render_click()
+
+      # Duas etapas porque é assim que o formulário se comporta: trocar o
+      # provedor é o que traz os modelos dele para o `<select>`.
+      view
+      |> form("#curation-picker", %{"provider" => "claude", "model" => ""})
+      |> render_change()
+
+      view
+      |> form("#curation-picker", %{"provider" => "claude", "model" => "claude-opus-5"})
+      |> render_change()
+
+      assert has_element?(view, "#curation-unavailable")
+      assert has_element?(view, "#start-curation[disabled]")
+
+      # O botão desabilitado é a interface; a garantia é o servidor. Aqui o
+      # evento chega direto pelo socket, como chegaria de um cliente adulterado.
+      render_click(view, "curate_chapter", %{"id" => chapter.id})
+
+      intocado = Enum.find(Books.list_chapters(material.id), &(&1.id == chapter.id))
+      refute intocado.curation_status == :done
+    end
+
+    test "combinação que não existe no catálogo é ignorada", %{conn: conn, material: material} do
+      {:ok, view, _html} = live(conn, ~p"/contents/#{material.id}/2")
+      {:ok, chapter} = Books.get_chapter(material.id, 2)
+
+      view |> element("#chapter-ai-#{chapter.id}") |> render_click()
+
+      # Combinação impossível pela tela: provedor local com modelo da OpenAI.
+      # Não vira estado, então a tela continua coerente com o que o botão faria.
+      render_change(view, "pick_curation", %{"provider" => "fake", "model" => "gpt-5.6-sol"})
+
+      assert has_element?(view, "#curation-picker option[value=fake][selected]")
+      refute has_element?(view, ~s(#curation-model option[value="gpt-5.6-sol"]))
+
+      render_change(view, "pick_curation", %{"provider" => "provedor-que-nao-existe"})
+
+      assert has_element?(view, "#curation-picker option[value=fake][selected]")
     end
   end
 

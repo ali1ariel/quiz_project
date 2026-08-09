@@ -35,12 +35,13 @@ defmodule QuizProject.AdaptiveStudy.Chapter do
         :position,
         :level,
         :kind,
-        :block_count
+        :block_count,
+        :estimated_tokens
       ]
     end
 
     update :update do
-      accept [:title, :kind, :block_count]
+      accept [:title, :kind, :block_count, :estimated_tokens]
     end
 
     # Transição atômica: um único UPDATE...WHERE, então cliques simultâneos no
@@ -51,7 +52,13 @@ defmodule QuizProject.AdaptiveStudy.Chapter do
     end
 
     update :finish_curation do
-      accept [:curation_status, :curated_material_id]
+      accept [
+        :curation_status,
+        :curated_material_id,
+        :usage_input_tokens,
+        :usage_output_tokens,
+        :curated_model
+      ]
     end
   end
 
@@ -101,6 +108,13 @@ defmodule QuizProject.AdaptiveStudy.Chapter do
       default 0
     end
 
+    # Calculado na ingestão porque é determinístico e o sumário precisa dele sem
+    # carregar os blocos do capítulo.
+    attribute :estimated_tokens, :integer do
+      allow_nil? false
+      default 0
+    end
+
     # Estado do envio do capítulo para curadoria de IA, pelo botão da barra de
     # leitura. `done` só conta com `curated_material_id` presente — ver
     # `QuizProject.AdaptiveStudy.Books.chapter_ai_state/1`.
@@ -113,6 +127,19 @@ defmodule QuizProject.AdaptiveStudy.Chapter do
     # Aponta para o Material de Estudo (texto) gerado a partir deste capítulo.
     # Nula enquanto não processado, ou de novo se o material gerado for apagado.
     attribute :curated_material_id, :uuid
+
+    # Uso real de tokens da curadoria, como o provedor informou — não estimativa.
+    # É o que permite `Books.measured_output_ratio/0` corrigir a previsão de
+    # custo contra medição em vez de mantê-la calibrada em um caso só.
+    #
+    # Nulos quando o provedor não informa uso (o Fake, por exemplo) ou quando a
+    # curadoria falhou. Nulo e zero significam coisas diferentes aqui.
+    attribute :usage_input_tokens, :integer
+    attribute :usage_output_tokens, :integer
+
+    # Guardado junto porque a razão entrada/saída depende do modelo: raciocínio
+    # ligado e `effort` alto mudam a saída sem mudar o texto devolvido.
+    attribute :curated_model, :string
 
     timestamps()
   end

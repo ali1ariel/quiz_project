@@ -1,8 +1,8 @@
 defmodule QuizProject.AI.Claude do
   @moduledoc """
   Provider Anthropic (Claude, Messages API). Configuração via variáveis de
-  ambiente: `ANTHROPIC_API_KEY` e opcionalmente `ANTHROPIC_MODEL`
-  (padrão claude-opus-5).
+  ambiente: `ANTHROPIC_API_KEY` e opcionalmente `ANTHROPIC_MODEL`. O modelo
+  padrão fica em `config/config.exs`; ver `priv/docs/modelos_de_ia.md`.
   """
   @behaviour QuizProject.AI.Provider
 
@@ -11,7 +11,6 @@ defmodule QuizProject.AI.Claude do
 
   @api_url "https://api.anthropic.com/v1/messages"
   @api_version "2023-06-01"
-  @default_model "claude-opus-5"
 
   # `max_tokens` é obrigatório na Messages API e limita raciocínio e texto
   # somados, então cada chamada reserva o tamanho da saída mais folga. O esforço
@@ -22,7 +21,7 @@ defmodule QuizProject.AI.Claude do
 
   @impl true
   def generate_tags(statement) do
-    with {:ok, body} <-
+    with {:ok, body, _usage} <-
            message(Prompts.tags_system(), Prompts.tags_user(statement), @fast) do
       SharedParsers.parse_tags(body)
     end
@@ -30,7 +29,7 @@ defmodule QuizProject.AI.Claude do
 
   @impl true
   def grade_text_answer(statement, reference, answer) do
-    with {:ok, body} <-
+    with {:ok, body, _usage} <-
            message(
              Prompts.grade_system(),
              Prompts.grade_user(statement, reference, answer),
@@ -42,7 +41,7 @@ defmodule QuizProject.AI.Claude do
 
   @impl true
   def generate_reference(statement) do
-    with {:ok, body} <-
+    with {:ok, body, _usage} <-
            message(Prompts.reference_system(), Prompts.reference_user(statement), @fast) do
       SharedParsers.parse_reference(body)
     end
@@ -50,17 +49,22 @@ defmodule QuizProject.AI.Claude do
 
   @impl true
   def evaluate_progression(summary) do
-    with {:ok, body} <-
+    with {:ok, body, _usage} <-
            message(Prompts.progression_system(), Prompts.progression_user(summary), @reasoned) do
       SharedParsers.parse_evaluation(body)
     end
   end
 
   @impl true
-  def curate_mindmap(text) do
-    with {:ok, body} <-
-           message(Prompts.curate_mindmap_system(), Prompts.curate_mindmap_user(text), @mindmap) do
-      SharedParsers.parse_mindmap(body)
+  def curate_mindmap(text, opts \\ []) do
+    with {:ok, body, usage} <-
+           message(
+             Prompts.curate_mindmap_system(),
+             Prompts.curate_mindmap_user(text),
+             Keyword.merge(@mindmap, Keyword.take(opts, [:model]))
+           ),
+         {:ok, resultado} <- SharedParsers.parse_mindmap(body) do
+      {:ok, resultado, usage}
     end
   end
 
@@ -73,7 +77,7 @@ defmodule QuizProject.AI.Claude do
       Logger.error("[AI.Claude] Chave de API ausente! Verifique a variável ANTHROPIC_API_KEY.")
       {:error, :missing_api_key}
     else
-      model = Application.get_env(:quiz_project, :anthropic_model, @default_model)
+      model = Keyword.get(opts, :model) || Application.get_env(:quiz_project, :anthropic_model)
       Logger.info("[AI.Claude] Enviando requisição para Anthropic (modelo: #{model})...")
 
       request =
@@ -134,14 +138,26 @@ defmodule QuizProject.AI.Claude do
 
   # `content` é uma lista de blocos: com o raciocínio ligado (padrão no Opus 5)
   # o bloco de texto não é necessariamente o primeiro.
-  defp handle_message(%{"content" => blocks}) when is_list(blocks) do
-    case Enum.find(blocks, &(is_map(&1) and &1["type"] == "text")) do
-      %{"text" => text} -> decode_json_content(text)
+  defp handle_message(%{"content" => blocks} = body) when is_list(blocks) do
+    with %{"text" => text} <- Enum.find(blocks, &(is_map(&1) and &1["type"] == "text")),
+         {:ok, mapa} <- decode_json_content(text) do
+      {:ok, mapa, usage(body)}
+    else
+      {:error, motivo} -> {:error, motivo}
       _ -> {:error, {:unexpected_response, blocks}}
     end
   end
 
   defp handle_message(other), do: {:error, {:unexpected_response, other}}
+
+  # O raciocínio entra em `output_tokens`, e é boa parte do custo da curadoria —
+  # por isso o número medido aqui vale mais que qualquer estimativa nossa.
+  defp usage(%{"usage" => %{"input_tokens" => entrada, "output_tokens" => saida}})
+       when is_integer(entrada) and is_integer(saida) do
+    %{input: entrada, output: saida}
+  end
+
+  defp usage(_body), do: nil
 
   # A Messages API não tem o equivalente ao `response_format` da OpenAI nem ao
   # `response_mime_type` do Gemini: o JSON vem só da instrução do prompt, então a

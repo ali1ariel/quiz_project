@@ -166,14 +166,33 @@ defmodule QuizProjectWeb.Components.Book do
       >
         <span class="flex items-baseline justify-between gap-2">
           <span class={[chapter.kind != :body && "opacity-60"]}>{chapter.title}</span>
-          <span class="shrink-0 text-[0.65rem] tabular-nums opacity-50">
-            {chapter.block_count}
+          <%!-- Tokens estimados, e não número de blocos: bloco conta título de
+               duas palavras igual a listagem de 40 linhas, então media estrutura
+               em vez de esforço. É também o mesmo número que o botão de IA usa,
+               para a tela não dar duas medidas de tamanho que discordam. --%>
+          <span
+            :if={chapter.estimated_tokens > 0}
+            class="shrink-0 text-[0.65rem] tabular-nums opacity-50"
+          >
+            {compact_tokens(chapter.estimated_tokens)}
           </span>
         </span>
       </.link>
     </nav>
     """
   end
+
+  @doc """
+  Contagem de tokens em forma curta, para caber ao lado de um título.
+
+  Vive aqui, e não no LiveView do leitor, porque o sumário e o botão de IA
+  mostram o mesmo número e não podem arredondar de jeitos diferentes.
+  """
+  def compact_tokens(tokens) when tokens >= 1_000_000,
+    do: "#{Float.round(tokens / 1_000_000, 1)}M"
+
+  def compact_tokens(tokens) when tokens >= 1_000, do: "#{round(tokens / 1000)}k"
+  def compact_tokens(tokens), do: to_string(tokens)
 
   # `chapters` é uma tabela achatada, não uma árvore — mas o nível que o nav/NCX
   # do próprio livro declarou continua em `chapter.level`. Sem usar isso, um

@@ -649,6 +649,21 @@ h1, h2, h3 {
   background-color: color-mix(in oklab, var(--color-base-content) 8%, transparent);
 }
 
+/* Variante que carrega um número ao lado do ícone. O botão deixa de
+   ser quadrado e vira pílula, mantendo os 44px de altura. */
+.qreader-tool-wide {
+  grid-auto-flow: column;
+  inline-size: auto;
+  gap: 0.3rem;
+  padding-inline: 0.7rem;
+}
+.qreader-tool-count {
+  font-size: 0.7rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
 /* .qreader-tool grava `color` fora de @layer (ver nota do .tab acima), então
    uma utilidade Tailwind como .text-info sozinha nunca vence: regra fora de
    layer prevalece sobre regra em layer, não importa especificidade nem

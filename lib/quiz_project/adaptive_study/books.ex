@@ -81,7 +81,8 @@ defmodule QuizProject.AdaptiveStudy.Books do
             position: chapter.position,
             level: chapter.level,
             kind: chapter.kind,
-            block_count: length(chapter.blocks)
+            block_count: length(chapter.blocks),
+            estimated_tokens: estimate_tokens(chapter.blocks)
           },
           authorize?: false
         )
@@ -233,6 +234,134 @@ defmodule QuizProject.AdaptiveStudy.Books do
     |> Ash.read!(authorize?: false)
   end
 
+  # Estimativa de tokens
+
+  # Pesos em caracteres por token. Código tokeniza pior que prosa — identificador
+  # quebrado em pedaços, indentação, pontuação — e nos dois livros medidos ele é
+  # ~20% do corpo, o que puxa a conta para cima justamente nos capítulos densos.
+  #
+  # São aproximações de tokenizador BPE, não medição. `priv/docs` traz o script
+  # de calibração contra a contagem real da Anthropic, que é exata e gratuita.
+  @chars_per_token %{code: 2.8, table: 3.0}
+  @chars_per_token_default 4.0
+
+  # Acima disto a curadoria arrisca truncar. A conta agora tem base: a saída sai
+  # ~2,5x a entrada (ver `@curation_output_ratio`) e divide com o raciocínio um
+  # teto de 64.000 tokens no provedor Claude, então o ponto de estouro fica perto
+  # de 25.600 tokens de entrada. 20.000 deixa ~20% de folga.
+  #
+  # Confere com o único caso observado: um capítulo de 21.709 tokens estimados
+  # passou do limiar, disparou o aviso e ainda assim concluiu.
+  @safe_curation_tokens 20_000
+
+  @doc """
+  Tokens estimados para um conjunto de blocos, ponderados por tipo.
+
+  Serve para avisar o tamanho antes de mandar o capítulo para a IA, não para
+  cobrança: é estimativa, e está marcada como tal em toda a interface.
+  """
+  def estimate_tokens(blocks) do
+    blocks
+    |> Enum.reduce(0.0, fn block, total ->
+      ratio = Map.get(@chars_per_token, block.type, @chars_per_token_default)
+      total + String.length(block.content) / ratio
+    end)
+    |> round()
+  end
+
+  @doc """
+  Recalcula a estimativa dos capítulos já gravados.
+
+  A estimativa passou a ser gravada na ingestão depois que os primeiros livros
+  já estavam no banco, e coluna nova em linha antiga vale zero. Reingerir
+  resolveria, mas custa um upload por livro; isto resolve sem tocar no texto.
+  """
+  def backfill_estimated_tokens do
+    Chapter
+    |> Ash.read!(authorize?: false)
+    |> Enum.reduce(0, fn chapter, atualizados ->
+      estimado = chapter.id |> list_blocks() |> estimate_tokens()
+
+      if estimado == chapter.estimated_tokens do
+        atualizados
+      else
+        chapter
+        |> Ash.Changeset.for_update(:update, %{estimated_tokens: estimado}, authorize?: false)
+        |> Ash.update!()
+
+        atualizados + 1
+      end
+    end)
+  end
+
+  # Quanto a resposta cresce em relação à entrada. Já foi 1.0 — "a resposta
+  # devolve o texto inteiro, logo é do tamanho dele" — e isso subestimou o custo
+  # real em 2,3x na primeira medição contra fatura.
+  #
+  # Três coisas somam além do texto devolvido, e nenhuma estava na conta:
+  # a estrutura JSON (ids de nó, hierarquia, referências cruzadas); o raciocínio,
+  # que no Claude roda com `effort: "high"` e é cobrado como saída; e o fato de
+  # a razão de caracteres por token subestimar nos modelos recentes.
+  #
+  # Medição única: capítulo de 81.332 caracteres (21.709 tokens estimados) curado
+  # com claude-opus-5 custou US$ 1,47, o que implica ~54.500 tokens de saída.
+  # Como o número absorve também o erro do lado da entrada, refazer a conta é
+  # obrigatório se `@chars_per_token` mudar — ver `priv/docs/modelos_de_ia.md`.
+  @curation_output_ratio 2.5
+
+  @doc """
+  Tokens de entrada e de saída previstos para curar um capítulo deste tamanho.
+
+  Usa a razão medida das curadorias já feitas quando existe alguma, e só cai em
+  `@curation_output_ratio` enquanto não há medição nenhuma. A previsão melhora
+  sozinha a cada capítulo processado, em vez de depender de alguém lembrar de
+  recalibrar a constante.
+  """
+  def curation_forecast(estimated_tokens) do
+    {razao, base} =
+      case measured_output_ratio() do
+        nil -> {@curation_output_ratio, :assumed}
+        {razao, amostras} -> {razao, {:measured, amostras}}
+      end
+
+    %{input: estimated_tokens, output: round(estimated_tokens * razao), basis: base}
+  end
+
+  @doc """
+  Razão saída/entrada medida nas curadorias concluídas e quantas entraram na
+  conta, ou `nil` se ainda não há medição nenhuma.
+
+  Compara o uso real informado pelo provedor com a **estimativa** de entrada, e
+  não com o uso real de entrada, de propósito: a previsão parte da estimativa, e
+  é o erro dela ponta a ponta que precisa ser corrigido. Corrigir só o lado da
+  saída deixaria o erro do tokenizador de fora da conta.
+  """
+  def measured_output_ratio do
+    medidos =
+      Chapter
+      |> Ash.Query.filter(not is_nil(usage_output_tokens) and estimated_tokens > 0)
+      |> Ash.read!(authorize?: false)
+
+    case medidos do
+      [] ->
+        nil
+
+      capitulos ->
+        saida = capitulos |> Enum.map(& &1.usage_output_tokens) |> Enum.sum()
+        estimada = capitulos |> Enum.map(& &1.estimated_tokens) |> Enum.sum()
+
+        # Agregado, e não média das razões: um capítulo minúsculo com razão
+        # esquisita não pode pesar igual a um capítulo de 20k tokens.
+        {saida / estimada, length(capitulos)}
+    end
+  end
+
+  @doc "Indica se o capítulo é grande a ponto de a resposta da IA truncar."
+  def curation_risky?(estimated_tokens), do: estimated_tokens > @safe_curation_tokens
+
+  @doc "Limiar acima do qual a curadoria é sinalizada como arriscada."
+  def safe_curation_tokens, do: @safe_curation_tokens
+
   # Curadoria de capítulo por IA
 
   @doc """
@@ -249,11 +378,11 @@ defmodule QuizProject.AdaptiveStudy.Books do
   `{:error, :already_processing}` quando o capítulo já está em processamento ou
   já foi curado.
   """
-  def curate_chapter_async(chapter, user) do
+  def curate_chapter_async(chapter, user, opts \\ []) do
     case start_chapter_curation(chapter) do
       {:ok, chapter} ->
         Logger.info("[Books] Iniciando curadoria de IA do capítulo #{chapter.id}...")
-        QuizProject.Jobs.run(fn -> run_chapter_curation(chapter, user) end)
+        QuizProject.Jobs.run(fn -> run_chapter_curation(chapter, user, opts) end)
         {:ok, chapter}
 
       :error ->
@@ -277,14 +406,20 @@ defmodule QuizProject.AdaptiveStudy.Books do
     end
   end
 
-  defp run_chapter_curation(chapter, user) do
-    {status, material_id} = create_and_curate(chapter, user)
+  defp run_chapter_curation(chapter, user, opts) do
+    {status, material_id, usage} = create_and_curate(chapter, user, opts)
 
     finished =
       chapter
       |> Ash.Changeset.for_update(
         :finish_curation,
-        %{curation_status: status, curated_material_id: material_id},
+        %{
+          curation_status: status,
+          curated_material_id: material_id,
+          usage_input_tokens: usage && usage.input,
+          usage_output_tokens: usage && usage.output,
+          curated_model: usage && Keyword.get(opts, :model)
+        },
         authorize?: false
       )
       |> Ash.update!()
@@ -304,7 +439,7 @@ defmodule QuizProject.AdaptiveStudy.Books do
   # `start_chapter_curation/1` exclui justamente `:processing`). Por isso o
   # pipeline inteiro roda protegido, e qualquer falha, prevista ou não, vira
   # `:failed` em vez de propagar.
-  defp create_and_curate(chapter, user) do
+  defp create_and_curate(chapter, user, opts) do
     case QuizProject.AdaptiveStudy.create_material(user, %{
            title: chapter_material_title(chapter),
            raw_content: chapter_text_for_curation(chapter.id),
@@ -312,8 +447,8 @@ defmodule QuizProject.AdaptiveStudy.Books do
          }) do
       {:ok, material} ->
         try do
-          case QuizProject.AdaptiveStudy.curate_material_with_ai(material, user) do
-            {:ok, updated_material} -> {:done, updated_material.id}
+          case QuizProject.AdaptiveStudy.curate_material_with_ai(material, user, opts) do
+            {:ok, updated_material, usage} -> {:done, updated_material.id, usage}
             {:error, _reason} -> discard_material(chapter, material, user)
           end
         rescue
@@ -327,12 +462,12 @@ defmodule QuizProject.AdaptiveStudy.Books do
           "[Books] Falha ao criar material para o capítulo #{chapter.id}: #{inspect(reason)}"
         )
 
-        {:failed, nil}
+        {:failed, nil, nil}
     end
   rescue
     error ->
       log_unexpected_failure(chapter, error, __STACKTRACE__)
-      {:failed, nil}
+      {:failed, nil, nil}
   end
 
   # A tentativa fracassada não deixa lixo na Estudo Adaptativo: sem isso, cada
@@ -349,7 +484,7 @@ defmodule QuizProject.AdaptiveStudy.Books do
         )
     end
 
-    {:failed, nil}
+    {:failed, nil, nil}
   end
 
   defp log_unexpected_failure(chapter, error, stacktrace) do

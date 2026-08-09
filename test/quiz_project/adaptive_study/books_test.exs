@@ -192,6 +192,47 @@ defmodule QuizProject.AdaptiveStudy.BooksTest do
     end
   end
 
+  describe "estimativa de tokens" do
+    test "pondera código mais pesado que prosa", %{material: _m} do
+      prosa = [%{type: :paragraph, content: String.duplicate("a", 400)}]
+      codigo = [%{type: :code, content: String.duplicate("a", 400)}]
+
+      assert Books.estimate_tokens(prosa) == 100
+      assert Books.estimate_tokens(codigo) == 143
+      assert Books.estimate_tokens(codigo) > Books.estimate_tokens(prosa)
+    end
+
+    test "soma os blocos e ignora tipo desconhecido usando o padrão" do
+      blocos = [
+        %{type: :paragraph, content: String.duplicate("a", 400)},
+        %{type: :table, content: String.duplicate("a", 300)}
+      ]
+
+      assert Books.estimate_tokens(blocos) == 200
+    end
+
+    test "capítulo vazio estima zero" do
+      assert Books.estimate_tokens([]) == 0
+    end
+
+    test "é gravado na ingestão, sem precisar dos blocos depois", %{
+      material: material,
+      user: user
+    } do
+      material = ingest(material, user)
+
+      for chapter <- Books.list_chapters(material.id) do
+        blocos = Books.list_blocks(chapter.id)
+        assert chapter.estimated_tokens == Books.estimate_tokens(blocos)
+      end
+    end
+
+    test "sinaliza risco só acima do limiar" do
+      refute Books.curation_risky?(Books.safe_curation_tokens())
+      assert Books.curation_risky?(Books.safe_curation_tokens() + 1)
+    end
+  end
+
   describe "reconstrução" do
     test "concatenar os blocos gravados devolve o texto extraído", %{
       material: material,
@@ -474,6 +515,42 @@ defmodule QuizProject.AdaptiveStudy.BooksTest do
 
       assert {:ok, reprocessando} = Books.curate_chapter_async(orfao, user)
       assert reprocessando.curation_status == :processing
+    end
+  end
+
+  describe "previsão de custo da curadoria" do
+    # A razão da saída saiu de comparação com fatura real, não de intuição: a
+    # versão anterior assumia saída = entrada e errava por 2,3x, porque ignorava
+    # a estrutura JSON e os tokens de raciocínio, cobrados como saída.
+    test "a saída prevista é maior que a entrada" do
+      previsao = Books.curation_forecast(21_709)
+
+      assert previsao.input == 21_709
+      assert previsao.output > previsao.input
+
+      # Confere com a medição: US$ 1,47 em claude-opus-5 implica ~54.500 de saída.
+      assert_in_delta previsao.output, 54_500, 1_000
+    end
+
+    test "capítulo sem conteúdo não prevê nada" do
+      assert %{input: 0, output: 0} = Books.curation_forecast(0)
+    end
+
+    # Sem curadoria feita a previsão é suposição, e a tela precisa poder dizer
+    # isso — número sem procedência parece tão confiável quanto medição.
+    test "sem medição nenhuma a previsão se declara estimativa" do
+      assert Books.measured_output_ratio() == nil
+      assert %{basis: :assumed} = Books.curation_forecast(1_000)
+    end
+
+    # O limiar existe porque saída e raciocínio dividem um teto de 64k tokens no
+    # Claude: acima de ~25.600 de entrada a resposta não cabe.
+    test "o limiar de risco fica abaixo do ponto de estouro" do
+      limiar = Books.safe_curation_tokens()
+
+      assert Books.curation_risky?(limiar + 1)
+      refute Books.curation_risky?(limiar)
+      assert Books.curation_forecast(limiar).output < 64_000
     end
   end
 end

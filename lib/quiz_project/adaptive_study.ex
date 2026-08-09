@@ -180,9 +180,9 @@ defmodule QuizProject.AdaptiveStudy do
   notificação, mesmo aviso por PubSub. Roda de forma síncrona; quem chama decide
   se isso acontece em background.
   """
-  def curate_material_with_ai(material, user) do
-    case QuizProject.AI.curate_mindmap(material.raw_content) do
-      {:ok, ai_result} ->
+  def curate_material_with_ai(material, user, opts \\ []) do
+    case QuizProject.AI.curate_mindmap(material.raw_content, opts) do
+      {:ok, ai_result, usage} ->
         suggested_title = Map.get(ai_result, "suggested_title", "Material de Estudo")
         summary = Map.get(ai_result, "summary", "")
         key_concepts = Map.get(ai_result, "key_concepts", [])
@@ -218,7 +218,9 @@ defmodule QuizProject.AdaptiveStudy do
           {:mindmap_generated, %{material_id: updated_material.id}}
         )
 
-        {:ok, updated_material}
+        # O uso volta junto porque quem chamou pode querer gravá-lo — a curadoria
+        # de capítulo grava; o upload manual ignora.
+        {:ok, updated_material, usage}
 
       {:error, reason} ->
         Logger.error(

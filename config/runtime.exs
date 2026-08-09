@@ -40,11 +40,20 @@ if config_env() != :test do
 
   config :quiz_project,
     openai_api_key: openai_key,
-    openai_model: System.get_env("OPENAI_MODEL", "gpt-5.5"),
     gemini_api_key: System.get_env("GEMINI_API_KEY"),
-    gemini_model: System.get_env("GEMINI_MODEL", "gemini-2.0-flash"),
-    anthropic_api_key: anthropic_key,
-    anthropic_model: System.get_env("ANTHROPIC_MODEL", "claude-opus-5")
+    anthropic_api_key: anthropic_key
+
+  # Só sobrescreve o que veio do ambiente: o padrão de cada modelo mora em
+  # `config.exs`, e repeti-lo aqui criaria dois lugares para desatualizar.
+  for {var, chave} <- [
+        {"OPENAI_MODEL", :openai_model},
+        {"GEMINI_MODEL", :gemini_model},
+        {"ANTHROPIC_MODEL", :anthropic_model}
+      ],
+      valor = System.get_env(var),
+      valor != "" do
+    config :quiz_project, [{chave, valor}]
+  end
 
   ai_provider =
     case System.get_env("AI_PROVIDER") do

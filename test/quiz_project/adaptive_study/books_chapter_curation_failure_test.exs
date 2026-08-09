@@ -20,7 +20,28 @@ defmodule QuizProject.AdaptiveStudy.BooksChapterCurationFailureTest do
     def grade_text_answer(_statement, _reference, _answer), do: {:error, :not_implemented}
     def generate_reference(_statement), do: {:error, :not_implemented}
     def evaluate_progression(_summary), do: {:error, :not_implemented}
-    def curate_mindmap(_text), do: {:error, :boom}
+    def curate_mindmap(_text, _opts \\ []), do: {:error, :boom}
+  end
+
+  defmodule MeteredAI do
+    @moduledoc false
+    @behaviour QuizProject.AI.Provider
+
+    # O uso que um provedor real informaria: saída bem maior que a entrada,
+    # porque JSON estruturado e tokens de raciocínio entram nela.
+    @usage %{input: 8_000, output: 24_000}
+
+    def usage, do: @usage
+
+    def generate_tags(_statement), do: {:error, :not_implemented}
+    def grade_text_answer(_statement, _reference, _answer), do: {:error, :not_implemented}
+    def generate_reference(_statement), do: {:error, :not_implemented}
+    def evaluate_progression(_summary), do: {:error, :not_implemented}
+
+    def curate_mindmap(text, _opts \\ []) do
+      {:ok, resultado, nil} = QuizProject.AI.Fake.curate_mindmap(text)
+      {:ok, resultado, @usage}
+    end
   end
 
   defmodule CrashingAI do
@@ -31,7 +52,7 @@ defmodule QuizProject.AdaptiveStudy.BooksChapterCurationFailureTest do
     def grade_text_answer(_statement, _reference, _answer), do: {:error, :not_implemented}
     def generate_reference(_statement), do: {:error, :not_implemented}
     def evaluate_progression(_summary), do: {:error, :not_implemented}
-    def curate_mindmap(_text), do: raise("boom inesperado")
+    def curate_mindmap(_text, _opts \\ []), do: raise("boom inesperado")
   end
 
   setup do
@@ -91,5 +112,64 @@ defmodule QuizProject.AdaptiveStudy.BooksChapterCurationFailureTest do
     assert finished.curated_material_id == nil
 
     assert AdaptiveStudy.list_materials(user) |> Enum.count(&(&1.format == :text)) == 0
+  end
+
+  describe "uso real de tokens" do
+    test "grava no capítulo o que o provedor informou", %{user: user, chapter: chapter} do
+      Application.put_env(:quiz_project, :ai_provider, MeteredAI)
+
+      {:ok, _} = Books.curate_chapter_async(chapter, user, model: "claude-opus-5")
+
+      curado = Enum.find(Books.list_chapters(chapter.material_id), &(&1.id == chapter.id))
+
+      assert curado.curation_status == :done
+      assert curado.usage_input_tokens == MeteredAI.usage().input
+      assert curado.usage_output_tokens == MeteredAI.usage().output
+      assert curado.curated_model == "claude-opus-5"
+    end
+
+    # É o ponto da mudança inteira: a previsão para de depender de uma constante
+    # calibrada à mão e passa a sair do que já foi cobrado.
+    test "a previsão passa a usar a razão medida", %{user: user, chapter: chapter} do
+      assert %{basis: :assumed} = Books.curation_forecast(10_000)
+
+      Application.put_env(:quiz_project, :ai_provider, MeteredAI)
+      {:ok, _} = Books.curate_chapter_async(chapter, user, model: "claude-opus-5")
+
+      curado = Enum.find(Books.list_chapters(chapter.material_id), &(&1.id == chapter.id))
+
+      assert {razao, 1} = Books.measured_output_ratio()
+      assert_in_delta razao, MeteredAI.usage().output / curado.estimated_tokens, 0.001
+
+      assert %{basis: {:measured, 1}, output: saida} = Books.curation_forecast(10_000)
+      assert saida == round(10_000 * razao)
+    end
+
+    # Curadoria que falhou não tem uso medido, e nulo diz isso melhor que zero:
+    # zero entraria na média e a puxaria para baixo sem ter havido medição.
+    test "falha não grava uso nenhum", %{user: user, chapter: chapter} do
+      Application.put_env(:quiz_project, :ai_provider, FailingAI)
+
+      {:ok, _} = Books.curate_chapter_async(chapter, user)
+
+      falho = Enum.find(Books.list_chapters(chapter.material_id), &(&1.id == chapter.id))
+
+      assert falho.curation_status == :failed
+      assert is_nil(falho.usage_input_tokens)
+      assert is_nil(falho.usage_output_tokens)
+      assert Books.measured_output_ratio() == nil
+    end
+
+    # O Fake não consome token de ninguém; gravar zero afirmaria uma medição
+    # que não houve e contaminaria a razão medida.
+    test "provedor local não inventa medição", %{user: user, chapter: chapter} do
+      {:ok, _} = Books.curate_chapter_async(chapter, user)
+
+      curado = Enum.find(Books.list_chapters(chapter.material_id), &(&1.id == chapter.id))
+
+      assert curado.curation_status == :done
+      assert is_nil(curado.usage_output_tokens)
+      assert Books.measured_output_ratio() == nil
+    end
   end
 end
