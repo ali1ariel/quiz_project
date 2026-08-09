@@ -154,7 +154,7 @@ defmodule QuizProject.AdaptiveStudy.BooksTest do
     end
 
     test "não devolve imagem de outro livro", %{material: material, user: user} do
-      material = ingest(material, user)
+      ingest(material, user)
 
       {:ok, outro} = AdaptiveStudy.create_material(user, %{title: "Outro", format: :epub})
 
@@ -232,6 +232,35 @@ defmodule QuizProject.AdaptiveStudy.BooksTest do
 
       assert Books.chapter_text(chapter.id) =~ "# 1 O parafuso"
       refute Books.chapter_text(chapter.id) =~ "A dobradiça precede"
+    end
+  end
+
+  describe "texto do capítulo preparado para IA" do
+    test "cerca o bloco de código com legenda e anotações, sem mudar o resto", %{
+      material: material,
+      user: user
+    } do
+      material = ingest(material, user)
+      {:ok, chapter} = Books.get_chapter(material.id, 2)
+
+      texto = Books.chapter_text_for_curation(chapter.id)
+
+      assert texto =~ "Listagem 1.1 Medindo o passo da rosca"
+      assert texto =~ "```\ndef passo(voltas, comprimento):"
+      assert texto =~ "- #1 Em milímetros"
+
+      # o resto do capítulo continua igual à reconstrução verbatim
+      assert texto =~ "O parafuso é *simples* e **antigo**"
+    end
+
+    test "capítulo sem bloco de código é igual à reconstrução verbatim", %{
+      material: material,
+      user: user
+    } do
+      material = ingest(material, user)
+      {:ok, indice} = Books.get_chapter(material.id, 4)
+
+      assert Books.chapter_text_for_curation(indice.id) == Books.chapter_text(indice.id)
     end
   end
 
@@ -372,6 +401,79 @@ defmodule QuizProject.AdaptiveStudy.BooksTest do
       assert preference.font == :mono
       assert preference.font_size == 130
       assert preference.width == :wide
+    end
+  end
+
+  describe "curadoria de capítulo por IA" do
+    setup %{material: material, user: user} do
+      material = ingest(material, user)
+      {:ok, chapter} = Books.get_chapter(material.id, 2)
+      %{chapter: chapter}
+    end
+
+    test "capítulo novo começa sem curadoria", %{chapter: chapter} do
+      assert Books.chapter_ai_state(chapter) == :none
+      assert chapter.curated_material_id == nil
+    end
+
+    test "cria um Material de Estudo em texto a partir do capítulo e conclui a curadoria", %{
+      chapter: chapter,
+      user: user
+    } do
+      {:ok, processing} = Books.curate_chapter_async(chapter, user)
+      assert processing.curation_status == :processing
+      assert Books.chapter_ai_state(processing) == :processing
+
+      finished = Enum.find(Books.list_chapters(chapter.material_id), &(&1.id == chapter.id))
+      assert finished.curation_status == :done
+      assert Books.chapter_ai_state(finished) == :done
+
+      {:ok, gerado} = AdaptiveStudy.get_material(finished.curated_material_id, user)
+      assert gerado.format == :text
+      assert gerado.title =~ chapter.title
+      assert gerado.raw_content == Books.chapter_text_for_curation(chapter.id)
+      assert gerado.mindmap_tree != %{}
+    end
+
+    test "clicar de novo enquanto processa não reprocessa (guard atômico no banco)", %{
+      chapter: chapter,
+      user: user
+    } do
+      {:ok, _} = Books.curate_chapter_async(chapter, user)
+
+      finished = Enum.find(Books.list_chapters(chapter.material_id), &(&1.id == chapter.id))
+
+      assert {:error, :already_processing} = Books.curate_chapter_async(finished, user)
+
+      materiais_gerados =
+        AdaptiveStudy.list_materials(user) |> Enum.count(&(&1.format == :text))
+
+      assert materiais_gerados == 1
+    end
+
+    test "capítulo já curado não é reprocessado", %{chapter: chapter, user: user} do
+      {:ok, _} = Books.curate_chapter_async(chapter, user)
+      done = Enum.find(Books.list_chapters(chapter.material_id), &(&1.id == chapter.id))
+
+      assert {:error, :already_processing} = Books.curate_chapter_async(done, user)
+    end
+
+    test "material gerado apagado libera o capítulo para reprocessar", %{
+      chapter: chapter,
+      user: user
+    } do
+      {:ok, _} = Books.curate_chapter_async(chapter, user)
+      done = Enum.find(Books.list_chapters(chapter.material_id), &(&1.id == chapter.id))
+
+      {:ok, gerado} = AdaptiveStudy.get_material(done.curated_material_id, user)
+      {:ok, _} = AdaptiveStudy.delete_material(gerado, user)
+
+      orfao = Enum.find(Books.list_chapters(chapter.material_id), &(&1.id == chapter.id))
+      assert orfao.curated_material_id == nil
+      assert Books.chapter_ai_state(orfao) == :none
+
+      assert {:ok, reprocessando} = Books.curate_chapter_async(orfao, user)
+      assert reprocessando.curation_status == :processing
     end
   end
 end

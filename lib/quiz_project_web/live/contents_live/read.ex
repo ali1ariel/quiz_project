@@ -170,6 +170,38 @@ defmodule QuizProjectWeb.ContentsLive.Read do
     {:noreply, assign(socket, search_term: "", results: [])}
   end
 
+  # Botão de IA da barra do capítulo. `curate_chapter_async/2` garante em
+  # banco que um capítulo só entra em processamento uma vez — aqui só refletimos
+  # o estado devolvido, mesmo que o clique tenha chegado tarde demais.
+  def handle_event("curate_chapter", %{"id" => chapter_id}, socket) do
+    user = socket.assigns.current_user
+
+    case Enum.find(socket.assigns.chapters, &(&1.id == chapter_id)) do
+      nil ->
+        {:noreply, socket}
+
+      chapter ->
+        case Books.curate_chapter_async(chapter, user) do
+          {:ok, updated} ->
+            chapters =
+              Enum.map(socket.assigns.chapters, fn c ->
+                if c.id == updated.id, do: updated, else: c
+              end)
+
+            socket = assign(socket, chapters: chapters)
+
+            if socket.assigns.chapter.id == updated.id do
+              {:noreply, assign(socket, chapter: updated)}
+            else
+              {:noreply, socket}
+            end
+
+          {:error, :already_processing} ->
+            {:noreply, socket}
+        end
+    end
+  end
+
   # A ingestão avisa a cada capítulo, então quem abriu o leitor antes de o livro
   # ficar pronto acompanha o avanço em vez de olhar para uma tela parada.
   @impl true
@@ -190,6 +222,19 @@ defmodule QuizProjectWeb.ContentsLive.Read do
        socket
        |> assign(material: material, chapters: Books.list_chapters(material_id))
        |> push_patch(to: ~p"/contents/#{material_id}")}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  # A curadoria de capítulo roda em background e avisa pelo mesmo tópico da
+  # ingestão: atualiza o sumário e, se for o capítulo aberto, também a barra.
+  def handle_info({:chapter_curated, %{chapter_id: chapter_id}}, socket) do
+    chapters = Books.list_chapters(socket.assigns.material.id)
+    socket = assign(socket, chapters: chapters)
+
+    if socket.assigns.chapter && socket.assigns.chapter.id == chapter_id do
+      {:noreply, assign(socket, chapter: Enum.find(chapters, &(&1.id == chapter_id)))}
     else
       {:noreply, socket}
     end
@@ -550,6 +595,8 @@ defmodule QuizProjectWeb.ContentsLive.Read do
   # ponto de quebra e com a skin, e um `top` chutado deixa uma fresta por onde o
   # texto passa rolando.
   defp toolbar(assigns) do
+    assigns = assign(assigns, :ai_state, Books.chapter_ai_state(assigns.chapter))
+
     ~H"""
     <div class="sticky top-[var(--qnav-h,4rem)] z-30 rounded-2xl border border-base-300 bg-base-100/95 backdrop-blur">
       <%!-- Uma linha só: o título do capítulo é a única informação que a barra
@@ -569,6 +616,8 @@ defmodule QuizProjectWeb.ContentsLive.Read do
         <p class="min-w-0 flex-1 truncate text-center text-sm font-semibold">
           {@chapter.title}
         </p>
+
+        <.chapter_ai_button chapter={@chapter} state={@ai_state} />
 
         <button
           type="button"
@@ -590,6 +639,71 @@ defmodule QuizProjectWeb.ContentsLive.Read do
         </div>
       </div>
     </div>
+    """
+  end
+
+  attr :chapter, :map, required: true
+  attr :state, :atom, required: true
+
+  # `:none`/`:failed` disparam o processamento; `:processing` só mostra o
+  # andamento (o clique não repete a chamada, o guard já está no servidor);
+  # `:done` vira link direto para a curadoria em Estudo Adaptativo.
+  defp chapter_ai_button(%{state: :done} = assigns) do
+    ~H"""
+    <.link
+      id={"chapter-ai-#{@chapter.id}"}
+      navigate={~p"/adaptive-study/#{@chapter.curated_material_id}/curate"}
+      class="qreader-tool bg-success/15"
+      title="Ver conteúdo de estudo gerado"
+      aria-label="Ver conteúdo de estudo gerado"
+    >
+      <.icon name="hero-sparkles" class="size-5" />
+    </.link>
+    """
+  end
+
+  defp chapter_ai_button(%{state: :processing} = assigns) do
+    ~H"""
+    <span
+      id={"chapter-ai-#{@chapter.id}"}
+      class="qreader-tool cursor-default opacity-70"
+      title="Processando com IA..."
+      aria-label="Processando com IA..."
+    >
+      <.icon name="hero-arrow-path" class="size-5 motion-safe:animate-spin" />
+    </span>
+    """
+  end
+
+  defp chapter_ai_button(%{state: :failed} = assigns) do
+    ~H"""
+    <button
+      type="button"
+      id={"chapter-ai-#{@chapter.id}"}
+      phx-click="curate_chapter"
+      phx-value-id={@chapter.id}
+      class="qreader-tool bg-error/15"
+      title="Falhou — tentar novamente"
+      aria-label="Falhou — tentar novamente"
+    >
+      <.icon name="hero-exclamation-triangle" class="size-5" />
+    </button>
+    """
+  end
+
+  defp chapter_ai_button(assigns) do
+    ~H"""
+    <button
+      type="button"
+      id={"chapter-ai-#{@chapter.id}"}
+      phx-click="curate_chapter"
+      phx-value-id={@chapter.id}
+      class="qreader-tool bg-info/15"
+      title="Processar capítulo com IA"
+      aria-label="Processar capítulo com IA"
+    >
+      <.icon name="hero-sparkles" class="size-5" />
+    </button>
     """
   end
 

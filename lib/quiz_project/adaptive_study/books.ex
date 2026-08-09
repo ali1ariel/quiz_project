@@ -233,6 +233,155 @@ defmodule QuizProject.AdaptiveStudy.Books do
     |> Ash.read!(authorize?: false)
   end
 
+  # Curadoria de capítulo por IA
+
+  @doc """
+  Envia o capítulo para curadoria de IA: cria um novo Material de Estudo (texto)
+  a partir do seu conteúdo e roda o mesmo pipeline de decomposição em Mapa
+  Mental do upload manual, em background.
+
+  A transição para `:processing` é um único `UPDATE...WHERE` com o status atual
+  no filtro (`start_chapter_curation/1`), então cliques repetidos no botão da
+  barra de leitura — mesmo simultâneos — nunca disparam dois processamentos do
+  mesmo capítulo: só o primeiro encontra a linha no estado esperado.
+
+  Devolve `{:ok, capítulo}` com o capítulo já em `:processing`, ou
+  `{:error, :already_processing}` quando o capítulo já está em processamento ou
+  já foi curado.
+  """
+  def curate_chapter_async(chapter, user) do
+    case start_chapter_curation(chapter) do
+      {:ok, chapter} ->
+        Logger.info("[Books] Iniciando curadoria de IA do capítulo #{chapter.id}...")
+        QuizProject.Jobs.run(fn -> run_chapter_curation(chapter, user) end)
+        {:ok, chapter}
+
+      :error ->
+        {:error, :already_processing}
+    end
+  end
+
+  defp start_chapter_curation(chapter) do
+    Chapter
+    |> Ash.Query.filter(id == ^chapter.id)
+    |> Ash.Query.filter(curation_status != :processing)
+    |> Ash.Query.filter(curation_status != :done or is_nil(curated_material_id))
+    |> Ash.bulk_update(:start_curation, %{},
+      authorize?: false,
+      return_records?: true,
+      return_errors?: true
+    )
+    |> case do
+      %Ash.BulkResult{records: [updated]} -> {:ok, updated}
+      _ -> :error
+    end
+  end
+
+  defp run_chapter_curation(chapter, user) do
+    {status, material_id} = create_and_curate(chapter, user)
+
+    finished =
+      chapter
+      |> Ash.Changeset.for_update(
+        :finish_curation,
+        %{curation_status: status, curated_material_id: material_id},
+        authorize?: false
+      )
+      |> Ash.update!()
+
+    Logger.info("[Books] Curadoria do capítulo #{finished.id} concluída como #{status}.")
+
+    Phoenix.PubSub.broadcast(
+      QuizProject.PubSub,
+      ingest_topic(chapter.material_id),
+      {:chapter_curated, %{chapter_id: finished.id}}
+    )
+  end
+
+  # `:processing` só sai desse estado por `finish_curation`, chamado por quem
+  # chama esta função — uma exceção não tratada aqui dentro deixaria o capítulo
+  # travado pra sempre, sem caminho de volta pela UI (o filtro de
+  # `start_chapter_curation/1` exclui justamente `:processing`). Por isso o
+  # pipeline inteiro roda protegido, e qualquer falha, prevista ou não, vira
+  # `:failed` em vez de propagar.
+  defp create_and_curate(chapter, user) do
+    case QuizProject.AdaptiveStudy.create_material(user, %{
+           title: chapter_material_title(chapter),
+           raw_content: chapter_text_for_curation(chapter.id),
+           status: "draft"
+         }) do
+      {:ok, material} ->
+        try do
+          case QuizProject.AdaptiveStudy.curate_material_with_ai(material, user) do
+            {:ok, updated_material} -> {:done, updated_material.id}
+            {:error, _reason} -> discard_material(chapter, material, user)
+          end
+        rescue
+          error ->
+            log_unexpected_failure(chapter, error, __STACKTRACE__)
+            discard_material(chapter, material, user)
+        end
+
+      {:error, reason} ->
+        Logger.error(
+          "[Books] Falha ao criar material para o capítulo #{chapter.id}: #{inspect(reason)}"
+        )
+
+        {:failed, nil}
+    end
+  rescue
+    error ->
+      log_unexpected_failure(chapter, error, __STACKTRACE__)
+      {:failed, nil}
+  end
+
+  # A tentativa fracassada não deixa lixo na Estudo Adaptativo: sem isso, cada
+  # novo clique em "tentar novamente" empilharia mais um material de estudo
+  # órfão, nunca referenciado por nenhum capítulo.
+  defp discard_material(chapter, material, user) do
+    case QuizProject.AdaptiveStudy.delete_material(material, user) do
+      {:ok, _} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.error(
+          "[Books] Falha ao apagar material órfão #{material.id} do capítulo #{chapter.id}: #{inspect(reason)}"
+        )
+    end
+
+    {:failed, nil}
+  end
+
+  defp log_unexpected_failure(chapter, error, stacktrace) do
+    Logger.error(
+      "[Books] Curadoria do capítulo #{chapter.id} falhou inesperadamente: " <>
+        Exception.format(:error, error, stacktrace)
+    )
+  end
+
+  defp chapter_material_title(chapter) do
+    case String.trim(chapter.title) do
+      "" -> "Capítulo #{chapter.position} curado"
+      title -> "Capítulo: #{title}"
+    end
+  end
+
+  @doc """
+  Estado do processamento de IA do capítulo para a barra de leitura.
+
+  `:done` só conta com `curated_material_id` presente: se o material gerado for
+  apagado pela curadoria, a referência cai para `nil` (`on_delete: :nilify`) e o
+  capítulo volta a poder ser reprocessado em vez de ficar com um link morto.
+  """
+  def chapter_ai_state(%Chapter{curation_status: :done, curated_material_id: id})
+      when not is_nil(id),
+      do: :done
+
+  def chapter_ai_state(%Chapter{curation_status: status}) when status in [:processing, :failed],
+    do: status
+
+  def chapter_ai_state(%Chapter{}), do: :none
+
   @doc "Total de blocos do livro."
   def block_count(material_id) do
     Block
@@ -276,6 +425,30 @@ defmodule QuizProject.AdaptiveStudy.Books do
   def chapter_text(chapter_id), do: chapter_id |> list_blocks() |> join_blocks()
 
   defp join_blocks(blocks), do: Enum.map_join(blocks, @separator, & &1.content)
+
+  @doc """
+  Como `chapter_text/1`, mas preparado para a curadoria por IA: bloco de código
+  sai cercado, com legenda e anotações — `chapter_text/1` não pode carregar essa
+  marcação sem deixar de ser a reconstrução verbatim que promete.
+  """
+  def chapter_text_for_curation(chapter_id) do
+    chapter_id
+    |> list_blocks()
+    |> Enum.map_join(@separator, &curation_text/1)
+  end
+
+  defp curation_text(%Block{type: :code} = block) do
+    [block.caption, code_fence(block), annotations_list(block.annotations)]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join("\n\n")
+  end
+
+  defp curation_text(%Block{content: content}), do: content
+
+  defp code_fence(%Block{lang: lang, content: content}), do: "```#{lang}\n#{content}\n```"
+
+  defp annotations_list([]), do: nil
+  defp annotations_list(annotations), do: Enum.map_join(annotations, "\n", &("- " <> &1))
 
   # Busca
 

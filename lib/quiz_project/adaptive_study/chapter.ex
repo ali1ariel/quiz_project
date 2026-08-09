@@ -15,6 +15,7 @@ defmodule QuizProject.AdaptiveStudy.Chapter do
 
     references do
       reference :material, on_delete: :delete, on_update: :update, index?: true
+      reference :curated_material, on_delete: :nilify, on_update: :update, index?: true
     end
 
     custom_indexes do
@@ -40,6 +41,17 @@ defmodule QuizProject.AdaptiveStudy.Chapter do
 
     update :update do
       accept [:title, :kind, :block_count]
+    end
+
+    # Transição atômica: um único UPDATE...WHERE, então cliques simultâneos no
+    # botão de IA nunca disparam dois processamentos do mesmo capítulo.
+    update :start_curation do
+      accept []
+      change set_attribute(:curation_status, :processing)
+    end
+
+    update :finish_curation do
+      accept [:curation_status, :curated_material_id]
     end
   end
 
@@ -89,12 +101,30 @@ defmodule QuizProject.AdaptiveStudy.Chapter do
       default 0
     end
 
+    # Estado do envio do capítulo para curadoria de IA, pelo botão da barra de
+    # leitura. `done` só conta com `curated_material_id` presente — ver
+    # `QuizProject.AdaptiveStudy.Books.chapter_ai_state/1`.
+    attribute :curation_status, :atom do
+      allow_nil? false
+      default :none
+      constraints one_of: ~w(none processing done failed)a
+    end
+
+    # Aponta para o Material de Estudo (texto) gerado a partir deste capítulo.
+    # Nula enquanto não processado, ou de novo se o material gerado for apagado.
+    attribute :curated_material_id, :uuid
+
     timestamps()
   end
 
   relationships do
     belongs_to :material, QuizProject.AdaptiveStudy.StudyMaterial do
       allow_nil? false
+      attribute_writable? true
+      define_attribute? false
+    end
+
+    belongs_to :curated_material, QuizProject.AdaptiveStudy.StudyMaterial do
       attribute_writable? true
       define_attribute? false
     end

@@ -464,6 +464,46 @@ defmodule QuizProjectWeb.ContentsReadLiveTest do
     end
   end
 
+  describe "curadoria de capítulo por IA" do
+    test "o botão dispara o processamento e vira link ao terminar", %{
+      conn: conn,
+      material: material
+    } do
+      {:ok, view, html} = live(conn, ~p"/contents/#{material.id}/2")
+
+      {:ok, chapter} = Books.get_chapter(material.id, 2)
+
+      assert has_element?(view, "#chapter-ai-#{chapter.id}")
+      refute html =~ "Processando com IA..."
+
+      html = view |> element("#chapter-ai-#{chapter.id}") |> render_click()
+
+      assert html =~ "Processando com IA..."
+
+      finished = Enum.find(Books.list_chapters(material.id), &(&1.id == chapter.id))
+      assert finished.curation_status == :done
+
+      html = render(view)
+      assert html =~ ~s|href="/adaptive-study/#{finished.curated_material_id}/curate"|
+    end
+
+    test "clicar de novo depois de pronto não reprocessa", %{
+      conn: conn,
+      material: material,
+      user: user
+    } do
+      {:ok, view, _html} = live(conn, ~p"/contents/#{material.id}/2")
+      {:ok, chapter} = Books.get_chapter(material.id, 2)
+
+      view |> element("#chapter-ai-#{chapter.id}") |> render_click()
+      view |> element("#chapter-ai-#{chapter.id}") |> render_click()
+
+      materiais_gerados = AdaptiveStudy.list_materials(user) |> Enum.count(&(&1.format == :text))
+
+      assert materiais_gerados == 1
+    end
+  end
+
   describe "mensagens que a rota herda sem pedir" do
     test "notificação de tentativa não derruba o leitor", %{conn: conn, material: material} do
       {:ok, view, _html} = live(conn, ~p"/contents/#{material.id}/2")

@@ -153,12 +153,13 @@ defmodule QuizProjectWeb.Components.Book do
   @doc "Sumário do livro, com o pré-textual separado do corpo."
   def contents(assigns) do
     ~H"""
-    <nav class="space-y-1">
+    <nav class="space-y-0.5">
       <.link
         :for={chapter <- @chapters}
         patch={"/contents/#{@material_id}/#{chapter.position}"}
         class={[
-          "block rounded-xl px-3 py-2.5 text-sm transition",
+          "block rounded-xl py-2.5 pr-3 transition",
+          nesting_class(chapter.level),
           chapter.id == @current.id && "bg-primary/10 font-semibold text-primary",
           chapter.id != @current.id && "hover:bg-base-200"
         ]}
@@ -173,6 +174,18 @@ defmodule QuizProjectWeb.Components.Book do
     </nav>
     """
   end
+
+  # `chapters` é uma tabela achatada, não uma árvore — mas o nível que o nav/NCX
+  # do próprio livro declarou continua em `chapter.level`. Sem usar isso, um
+  # livro com Parte > Capítulo > Seção (ex.: "Machine Learning in Elixir") sai
+  # como uma centena de linhas na mesma indentação, com títulos genéricos tipo
+  # "Wrapping Up" repetidos a cada capítulo sem nenhuma pista de qual é qual.
+  # Nível 1 fica do jeito que sempre foi — é o único nível na maioria dos
+  # livros — e só a partir do nível 2 o recuo e o texto menor entram.
+  defp nesting_class(1), do: "pl-3 text-sm"
+  defp nesting_class(2), do: "pl-6 text-[0.8125rem]"
+  defp nesting_class(level) when is_integer(level) and level >= 3, do: "pl-9 text-xs opacity-90"
+  defp nesting_class(_), do: "pl-3 text-sm"
 
   @doc "Trecho de um bloco para a lista de resultados da busca, centrado no termo."
   def excerpt(block, term) do

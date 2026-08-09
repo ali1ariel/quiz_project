@@ -649,6 +649,16 @@ h1, h2, h3 {
   background-color: color-mix(in oklab, var(--color-base-content) 8%, transparent);
 }
 
+/* .qreader-tool grava `color` fora de @layer (ver nota do .tab acima), então
+   uma utilidade Tailwind como .text-info sozinha nunca vence: regra fora de
+   layer prevalece sobre regra em layer, não importa especificidade nem
+   ordem. O botão de IA do capítulo (e qualquer outro ícone de estado dentro
+   do leitor) precisa da mesma arma — uma regra própria, também fora de
+   @layer, com mais especificidade que a base. */
+.qreader-tool.text-info { color: var(--color-info); }
+.qreader-tool.text-success { color: var(--color-success); }
+.qreader-tool.text-error { color: var(--color-error); }
+
 .qreader-block {
   /* Alvo de rolagem: a posição salva e as âncoras da busca caem no
      topo do bloco, e sem esta margem ele para atrás da navbar mais

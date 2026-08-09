@@ -168,62 +168,73 @@ defmodule QuizProject.AdaptiveStudy do
       "[AdaptiveStudy] Iniciando processamento de Mapa Mental em background (Material #{material.id}, Provedor: #{QuizProject.AI.current_provider()})..."
     )
 
-    QuizProject.Jobs.run(fn ->
-      case QuizProject.AI.curate_mindmap(material.raw_content) do
-        {:ok, ai_result} ->
-          suggested_title = Map.get(ai_result, "suggested_title", "Material de Estudo")
-          summary = Map.get(ai_result, "summary", "")
-          key_concepts = Map.get(ai_result, "key_concepts", [])
-          mindmap = Map.get(ai_result, "mindmap", [])
+    QuizProject.Jobs.run(fn -> curate_material_with_ai(material, user) end)
+  end
 
-          final_title =
-            if material.title != "" and material.title != "Processando material...",
-              do: material.title,
-              else: suggested_title
+  @doc """
+  Roda a curadoria de IA sobre um material já criado e grava o resultado.
 
-          {:ok, updated_material} =
-            update_material(
-              material,
-              %{
-                title: final_title,
-                summary: summary,
-                key_concepts: %{"concepts" => key_concepts},
-                mindmap_tree: %{"nodes" => ensure_root(mindmap, final_title)},
-                status: "draft"
-              },
-              user
-            )
+  Extraído de `process_material_async/2` para ser reaproveitado pela curadoria
+  de capítulo de livro (`QuizProject.AdaptiveStudy.Books.curate_chapter_async/2`),
+  que cria o material e então chama esta função com o mesmo pipeline — mesma
+  notificação, mesmo aviso por PubSub. Roda de forma síncrona; quem chama decide
+  se isso acontece em background.
+  """
+  def curate_material_with_ai(material, user) do
+    case QuizProject.AI.curate_mindmap(material.raw_content) do
+      {:ok, ai_result} ->
+        suggested_title = Map.get(ai_result, "suggested_title", "Material de Estudo")
+        summary = Map.get(ai_result, "summary", "")
+        key_concepts = Map.get(ai_result, "key_concepts", [])
+        mindmap = Map.get(ai_result, "mindmap", [])
 
-          Logger.info(
-            "[AdaptiveStudy] Mapa Mental gerado com SUCESSO para o Material #{updated_material.id} (\"#{updated_material.title}\")."
+        final_title =
+          if material.title != "" and material.title != "Processando material...",
+            do: material.title,
+            else: suggested_title
+
+        {:ok, updated_material} =
+          update_material(
+            material,
+            %{
+              title: final_title,
+              summary: summary,
+              key_concepts: %{"concepts" => key_concepts},
+              mindmap_tree: %{"nodes" => ensure_root(mindmap, final_title)},
+              status: "draft"
+            },
+            user
           )
 
-          QuizProject.Notifications.notify_mindmap_generated(updated_material)
+        Logger.info(
+          "[AdaptiveStudy] Mapa Mental gerado com SUCESSO para o Material #{updated_material.id} (\"#{updated_material.title}\")."
+        )
 
-          Phoenix.PubSub.broadcast(
-            QuizProject.PubSub,
-            "user:#{user.id}:attempts",
-            {:mindmap_generated, %{material_id: updated_material.id}}
-          )
+        QuizProject.Notifications.notify_mindmap_generated(updated_material)
 
-          {:ok, updated_material}
+        Phoenix.PubSub.broadcast(
+          QuizProject.PubSub,
+          "user:#{user.id}:attempts",
+          {:mindmap_generated, %{material_id: updated_material.id}}
+        )
 
-        {:error, reason} ->
-          Logger.error(
-            "[AdaptiveStudy] ERRO ao gerar Mapa Mental para Material #{material.id}: #{inspect(reason)}"
-          )
+        {:ok, updated_material}
 
-          QuizProject.Notifications.notify_mindmap_failed(material)
+      {:error, reason} ->
+        Logger.error(
+          "[AdaptiveStudy] ERRO ao gerar Mapa Mental para Material #{material.id}: #{inspect(reason)}"
+        )
 
-          Phoenix.PubSub.broadcast(
-            QuizProject.PubSub,
-            "user:#{user.id}:attempts",
-            {:mindmap_generated, %{material_id: material.id}}
-          )
+        QuizProject.Notifications.notify_mindmap_failed(material)
 
-          {:error, :processing_failed}
-      end
-    end)
+        Phoenix.PubSub.broadcast(
+          QuizProject.PubSub,
+          "user:#{user.id}:attempts",
+          {:mindmap_generated, %{material_id: material.id}}
+        )
+
+        {:error, :processing_failed}
+    end
   end
 
   @doc """

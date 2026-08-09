@@ -35,6 +35,20 @@ defmodule QuizProject.EpubFixture do
     })
   end
 
+  @doc """
+  Pacote com uma página de sumário impresso no spine, além do `toc.ncx`
+  semântico — como o "Table of Contents" que algumas editoras incluem como
+  página de leitura. É o documento que a ingestão tem que reconhecer e não
+  transformar em capítulo.
+  """
+  def build_with_toc_page do
+    build(%{
+      "OEBPS/content.opf" => opf_with_toc_page(),
+      "OEBPS/toc.ncx" => ncx_with_toc_page(),
+      "OEBPS/Text/contents.xhtml" => toc_page()
+    })
+  end
+
   @doc "Pacote com DRM: o capítulo do spine aparece cifrado no `encryption.xml`."
   def build_drm do
     build(%{"META-INF/encryption.xml" => encryption("OEBPS/Text/chapter-1.xhtml")})
@@ -170,6 +184,44 @@ defmodule QuizProject.EpubFixture do
     """
   end
 
+  defp opf_with_toc_page do
+    """
+    <?xml version="1.0" encoding="utf-8"?>
+    <package xmlns="http://www.idpf.org/2007/opf" unique-identifier="pub-id" version="2.0">
+      <metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf">
+        <dc:title>Tratado das Coisas Pequenas</dc:title>
+        <dc:creator>Ana Ribeiro</dc:creator>
+        <dc:language>pt-BR</dc:language>
+        <dc:identifier id="pub-id">urn:isbn:9780000000001</dc:identifier>
+      </metadata>
+      <manifest>
+        <item href="Text/contents.xhtml" id="contents" media-type="application/xhtml+xml"/>
+        <item href="Text/copyright.xhtml" id="copyright" media-type="application/xhtml+xml"/>
+        <item href="Text/chapter-1.xhtml" id="chapter-1" media-type="application/xhtml+xml"/>
+        <item href="Text/chapter-2.xhtml" id="chapter-2" media-type="application/xhtml+xml"/>
+        <item href="Text/index.xhtml" id="index" media-type="application/xhtml+xml"/>
+        <item href="Styles/style.css" id="css" media-type="text/css"/>
+        <item href="Fonts/mono.woff2" id="mono" media-type="font/woff2"/>
+        <item href="Images/parafuso.png" id="img-parafuso" media-type="image/png"/>
+        <item href="Images/equacao.png" id="img-equacao" media-type="image/png"/>
+        <item href="Images/captura.png" id="img-captura" media-type="image/png"/>
+        <item href="Images/nao-referenciada.png" id="img-sobra" media-type="image/png"/>
+        <item href="toc.ncx" id="ncx" media-type="application/x-dtbncx+xml"/>
+      </manifest>
+      <spine toc="ncx">
+        <itemref idref="contents"/>
+        <itemref idref="copyright"/>
+        <itemref idref="chapter-1"/>
+        <itemref idref="chapter-2"/>
+        <itemref idref="index"/>
+      </spine>
+      <guide>
+        <reference href="Text/copyright.xhtml" title="Copyright" type="copyright-page"/>
+      </guide>
+    </package>
+    """
+  end
+
   defp ncx do
     """
     <?xml version="1.0" encoding="UTF-8"?>
@@ -198,6 +250,47 @@ defmodule QuizProject.EpubFixture do
       </navMap>
     </ncx>
     """
+  end
+
+  defp ncx_with_toc_page do
+    """
+    <?xml version="1.0" encoding="UTF-8"?>
+    <ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
+      <navMap>
+        <navPoint class="toc" id="n0" playOrder="1">
+          <navLabel><text>Table of Contents</text></navLabel>
+          <content src="Text/contents.xhtml"/>
+        </navPoint>
+        <navPoint class="frontmatter" id="n1" playOrder="2">
+          <navLabel><text>Direitos autorais</text></navLabel>
+          <content src="Text/copyright.xhtml"/>
+        </navPoint>
+        <navPoint class="chapter" id="n2" playOrder="3">
+          <navLabel><text>1 O parafuso</text></navLabel>
+          <content src="Text/chapter-1.xhtml"/>
+        </navPoint>
+        <navPoint class="chapter" id="n3" playOrder="4">
+          <navLabel><text>2 A dobradiça</text></navLabel>
+          <content src="Text/chapter-2.xhtml"/>
+        </navPoint>
+        <navPoint class="index" id="n4" playOrder="5">
+          <navLabel><text>Índice remissivo</text></navLabel>
+          <content src="Text/index.xhtml"/>
+        </navPoint>
+      </navMap>
+    </ncx>
+    """
+  end
+
+  defp toc_page do
+    page("""
+    <div class="readable-text" id="p1"><h1>Table of Contents</h1></div>
+    <ul>
+      <li class="readable-text" id="p2">Direitos autorais</li>
+      <li class="readable-text" id="p3">1 O parafuso</li>
+      <li class="readable-text" id="p4">2 A dobradiça</li>
+    </ul>
+    """)
   end
 
   defp nav do

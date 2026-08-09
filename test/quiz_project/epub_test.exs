@@ -54,6 +54,25 @@ defmodule QuizProject.EpubTest do
       assert Enum.map(book.chapters, & &1.title) |> Enum.member?("1 O parafuso")
       assert chapter(book, "Índice remissivo").kind == :back_matter
     end
+
+    # A página de sumário impresso duplica o que o sumário do leitor já mostra
+    # com a hierarquia correta, e como página de leitura genérica ela não tem
+    # marcação que sobreviva à extração de blocos (vira texto corrido ou
+    # marcador gigante) — por isso sai do livro em vez de virar capítulo.
+    test "a página de sumário do próprio livro não vira capítulo" do
+      {:ok, book} = Epub.parse(EpubFixture.build_with_toc_page())
+
+      titles = Enum.map(book.chapters, & &1.title)
+
+      refute Enum.member?(titles, "Table of Contents")
+
+      assert titles == [
+               "Direitos autorais",
+               "1 O parafuso",
+               "2 A dobradiça",
+               "Índice remissivo"
+             ]
+    end
   end
 
   describe "numeração dos blocos" do

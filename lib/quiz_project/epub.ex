@@ -106,7 +106,8 @@ defmodule QuizProject.Epub do
         {[chapter | acc], next_position, index + 1}
       end)
 
-    chapters = chapters |> Enum.reverse() |> Enum.reject(&(&1.blocks == []))
+    chapters =
+      chapters |> Enum.reverse() |> Enum.reject(&(&1.blocks == [] or toc_page?(&1)))
 
     images = images(files, chapters)
 
@@ -165,6 +166,31 @@ defmodule QuizProject.Epub do
 
   defp humanize(idref) do
     idref |> String.replace(~r/[-_]+/, " ") |> String.trim() |> :string.titlecase()
+  end
+
+  # Página de sumário impresso do próprio livro (o "Text/contents.html" ou
+  # "Table of Contents" que a editora inclui como página de leitura, além do
+  # nav/NCX que já dá a hierarquia). Sai do livro em vez de virar capítulo:
+  # duplica o que o sumário do leitor já mostra corretamente (`chapter.level`
+  # até o fundo), e como página impressa genérica ela não carrega marcação de
+  # link, recuo ou quebra de linha que sobreviva à extração de blocos — vira
+  # texto corrido ou marcador gigante em vez de navegação de verdade.
+  #
+  # Não é a mesma lista de `@front_matter`: aquela também pega "praise",
+  # "copyright", "preface" — página de leitura legítima, não redundante com
+  # nada. Aqui só entra o que É, de fato, o sumário.
+  @toc_titles ~w(contents table_of_contents sumario)
+
+  defp toc_page?(%Chapter{title: title}) do
+    normalized =
+      title
+      |> String.downcase()
+      |> String.normalize(:nfd)
+      |> String.replace(~r/\p{Mn}/u, "")
+      |> String.replace(~r/\s+/, "_")
+      |> String.trim()
+
+    normalized in @toc_titles
   end
 
   # O spine traz `titlepage`, `praise` e `copyright` misturados aos capítulos e
