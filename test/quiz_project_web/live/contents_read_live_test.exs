@@ -465,7 +465,7 @@ defmodule QuizProjectWeb.ContentsReadLiveTest do
   end
 
   describe "curadoria de capítulo por IA" do
-    test "o botão dispara o processamento e vira link ao terminar", %{
+    test "o botão dispara o processamento e vira abertura do resumo de uso ao terminar", %{
       conn: conn,
       material: material
     } do
@@ -484,7 +484,10 @@ defmodule QuizProjectWeb.ContentsReadLiveTest do
       finished = Enum.find(Books.list_chapters(material.id), &(&1.id == chapter.id))
       assert finished.curation_status == :done
 
-      html = render(view)
+      # O botão não navega mais direto: abre o resumo de uso, e o link para o
+      # material gerado mora dentro dele.
+      html = view |> element("#chapter-ai-#{chapter.id}") |> render_click()
+      assert has_element?(view, "#usage-dialog")
       assert html =~ ~s|href="/adaptive-study/#{finished.curated_material_id}/curate"|
     end
 
@@ -520,7 +523,7 @@ defmodule QuizProjectWeb.ContentsReadLiveTest do
       refute html =~ "qreader-tool-count"
     end
 
-    test "clicar de novo depois de pronto não reprocessa", %{
+    test "clicar de novo depois de pronto não reprocessa, só mostra o uso", %{
       conn: conn,
       material: material,
       user: user
@@ -531,9 +534,11 @@ defmodule QuizProjectWeb.ContentsReadLiveTest do
       view |> element("#chapter-ai-#{chapter.id}") |> render_click()
       view |> element("#start-curation") |> render_click()
 
-      # Já processado, o botão virou link: reprocessar exigiria uma segunda
-      # confirmação, e não há botão para abri-la.
-      refute has_element?(view, "#chapter-ai-#{chapter.id}[phx-click]")
+      # Já processado, o botão abre o resumo de uso em vez de reprocessar —
+      # `show_usage` só lê o capítulo, nunca chama `curate_chapter_async/3`.
+      view |> element("#chapter-ai-#{chapter.id}") |> render_click()
+      assert has_element?(view, "#usage-dialog")
+      refute has_element?(view, "#curation-dialog")
 
       materiais_gerados = AdaptiveStudy.list_materials(user) |> Enum.count(&(&1.format == :text))
 
@@ -670,6 +675,61 @@ defmodule QuizProjectWeb.ContentsReadLiveTest do
       render_change(view, "pick_curation", %{"provider" => "provedor-que-nao-existe"})
 
       assert has_element?(view, "#curation-picker option[value=fake][selected]")
+    end
+
+    test "o cabeçalho do modal de processar é visualmente distinto do de uso", %{
+      conn: conn,
+      material: material
+    } do
+      {:ok, view, _html} = live(conn, ~p"/contents/#{material.id}/2")
+      {:ok, chapter} = Books.get_chapter(material.id, 2)
+
+      view |> element("#chapter-ai-#{chapter.id}") |> render_click()
+      assert has_element?(view, "#curation-dialog .bg-primary\\/10")
+
+      view |> element("#start-curation") |> render_click()
+
+      view |> element("#chapter-ai-#{chapter.id}") |> render_click()
+      assert has_element?(view, "#usage-dialog .bg-success\\/10")
+      refute has_element?(view, "#usage-dialog .bg-primary\\/10")
+    end
+
+    test "o resumo de uso mostra o que foi gasto e diz quando não foi registrado", %{
+      conn: conn,
+      material: material
+    } do
+      {:ok, view, _html} = live(conn, ~p"/contents/#{material.id}/2")
+      {:ok, chapter} = Books.get_chapter(material.id, 2)
+
+      view |> element("#chapter-ai-#{chapter.id}") |> render_click()
+      view |> element("#start-curation") |> render_click()
+
+      html = view |> element("#chapter-ai-#{chapter.id}") |> render_click()
+
+      # Provider Fake em teste não reporta uso nem modelo — a tela diz que não
+      # foi registrado em vez de mostrar zero.
+      assert html =~ "não registrado"
+      assert html =~ "Conteúdo já processado"
+
+      finished = Enum.find(Books.list_chapters(material.id), &(&1.id == chapter.id))
+      assert html =~ ~s|href="/adaptive-study/#{finished.curated_material_id}/curate"|
+    end
+
+    test "fechar o resumo de uso não navega nem altera o capítulo", %{
+      conn: conn,
+      material: material
+    } do
+      {:ok, view, _html} = live(conn, ~p"/contents/#{material.id}/2")
+      {:ok, chapter} = Books.get_chapter(material.id, 2)
+
+      view |> element("#chapter-ai-#{chapter.id}") |> render_click()
+      view |> element("#start-curation") |> render_click()
+
+      view |> element("#chapter-ai-#{chapter.id}") |> render_click()
+      html = view |> element("#close-usage") |> render_click()
+
+      refute has_element?(view, "#usage-dialog")
+      assert html =~ chapter.title
     end
   end
 

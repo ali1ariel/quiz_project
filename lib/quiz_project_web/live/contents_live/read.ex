@@ -44,7 +44,8 @@ defmodule QuizProjectWeb.ContentsLive.Read do
            contents_open?: false,
            appearance_open?: false,
            confirm_chapter: nil,
-           curation_choice: AI.default_selection()
+           curation_choice: AI.default_selection(),
+           usage_chapter: nil
          )}
 
       _ ->
@@ -185,6 +186,18 @@ defmodule QuizProjectWeb.ContentsLive.Read do
 
   def handle_event("cancel_curation", _params, socket) do
     {:noreply, assign(socket, confirm_chapter: nil)}
+  end
+
+  # O botão do capítulo já processado não navega direto: mostra o que foi
+  # gasto antes de sair da leitura, do mesmo jeito que o de processar mostra o
+  # que vai ser gasto antes de começar.
+  def handle_event("show_usage", %{"id" => chapter_id}, socket) do
+    {:noreply,
+     assign(socket, usage_chapter: Enum.find(socket.assigns.chapters, &(&1.id == chapter_id)))}
+  end
+
+  def handle_event("close_usage", _params, socket) do
+    {:noreply, assign(socket, usage_chapter: nil)}
   end
 
   # Trocar de provedor zera o modelo: o modelo do provedor anterior não existe
@@ -346,6 +359,8 @@ defmodule QuizProjectWeb.ContentsLive.Read do
           chapter={@confirm_chapter}
           choice={@curation_choice}
         />
+
+        <.usage_dialog :if={@usage_chapter} chapter={@usage_chapter} />
 
         <%!-- O sumário é navegação, não leitura: fica fora da tela até ser
              chamado, em vez de comer uma coluna fixa ao lado do texto. --%>
@@ -694,18 +709,23 @@ defmodule QuizProjectWeb.ContentsLive.Read do
 
   # `:none`/`:failed` disparam o processamento; `:processing` só mostra o
   # andamento (o clique não repete a chamada, o guard já está no servidor);
-  # `:done` vira link direto para a curadoria em Estudo Adaptativo.
+  # `:done` abre o resumo do que foi gasto, com o link para a curadoria lá
+  # dentro — o mesmo motivo do `curation_dialog`, ao contrário: aqui o clique
+  # não gasta nada, mas sair da leitura sem saber o que já rodou também não é
+  # de graça.
   defp chapter_ai_button(%{state: :done} = assigns) do
     ~H"""
-    <.link
+    <button
+      type="button"
       id={"chapter-ai-#{@chapter.id}"}
-      navigate={~p"/adaptive-study/#{@chapter.curated_material_id}/curate"}
+      phx-click="show_usage"
+      phx-value-id={@chapter.id}
       class="qreader-tool bg-success/15"
       title="Ver conteúdo de estudo gerado"
       aria-label="Ver conteúdo de estudo gerado"
     >
       <.icon name="hero-sparkles" class="size-5" />
-    </.link>
+    </button>
     """
   end
 
@@ -841,10 +861,19 @@ defmodule QuizProjectWeb.ContentsLive.Read do
         "sm:inset-y-auto sm:top-1/2 sm:-translate-y-1/2 sm:rounded-3xl"
       ]}
     >
-      <div class="flex items-start justify-between gap-2 px-5 pt-4">
-        <div class="min-w-0">
-          <h2 id="curation-dialog-title" class="text-sm font-semibold">Processar com IA</h2>
-          <p class="truncate text-xs opacity-60">{@chapter.title}</p>
+      <%!-- Fundo tingido no cabeçalho, e não só no ícone: é o que faz este
+           modal (vai gastar) e o de conteúdo já pronto (`usage_dialog/1`, em
+           `bg-success/10`) se distinguirem de relance, sem precisar ler o
+           texto para saber qual dos dois abriu. --%>
+      <div class="flex items-start justify-between gap-2 rounded-t-3xl bg-primary/10 px-5 py-4">
+        <div class="flex min-w-0 items-start gap-2">
+          <.icon name="hero-sparkles" class="mt-0.5 size-5 shrink-0 text-primary" />
+          <div class="min-w-0">
+            <h2 id="curation-dialog-title" class="text-sm font-semibold text-primary">
+              Processar com IA
+            </h2>
+            <p class="truncate text-xs opacity-60">{@chapter.title}</p>
+          </div>
         </div>
         <button
           type="button"
@@ -976,6 +1005,115 @@ defmodule QuizProjectWeb.ContentsLive.Read do
       </div>
     </div>
     """
+  end
+
+  attr :chapter, :map, required: true
+
+  # Espelho informativo do `curation_dialog/1`: aqui não há escolha nem clique
+  # que gasta — só o que já foi gasto, e o link para o resultado. O
+  # `bg-success/10` do cabeçalho é a mesma cor do botão que abre este modal
+  # (`bg-success/15` em `chapter_ai_button/1`), e a cor oposta à do modal de
+  # processar (`bg-primary/10`) — abrir um conteúdo pronto e começar a gastar
+  # de novo não podem parecer a mesma tela.
+  defp usage_dialog(assigns) do
+    assigns = assign(assigns, :cost, usage_cost(assigns.chapter))
+
+    ~H"""
+    <div
+      id="usage-backdrop"
+      phx-click="close_usage"
+      phx-window-keydown="close_usage"
+      phx-key="escape"
+      class="fixed inset-0 z-[80] touch-none bg-base-content/30 backdrop-blur-[1px]"
+      aria-hidden="true"
+    >
+    </div>
+
+    <div
+      id="usage-dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="usage-dialog-title"
+      class={[
+        "fixed inset-x-0 bottom-0 z-[90] mx-auto max-h-[90vh] w-full max-w-md overflow-y-auto",
+        "rounded-t-3xl border border-base-300 bg-base-100 shadow-2xl",
+        "sm:inset-y-auto sm:top-1/2 sm:-translate-y-1/2 sm:rounded-3xl"
+      ]}
+    >
+      <div class="flex items-start justify-between gap-2 rounded-t-3xl bg-success/10 px-5 py-4">
+        <div class="flex min-w-0 items-start gap-2">
+          <.icon name="hero-check-circle" class="mt-0.5 size-5 shrink-0 text-success" />
+          <div class="min-w-0">
+            <h2 id="usage-dialog-title" class="text-sm font-semibold text-success">
+              Conteúdo já processado
+            </h2>
+            <p class="truncate text-xs opacity-60">{@chapter.title}</p>
+          </div>
+        </div>
+        <button
+          type="button"
+          id="close-usage"
+          phx-click="close_usage"
+          class="qreader-tool"
+          aria-label="Fechar"
+        >
+          <.icon name="hero-x-mark" class="size-5" />
+        </button>
+      </div>
+
+      <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 px-5 pt-4 text-sm">
+        <dt class="opacity-60">Modelo</dt>
+        <dd class="text-right font-medium">{@chapter.curated_model || "—"}</dd>
+
+        <dt class="opacity-60">Entrada</dt>
+        <dd class="text-right font-medium tabular-nums">
+          {usage_tokens_label(@chapter.usage_input_tokens)}
+        </dd>
+
+        <dt class="opacity-60">Saída</dt>
+        <dd class="text-right font-medium tabular-nums">
+          {usage_tokens_label(@chapter.usage_output_tokens)}
+        </dd>
+
+        <dt class="opacity-60">Custo</dt>
+        <dd class="text-right font-medium">{@cost}</dd>
+      </dl>
+
+      <p class="px-5 pt-4 text-xs leading-relaxed opacity-60">
+        Uso relatado pelo provedor no momento da curadoria, não uma medição em tempo real — e o
+        custo sai do preço de tabela do modelo, não da fatura.
+      </p>
+
+      <div class="flex gap-2 px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-4">
+        <button type="button" phx-click="close_usage" class="btn btn-ghost flex-1 rounded-full">
+          Fechar
+        </button>
+        <.link
+          navigate={~p"/adaptive-study/#{@chapter.curated_material_id}/curate"}
+          class="btn btn-success flex-1 rounded-full"
+        >
+          Ver conteúdo
+        </.link>
+      </div>
+    </div>
+    """
+  end
+
+  defp usage_tokens_label(nil), do: "não registrado"
+  defp usage_tokens_label(tokens), do: "#{format_tokens(tokens)} tokens"
+
+  # `nil` de token acontece com o provedor Fake e com corrida que falhou antes
+  # de o provedor responder — a mesma distinção nulo/zero do schema do
+  # capítulo. Modelo fora da tabela de preço é outra ausência, e vira outra
+  # frase, não um custo mudo.
+  defp usage_cost(%{usage_input_tokens: nil}), do: "não registrado"
+  defp usage_cost(%{usage_output_tokens: nil}), do: "não registrado"
+
+  defp usage_cost(%{usage_input_tokens: input, usage_output_tokens: output, curated_model: model}) do
+    case AI.describe_model(model) do
+      nil -> "modelo sem preço tabelado"
+      info -> cost_label(info, AI.estimate_cost(info, input, output))
+    end
   end
 
   # Renderização não pode quebrar por causa de uma escolha ruim: `pick_curation`

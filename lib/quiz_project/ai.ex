@@ -239,6 +239,20 @@ defmodule QuizProject.AI do
     end
   end
 
+  @doc """
+  Provedor e preço de um modelo a partir só do id salvo (`Chapter.curated_model`,
+  por exemplo), sem o slug do provedor que a gravação não guarda junto.
+  `nil` quando o id é `nil` ou não está mais na tabela.
+  """
+  def describe_model(nil), do: nil
+
+  def describe_model(model) do
+    case Map.get(@models, model) do
+      %{p: slug} -> describe(slug, model)
+      nil -> nil
+    end
+  end
+
   defp providers, do: @providers
 
   defp find_provider(slug), do: Enum.find(@providers, &(&1.slug == slug))
