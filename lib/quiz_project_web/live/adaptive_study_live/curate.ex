@@ -1069,12 +1069,33 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Curate do
             >
               {length(children(@node))}
             </span>
-            <span class={[
-              "badge badge-xs rounded-full text-[0.6rem] font-bold uppercase",
-              priority_badge_class(priority(@node))
-            ]}>
-              {priority_label(priority(@node))}
-            </span>
+            <%!-- Ícone diferente em cada badge porque as duas cores e os dois
+                 textos, sozinhos, não dizem qual é prioridade e qual é
+                 complexidade — o mesmo par de ícones do detalhamento do nó
+                 (`node_details/1`, "Motivo da Prioridade"/"Motivo da
+                 Complexidade"), para o olho já treinado ali reconhecer aqui. --%>
+            <div class="flex items-center gap-1">
+              <span
+                class={[
+                  "badge badge-xs gap-0.5 rounded-full text-[0.6rem] font-bold uppercase",
+                  priority_badge_class(priority(@node))
+                ]}
+                title={"Prioridade de estudo: #{priority_label(priority(@node))}"}
+              >
+                <.icon name="hero-information-circle" class="size-2.5" />
+                {priority_label(priority(@node))}
+              </span>
+              <span
+                class={[
+                  "badge badge-xs gap-0.5 rounded-full text-[0.6rem] font-bold uppercase",
+                  complexity_badge_class(complexity(@node))
+                ]}
+                title={"Complexidade: #{complexity_label(complexity(@node))}"}
+              >
+                <.icon name="hero-academic-cap" class="size-2.5" />
+                {complexity_label(complexity(@node))}
+              </span>
+            </div>
           </div>
         </div>
       </div>

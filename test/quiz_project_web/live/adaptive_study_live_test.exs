@@ -274,6 +274,41 @@ defmodule QuizProjectWeb.AdaptiveStudyLiveTest do
     assert has_element?(view, ~s(#tree-node-n1 .badge-secondary), "Nó B")
   end
 
+  test "o sumário mostra prioridade e complexidade lado a lado, cada uma com seu ícone", %{
+    conn: conn,
+    user: user
+  } do
+    {:ok, material} =
+      AdaptiveStudy.create_material(user, %{
+        title: "Material Badges",
+        raw_content: "Texto",
+        mindmap_tree: %{
+          "nodes" => [
+            %{
+              "id" => "n1",
+              "label" => "Nó A",
+              "content" => "Texto",
+              "priority" => "high",
+              "complexity" => "complex",
+              "children" => []
+            }
+          ]
+        }
+      })
+
+    {:ok, view, _html} = live(conn, ~p"/adaptive-study/#{material.id}/curate")
+
+    row = element(view, "#tree-node-n1")
+    html = render(row)
+
+    # As duas badges aparecem juntas, cada uma com o ícone que já as distingue
+    # no detalhamento do nó (informação = prioridade, capelo = complexidade).
+    assert html =~ "Alta"
+    assert html =~ "Avançado"
+    assert html =~ "hero-information-circle"
+    assert html =~ "hero-academic-cap"
+  end
+
   test "material sem raiz gerada pela IA ganha uma na abertura da curadoria", %{
     conn: conn,
     user: user
