@@ -62,85 +62,49 @@ defmodule QuizProjectWeb.Layouts do
         class="absolute left-1/2 hidden -translate-x-1/2 items-center gap-2 md:flex"
         aria-label="Navegação principal"
       >
-        <%= if @active_nav == :quizzes do %>
-          <span
-            id="desktop-nav-quizzes"
-            aria-current="page"
-            class="inline-flex cursor-default items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-content shadow-sm"
-            title="Você está em Meus quizzes"
-          >
-            <.icon name="hero-rectangle-stack" class="size-4" /> Meus quizzes
-          </span>
-        <% else %>
-          <.link
-            id="desktop-nav-quizzes"
-            navigate={~p"/dashboard"}
-            class="inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold opacity-65 transition hover:bg-base-200 hover:opacity-100"
-            title="Criar, editar e acompanhar seus quizzes"
-          >
-            <.icon name="hero-rectangle-stack" class="size-4" /> Meus quizzes
-          </.link>
-        <% end %>
+        <%!-- O item ativo continua clicável, e não vira `<span>` estático: um
+             menu com várias telas (Estudo Adaptativo, Conteúdos) é raiz de
+             navegação própria, e clicar de novo nele é o atalho para voltar à
+             raiz de onde se está, em vez de morrer sem fazer nada. --%>
+        <.nav_item
+          id="desktop-nav-quizzes"
+          navigate={~p"/dashboard"}
+          icon="hero-rectangle-stack"
+          label="Meus quizzes"
+          active?={@active_nav == :quizzes}
+          title_active="Voltar para Meus quizzes"
+          title_inactive="Criar, editar e acompanhar seus quizzes"
+        />
 
-        <%= if @active_nav == :contents do %>
-          <span
-            id="desktop-nav-contents"
-            aria-current="page"
-            class="inline-flex cursor-default items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-content shadow-sm"
-            title="Você está em Conteúdos"
-          >
-            <.icon name="hero-book-open" class="size-4" /> Conteúdos
-          </span>
-        <% else %>
-          <.link
-            id="desktop-nav-contents"
-            navigate={~p"/contents"}
-            class="inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold opacity-65 transition hover:bg-base-200 hover:opacity-100"
-            title="Sua biblioteca de livros, focada na leitura"
-          >
-            <.icon name="hero-book-open" class="size-4" /> Conteúdos
-          </.link>
-        <% end %>
+        <.nav_item
+          id="desktop-nav-contents"
+          navigate={~p"/contents"}
+          icon="hero-book-open"
+          label="Conteúdos"
+          active?={@active_nav == :contents}
+          title_active="Voltar para a biblioteca de Conteúdos"
+          title_inactive="Sua biblioteca de livros, focada na leitura"
+        />
 
-        <%= if @active_nav == :adaptive_study do %>
-          <span
-            id="desktop-nav-adaptive-study"
-            aria-current="page"
-            class="inline-flex cursor-default items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-content shadow-sm"
-            title="Você está em Estudo Adaptativo"
-          >
-            <.icon name="hero-academic-cap" class="size-4" /> Estudo Adaptativo
-          </span>
-        <% else %>
-          <.link
-            id="desktop-nav-adaptive-study"
-            navigate={~p"/adaptive-study"}
-            class="inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold opacity-65 transition hover:bg-base-200 hover:opacity-100"
-            title="Ingestão e curadoria de materiais de estudo com Mapa Mental"
-          >
-            <.icon name="hero-academic-cap" class="size-4" /> Estudo Adaptativo
-          </.link>
-        <% end %>
+        <.nav_item
+          id="desktop-nav-adaptive-study"
+          navigate={~p"/adaptive-study"}
+          icon="hero-academic-cap"
+          label="Estudo Adaptativo"
+          active?={@active_nav == :adaptive_study}
+          title_active="Voltar para a lista de Estudo Adaptativo"
+          title_inactive="Ingestão e curadoria de materiais de estudo com Mapa Mental"
+        />
 
-        <%= if @active_nav == :account do %>
-          <span
-            id="desktop-nav-account"
-            aria-current="page"
-            class="inline-flex cursor-default items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-content shadow-sm"
-            title="Você está em Conta e API"
-          >
-            <.icon name="hero-user-circle" class="size-4" /> Conta e API
-          </span>
-        <% else %>
-          <.link
-            id="desktop-nav-account"
-            navigate={~p"/settings"}
-            class="inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold opacity-65 transition hover:bg-base-200 hover:opacity-100"
-            title="Alterar perfil, senha e tokens de integração"
-          >
-            <.icon name="hero-user-circle" class="size-4" /> Conta e API
-          </.link>
-        <% end %>
+        <.nav_item
+          id="desktop-nav-account"
+          navigate={~p"/settings"}
+          icon="hero-user-circle"
+          label="Conta e API"
+          active?={@active_nav == :account}
+          title_active="Voltar para Conta e API"
+          title_inactive="Alterar perfil, senha e tokens de integração"
+        />
 
         <.link
           id="desktop-nav-api-docs-link"
@@ -333,6 +297,37 @@ defmodule QuizProjectWeb.Layouts do
 
     <.flash_group flash={@flash} />
     <.notification_stack notifications={@notifications} />
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :navigate, :string, required: true
+  attr :icon, :string, required: true
+  attr :label, :string, required: true
+  attr :active?, :boolean, required: true
+  attr :title_active, :string, required: true
+  attr :title_inactive, :string, required: true
+
+  # Item da navegação principal. Continua `<.link>` ativo ou não — só a
+  # aparência e o `title` mudam — porque a raiz de cada menu também precisa
+  # de destino quando já se está nela.
+  defp nav_item(assigns) do
+    ~H"""
+    <.link
+      id={@id}
+      navigate={@navigate}
+      aria-current={@active? && "page"}
+      class={[
+        "inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold transition",
+        if(@active?,
+          do: "bg-primary text-primary-content shadow-sm",
+          else: "opacity-65 hover:bg-base-200 hover:opacity-100"
+        )
+      ]}
+      title={if @active?, do: @title_active, else: @title_inactive}
+    >
+      <.icon name={@icon} class="size-4" /> {@label}
+    </.link>
     """
   end
 

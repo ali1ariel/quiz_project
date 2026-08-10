@@ -21,7 +21,7 @@ defmodule QuizProjectWeb.SettingsLiveTest do
     assert has_element?(view, "#settings-tab-security")
     assert has_element?(view, "#settings-tab-tokens")
     assert has_element?(view, "#profile-form")
-    assert has_element?(view, "span#desktop-nav-account[aria-current=page]")
+    assert has_element?(view, ~s(a#desktop-nav-account[aria-current=page][href="/settings"]))
     assert has_element?(view, "a#desktop-nav-quizzes")
     assert has_element?(view, "#appearance-control")
   end

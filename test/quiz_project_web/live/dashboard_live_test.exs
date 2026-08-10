@@ -15,7 +15,9 @@ defmodule QuizProjectWeb.DashboardLiveTest do
     assert has_element?(view, "#tab-answered")
     assert has_element?(view, "#create-quiz")
     assert has_element?(view, "#open-import")
-    assert has_element?(view, "span#desktop-nav-quizzes[aria-current=page]")
+    # O item ativo continua um link, e não vira estático: clicar de novo nele
+    # é o atalho para voltar à raiz de Meus quizzes.
+    assert has_element?(view, ~s(a#desktop-nav-quizzes[aria-current=page][href="/dashboard"]))
     assert has_element?(view, "a#desktop-nav-account")
     assert has_element?(view, "#appearance-control")
     assert has_element?(view, "#skin-select option[value=sobrio]")
