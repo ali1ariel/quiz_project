@@ -52,6 +52,28 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.CurateBookTest do
     refute html =~ "Este nó não carrega trecho de texto"
   end
 
+  test "o trecho resolvido de um nó que cobre uma figura mostra a imagem, não só a legenda", %{
+    conn: conn,
+    book_material: book_material,
+    curated_material: curated_material
+  } do
+    {:ok, chapter} = Books.get_chapter(book_material.id, 2)
+
+    figura =
+      chapter.id
+      |> Books.list_blocks()
+      |> Enum.find(&(&1.type == :figure and &1.image_path != nil))
+
+    [node_id | _] = Map.fetch!(Books.coverage(chapter.id), figura.id)
+
+    {:ok, view, _html} = live(conn, ~p"/adaptive-study/#{curated_material.id}/curate")
+
+    html = view |> element("#tree-node-#{node_id}") |> render_click()
+
+    assert html =~ ~s(src="/contents/#{book_material.id}/images/#{figura.image_path}")
+    assert html =~ figura.content
+  end
+
   test "a edição do nó não oferece campo de content para material de livro", %{
     conn: conn,
     curated_material: curated_material

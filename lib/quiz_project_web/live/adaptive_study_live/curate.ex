@@ -359,8 +359,27 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Curate do
   defp resolve_from_blocks(node_id, book_material_id) do
     book_material_id
     |> Books.blocks_for_node(node_id)
-    |> Enum.map_join("\n\n", & &1.content)
+    |> Enum.map_join("\n\n", &block_markdown(&1, book_material_id))
   end
+
+  # Bloco `:figure` guarda a legenda em `content` e a imagem à parte, em
+  # `image_path` — juntar só o `content` (como os outros tipos) mostraria a
+  # legenda sem a imagem. Em markdown a imagem entra pela mesma URL que o
+  # leitor usa (`BookImageController`), e a legenda repete embaixo, como o
+  # `<figcaption>` do leitor.
+  defp block_markdown(%{type: :figure, image_path: nil, content: caption}, _book_material_id),
+    do: caption || ""
+
+  defp block_markdown(%{type: :figure, image_path: path, content: caption}, book_material_id) do
+    legenda = caption || ""
+
+    "![#{legenda}](#{image_url(book_material_id, path)})" <>
+      if(legenda != "", do: "\n\n#{legenda}", else: "")
+  end
+
+  defp block_markdown(%{content: content}, _book_material_id), do: content
+
+  defp image_url(material_id, path), do: "/contents/#{material_id}/images/#{path}"
 
   # Recalcula tudo que deriva da árvore em um só lugar (antes cada handler
   # repetia — e esquecia — parte dos assigns derivados).
