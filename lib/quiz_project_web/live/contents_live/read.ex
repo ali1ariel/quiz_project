@@ -1089,7 +1089,7 @@ defmodule QuizProjectWeb.ContentsLive.Read do
           Fechar
         </button>
         <.link
-          navigate={~p"/adaptive-study/#{@chapter.curated_material_id}/curate"}
+          navigate={~p"/study/#{@chapter.curated_material_id}/curate"}
           class="btn btn-success flex-1 rounded-full"
         >
           Ver conteúdo

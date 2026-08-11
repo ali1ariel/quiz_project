@@ -61,7 +61,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Upload do
              :info,
              "Seu conteúdo está sendo processado em segundo plano pela IA. Você receberá uma notificação assim que o Mapa Mental estiver pronto!"
            )
-           |> push_navigate(to: ~p"/adaptive-study")}
+           |> push_navigate(to: ~p"/study")}
 
         {:error, _} ->
           {:noreply, put_flash(socket, :error, "Não foi possível salvar o material.")}
@@ -77,7 +77,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Upload do
         <div class="flex items-center justify-between border-b border-base-300 pb-4">
           <div>
             <.link
-              navigate={~p"/adaptive-study"}
+              navigate={~p"/study"}
               class="text-xs font-semibold text-primary hover:underline flex items-center gap-1"
             >
               <.icon name="hero-arrow-left" class="size-3" /> Voltar aos materiais
@@ -152,7 +152,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Upload do
                de enviar, sem deixá-lo por cima do botão principal. --%>
           <div class="flex flex-col-reverse gap-3 border-t border-base-200 pt-4 sm:flex-row sm:justify-end">
             <.link
-              navigate={~p"/adaptive-study"}
+              navigate={~p"/study"}
               class="btn btn-ghost rounded-full px-6 max-sm:w-full"
             >
               Cancelar

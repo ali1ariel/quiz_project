@@ -488,7 +488,7 @@ defmodule QuizProjectWeb.ContentsReadLiveTest do
       # material gerado mora dentro dele.
       html = view |> element("#chapter-ai-#{chapter.id}") |> render_click()
       assert has_element?(view, "#usage-dialog")
-      assert html =~ ~s|href="/adaptive-study/#{finished.curated_material_id}/curate"|
+      assert html =~ ~s|href="/study/#{finished.curated_material_id}/curate"|
     end
 
     test "o botão mostra o tamanho do capítulo, e some com ele ao terminar", %{
@@ -712,7 +712,7 @@ defmodule QuizProjectWeb.ContentsReadLiveTest do
       assert html =~ "Conteúdo já processado"
 
       finished = Enum.find(Books.list_chapters(material.id), &(&1.id == chapter.id))
-      assert html =~ ~s|href="/adaptive-study/#{finished.curated_material_id}/curate"|
+      assert html =~ ~s|href="/study/#{finished.curated_material_id}/curate"|
     end
 
     test "fechar o resumo de uso não navega nem altera o capítulo", %{

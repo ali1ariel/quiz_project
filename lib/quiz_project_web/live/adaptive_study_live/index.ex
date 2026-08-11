@@ -58,7 +58,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Index do
           </div>
           <.link
             id="new-study-material-btn"
-            navigate={~p"/adaptive-study/new"}
+            navigate={~p"/study/new"}
             class="btn btn-primary rounded-full px-5 inline-flex items-center gap-2"
           >
             <.icon name="hero-plus" class="size-5" /> Novo Material de Estudo
@@ -77,7 +77,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Index do
               </p>
             </div>
             <.link
-              navigate={~p"/adaptive-study/new"}
+              navigate={~p"/study/new"}
               class="btn btn-primary rounded-full px-6 inline-flex items-center gap-2"
             >
               <.icon name="hero-arrow-up-tray" class="size-4" /> Inserir Primeiro Conteúdo
@@ -134,7 +134,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Index do
                 <span>Criado em {Calendar.strftime(material.inserted_at, "%d/%m/%Y às %H:%M")}</span>
                 <.link
                   id={"curate-link-#{material.id}"}
-                  navigate={~p"/adaptive-study/#{material.id}/curate"}
+                  navigate={~p"/study/#{material.id}/curate"}
                   class="font-semibold text-primary inline-flex items-center gap-1 hover:underline"
                 >
                   Ver Mapa Mental <.icon name="hero-arrow-right" class="size-3" />

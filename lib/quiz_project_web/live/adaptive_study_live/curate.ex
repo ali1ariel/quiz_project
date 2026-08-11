@@ -56,7 +56,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Curate do
         {:ok,
          socket
          |> put_flash(:error, "Material de estudo não encontrado.")
-         |> push_navigate(to: ~p"/adaptive-study")}
+         |> push_navigate(to: ~p"/study")}
     end
   end
 
@@ -704,7 +704,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Curate do
            que é do mapa (o canvas é o `flex-1` logo abaixo). --%>
       <.link
         id="exit-mindmap-btn"
-        patch={~p"/adaptive-study/#{@material.id}/curate"}
+        patch={~p"/study/#{@material.id}/curate"}
         title="Sair do mapa"
         class="btn btn-ghost btn-sm gap-1 rounded-full"
       >
@@ -872,7 +872,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Curate do
     <div class="flex flex-col gap-4 border-b border-base-300 pb-4 md:flex-row md:items-end md:justify-between md:shrink-0">
       <div class="min-w-0 space-y-1.5">
         <.link
-          navigate={~p"/adaptive-study"}
+          navigate={~p"/study"}
           class="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
         >
           <.icon name="hero-arrow-left" class="size-3" /> Voltar aos materiais
@@ -902,7 +902,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Curate do
         <.link
           :if={@has_nodes?}
           id="open-mindmap-btn"
-          patch={~p"/adaptive-study/#{@material.id}/curate/map"}
+          patch={~p"/study/#{@material.id}/curate/map"}
           title="Abrir o Mapa Mental em tela cheia"
           class="btn btn-sm inline-flex items-center gap-1.5 rounded-full border-primary/40 bg-primary/10 text-primary hover:bg-primary/20"
         >

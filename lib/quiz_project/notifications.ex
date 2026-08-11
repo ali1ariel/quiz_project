@@ -44,7 +44,7 @@ defmodule QuizProject.Notifications do
         user_id: material.user_id,
         title: "Mapa Mental gerado: \"#{material.title}\"",
         body: "O conteúdo foi decomposto em um Mapa Mental atômico. Clique para ver a curadoria.",
-        path: "/adaptive-study/#{material.id}/curate"
+        path: "/study/#{material.id}/curate"
       },
       authorize?: false
     )
@@ -60,7 +60,7 @@ defmodule QuizProject.Notifications do
         user_id: material.user_id,
         title: "Falha ao gerar Mapa Mental",
         body: "Ocorreu um erro no processamento por IA do material \"#{material.title}\".",
-        path: "/adaptive-study"
+        path: "/study"
       },
       authorize?: false
     )

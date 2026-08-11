@@ -35,7 +35,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.CurateBookTest do
     conn: conn,
     curated_material: curated_material
   } do
-    {:ok, view, _html} = live(conn, ~p"/adaptive-study/#{curated_material.id}/curate")
+    {:ok, view, _html} = live(conn, ~p"/study/#{curated_material.id}/curate")
 
     leaf =
       curated_material.mindmap_tree["nodes"]
@@ -66,7 +66,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.CurateBookTest do
 
     [node_id | _] = Map.fetch!(Books.coverage(chapter.id), figura.id)
 
-    {:ok, view, _html} = live(conn, ~p"/adaptive-study/#{curated_material.id}/curate")
+    {:ok, view, _html} = live(conn, ~p"/study/#{curated_material.id}/curate")
 
     html = view |> element("#tree-node-#{node_id}") |> render_click()
 
@@ -78,7 +78,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.CurateBookTest do
     conn: conn,
     curated_material: curated_material
   } do
-    {:ok, view, _html} = live(conn, ~p"/adaptive-study/#{curated_material.id}/curate")
+    {:ok, view, _html} = live(conn, ~p"/study/#{curated_material.id}/curate")
 
     html =
       view

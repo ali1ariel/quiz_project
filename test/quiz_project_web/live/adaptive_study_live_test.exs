@@ -9,18 +9,18 @@ defmodule QuizProjectWeb.AdaptiveStudyLiveTest do
 
   test "exige login para acessar o estudo adaptativo", %{} do
     conn = build_conn()
-    assert {:error, {:redirect, %{to: "/login"}}} = live(conn, ~p"/adaptive-study")
-    assert {:error, {:redirect, %{to: "/login"}}} = live(conn, ~p"/adaptive-study/new")
+    assert {:error, {:redirect, %{to: "/login"}}} = live(conn, ~p"/study")
+    assert {:error, {:redirect, %{to: "/login"}}} = live(conn, ~p"/study/new")
   end
 
   test "exibe lista de materiais e permite criar um novo", %{conn: conn, user: user} do
-    {:ok, view, html} = live(conn, ~p"/adaptive-study")
+    {:ok, view, html} = live(conn, ~p"/study")
 
     assert html =~ "Estudo Adaptativo"
     assert has_element?(view, "#new-study-material-btn")
 
-    # Inicia a criação em /adaptive-study/new
-    {:ok, view_new, _html_new} = live(conn, ~p"/adaptive-study/new")
+    # Inicia a criação em /study/new
+    {:ok, view_new, _html_new} = live(conn, ~p"/study/new")
     assert has_element?(view_new, "#upload-study-form")
 
     view_new
@@ -33,8 +33,8 @@ defmodule QuizProjectWeb.AdaptiveStudyLiveTest do
     [material] = AdaptiveStudy.list_materials(user)
     assert material.title == "Novo Material Teste"
 
-    # Redireciona para /adaptive-study/:id/curate
-    {:ok, view_curate, html_curate} = live(conn, ~p"/adaptive-study/#{material.id}/curate")
+    # Redireciona para /study/:id/curate
+    {:ok, view_curate, html_curate} = live(conn, ~p"/study/#{material.id}/curate")
     assert html_curate =~ "Novo Material Teste"
     assert has_element?(view_curate, "#save-curation-btn")
     assert has_element?(view_curate, "#reconstruct-text-btn")
@@ -72,7 +72,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLiveTest do
         }
       })
 
-    {:ok, view, _html} = live(conn, ~p"/adaptive-study/#{material.id}/curate")
+    {:ok, view, _html} = live(conn, ~p"/study/#{material.id}/curate")
 
     # Seleciona o nó 1 e clica em editar
     view |> element("#tree-node-node_1") |> render_click()
@@ -103,7 +103,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLiveTest do
 
   test "editar um nó não apaga as anotações pessoais já registradas", %{conn: conn, user: user} do
     {:ok, material} = curated_material(user)
-    {:ok, view, _html} = live(conn, ~p"/adaptive-study/#{material.id}/curate")
+    {:ok, view, _html} = live(conn, ~p"/study/#{material.id}/curate")
 
     view |> element("#tree-node-node_1") |> render_click()
 
@@ -126,7 +126,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLiveTest do
 
   test "desativar um nó o remove do texto reconstruído", %{conn: conn, user: user} do
     {:ok, material} = curated_material(user)
-    {:ok, view, _html} = live(conn, ~p"/adaptive-study/#{material.id}/curate")
+    {:ok, view, _html} = live(conn, ~p"/study/#{material.id}/curate")
 
     view |> element("#tree-node-node_2") |> render_click()
     view |> element("#toggle-node-enabled-node_2") |> render_click()
@@ -141,7 +141,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLiveTest do
 
   test "remove referência cruzada pelo painel do nó", %{conn: conn, user: user} do
     {:ok, material} = curated_material(user, node_1_refs: ["node_2"])
-    {:ok, view, _html} = live(conn, ~p"/adaptive-study/#{material.id}/curate")
+    {:ok, view, _html} = live(conn, ~p"/study/#{material.id}/curate")
 
     view |> element("#tree-node-node_1") |> render_click()
     assert has_element?(view, "#remove-cross-ref-node_1-node_2")
@@ -158,7 +158,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLiveTest do
       user: user
     } do
       {:ok, material} = curated_material(user)
-      {:ok, view, _html} = live(conn, ~p"/adaptive-study/#{material.id}/curate")
+      {:ok, view, _html} = live(conn, ~p"/study/#{material.id}/curate")
 
       # O painel já vem preenchido (é a coluna da direita no desktop), mas sem as
       # classes de modal: no telefone ele fica escondido até o primeiro clique.
@@ -168,7 +168,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLiveTest do
 
     test "clicar em um nó sobe a folha e o fechar a derruba", %{conn: conn, user: user} do
       {:ok, material} = curated_material(user)
-      {:ok, view, _html} = live(conn, ~p"/adaptive-study/#{material.id}/curate")
+      {:ok, view, _html} = live(conn, ~p"/study/#{material.id}/curate")
 
       view |> element("#tree-node-node_2") |> render_click()
       assert has_element?(view, "#node-detail-panel.fixed")
@@ -181,7 +181,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLiveTest do
 
     test "editar e anotar não derrubam a folha", %{conn: conn, user: user} do
       {:ok, material} = curated_material(user)
-      {:ok, view, _html} = live(conn, ~p"/adaptive-study/#{material.id}/curate")
+      {:ok, view, _html} = live(conn, ~p"/study/#{material.id}/curate")
 
       view |> element("#tree-node-node_1") |> render_click()
 
@@ -203,7 +203,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLiveTest do
 
   test "sobrevive às mensagens PubSub de tentativas e de mapa mental", %{conn: conn, user: user} do
     {:ok, material} = curated_material(user)
-    {:ok, view, _html} = live(conn, ~p"/adaptive-study/#{material.id}/curate")
+    {:ok, view, _html} = live(conn, ~p"/study/#{material.id}/curate")
 
     broadcast(user, {:attempt_finished, %{attempt_id: Ecto.UUID.generate()}})
     broadcast(user, {:mindmap_generated, %{material_id: material.id}})
@@ -221,7 +221,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLiveTest do
         raw_content: "Conteúdo bruto."
       })
 
-    {:ok, view, html} = live(conn, ~p"/adaptive-study/#{material.id}/curate")
+    {:ok, view, html} = live(conn, ~p"/study/#{material.id}/curate")
     assert html =~ "Mapa Mental ainda não disponível"
 
     {:ok, _} =
@@ -265,7 +265,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLiveTest do
         }
       })
 
-    {:ok, view, html} = live(conn, ~p"/adaptive-study/#{material.id}/curate")
+    {:ok, view, html} = live(conn, ~p"/study/#{material.id}/curate")
 
     assert has_element?(view, "#tree-node-n1")
     # A conexão aparece pelo rótulo do alvo, não pelo ID cru: o título traz o
@@ -296,7 +296,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLiveTest do
         }
       })
 
-    {:ok, view, _html} = live(conn, ~p"/adaptive-study/#{material.id}/curate")
+    {:ok, view, _html} = live(conn, ~p"/study/#{material.id}/curate")
 
     row = element(view, "#tree-node-n1")
     html = render(row)
@@ -325,7 +325,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLiveTest do
         }
       })
 
-    {:ok, view, html} = live(conn, ~p"/adaptive-study/#{material.id}/curate")
+    {:ok, view, html} = live(conn, ~p"/study/#{material.id}/curate")
 
     # A raiz entra como único nó de primeiro nível, com o título do material.
     assert has_element?(view, "#tree-node-root")
@@ -364,7 +364,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLiveTest do
       conn: conn,
       material: material
     } do
-      {:ok, view, _html} = live(conn, ~p"/adaptive-study/#{material.id}/curate")
+      {:ok, view, _html} = live(conn, ~p"/study/#{material.id}/curate")
 
       # Árvore pequena começa inteira aberta.
       assert has_element?(view, "#tree-node-n1_1")
@@ -377,7 +377,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLiveTest do
     end
 
     test "o chevron recolhe sem trocar o nó selecionado", %{conn: conn, material: material} do
-      {:ok, view, _html} = live(conn, ~p"/adaptive-study/#{material.id}/curate")
+      {:ok, view, _html} = live(conn, ~p"/study/#{material.id}/curate")
 
       view |> element("#tree-node-n2") |> render_click()
       assert render(view) =~ "NÓ ID: n2"
@@ -391,7 +391,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLiveTest do
     end
 
     test "folha não ganha chevron", %{conn: conn, material: material} do
-      {:ok, view, _html} = live(conn, ~p"/adaptive-study/#{material.id}/curate")
+      {:ok, view, _html} = live(conn, ~p"/study/#{material.id}/curate")
 
       assert has_element?(view, "#toggle-outline-n1")
       refute has_element?(view, "#toggle-outline-n2")
@@ -401,7 +401,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLiveTest do
       conn: conn,
       material: material
     } do
-      {:ok, view, _html} = live(conn, ~p"/adaptive-study/#{material.id}/curate")
+      {:ok, view, _html} = live(conn, ~p"/study/#{material.id}/curate")
 
       # Recolher e expandir em massa só existem no mapa imersivo; no sumário o
       # chevron de cada ramo dá conta, e a coluna ganhou um header limpo.
@@ -454,19 +454,19 @@ defmodule QuizProjectWeb.AdaptiveStudyLiveTest do
       conn: conn,
       material: material
     } do
-      {:ok, view, _html} = live(conn, ~p"/adaptive-study/#{material.id}/curate")
+      {:ok, view, _html} = live(conn, ~p"/study/#{material.id}/curate")
 
       # altera sem salvar e navega para o mapa
       view |> element("#tree-node-b2") |> render_click()
       view |> element("#toggle-node-enabled-b2") |> render_click()
 
       view |> element("#open-mindmap-btn") |> render_click()
-      assert_patched(view, ~p"/adaptive-study/#{material.id}/curate/map")
+      assert_patched(view, ~p"/study/#{material.id}/curate/map")
       assert has_element?(view, "#mindmap-canvas")
 
       # o patch mantém o mesmo processo, então a alteração pendente sobrevive
       view |> element("#exit-mindmap-btn") |> render_click()
-      assert_patched(view, ~p"/adaptive-study/#{material.id}/curate")
+      assert_patched(view, ~p"/study/#{material.id}/curate")
       assert render(view) =~ "Alterações não salvas"
     end
 
@@ -474,7 +474,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLiveTest do
       conn: conn,
       material: material
     } do
-      {:ok, view, html} = live(conn, ~p"/adaptive-study/#{material.id}/curate/map")
+      {:ok, view, html} = live(conn, ~p"/study/#{material.id}/curate/map")
 
       assert has_element?(view, "#map-node-root")
       assert has_element?(view, "#map-node-b1")
@@ -493,7 +493,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLiveTest do
       conn: conn,
       material: material
     } do
-      {:ok, view, _html} = live(conn, ~p"/adaptive-study/#{material.id}/curate/map")
+      {:ok, view, _html} = live(conn, ~p"/study/#{material.id}/curate/map")
 
       view |> element("#map-node-root") |> render_click()
 
@@ -513,7 +513,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLiveTest do
     end
 
     test "recolhe e expande ramos", %{conn: conn, material: material} do
-      {:ok, view, _html} = live(conn, ~p"/adaptive-study/#{material.id}/curate/map")
+      {:ok, view, _html} = live(conn, ~p"/study/#{material.id}/curate/map")
 
       assert has_element?(view, "#map-node-b1_1")
 
@@ -530,7 +530,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLiveTest do
     end
 
     test "alterna entre árvore e rede mantendo os mesmos nós", %{conn: conn, material: material} do
-      {:ok, view, _html} = live(conn, ~p"/adaptive-study/#{material.id}/curate/map")
+      {:ok, view, _html} = live(conn, ~p"/study/#{material.id}/curate/map")
 
       view |> element("#map-mode-radial") |> render_click()
       assert has_element?(view, "#map-node-root")
@@ -545,7 +545,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLiveTest do
       user: user,
       material: material
     } do
-      {:ok, view, _html} = live(conn, ~p"/adaptive-study/#{material.id}/curate/map")
+      {:ok, view, _html} = live(conn, ~p"/study/#{material.id}/curate/map")
 
       view |> element("#map-node-b2") |> render_click()
       assert has_element?(view, "#map-drawer-b2")
@@ -562,7 +562,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLiveTest do
     end
 
     test "a gaveta acompanha o nó clicado", %{conn: conn, material: material} do
-      {:ok, view, _html} = live(conn, ~p"/adaptive-study/#{material.id}/curate/map")
+      {:ok, view, _html} = live(conn, ~p"/study/#{material.id}/curate/map")
 
       # o mapa abre sem gaveta
       refute has_element?(view, "#map-drawer-root")
@@ -579,7 +579,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLiveTest do
     end
 
     test "realça o nó selecionado e apaga o resto do mapa", %{conn: conn, material: material} do
-      {:ok, view, _html} = live(conn, ~p"/adaptive-study/#{material.id}/curate/map")
+      {:ok, view, _html} = live(conn, ~p"/study/#{material.id}/curate/map")
 
       view |> element("#map-node-b1") |> render_click()
 
@@ -604,7 +604,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLiveTest do
       conn: conn,
       material: material
     } do
-      {:ok, view, _html} = live(conn, ~p"/adaptive-study/#{material.id}/curate/map")
+      {:ok, view, _html} = live(conn, ~p"/study/#{material.id}/curate/map")
 
       view |> element("#map-node-b1") |> render_click()
       view |> element("#map-mode-focus") |> render_click()
@@ -630,7 +630,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLiveTest do
     end
 
     test "o foco abre na raiz mesmo sem nada selecionado", %{conn: conn, material: material} do
-      {:ok, view, _html} = live(conn, ~p"/adaptive-study/#{material.id}/curate/map")
+      {:ok, view, _html} = live(conn, ~p"/study/#{material.id}/curate/map")
 
       refute view |> element("#map-mode-focus") |> render() =~ "disabled"
       view |> element("#map-mode-focus") |> render_click()
@@ -643,7 +643,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLiveTest do
     end
 
     test "no foco, clicar abre os detalhes sem mover o mapa", %{conn: conn, material: material} do
-      {:ok, view, _html} = live(conn, ~p"/adaptive-study/#{material.id}/curate/map")
+      {:ok, view, _html} = live(conn, ~p"/study/#{material.id}/curate/map")
 
       view |> element("#map-mode-focus") |> render_click()
       view |> element("#map-node-b1") |> render_click()
@@ -655,7 +655,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLiveTest do
     end
 
     test "explorar recentraliza e marca de onde veio", %{conn: conn, material: material} do
-      {:ok, view, _html} = live(conn, ~p"/adaptive-study/#{material.id}/curate/map")
+      {:ok, view, _html} = live(conn, ~p"/study/#{material.id}/curate/map")
 
       view |> element("#map-mode-focus") |> render_click()
       # a raiz é o centro, então não tem botão de explorar em si mesma
@@ -681,7 +681,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLiveTest do
       conn: conn,
       material: material
     } do
-      {:ok, view, _html} = live(conn, ~p"/adaptive-study/#{material.id}/curate/map")
+      {:ok, view, _html} = live(conn, ~p"/study/#{material.id}/curate/map")
 
       view |> element("#map-mode-focus") |> render_click()
       # centrado na raiz, não há para onde voltar
@@ -708,7 +708,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLiveTest do
       conn: conn,
       material: material
     } do
-      {:ok, view, _html} = live(conn, ~p"/adaptive-study/#{material.id}/curate/map")
+      {:ok, view, _html} = live(conn, ~p"/study/#{material.id}/curate/map")
 
       view |> element("#map-mode-focus") |> render_click()
       view |> element("#map-explore-b1") |> render_click()
@@ -725,7 +725,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLiveTest do
     end
 
     test "o botão de raiz só existe no foco", %{conn: conn, material: material} do
-      {:ok, view, _html} = live(conn, ~p"/adaptive-study/#{material.id}/curate/map")
+      {:ok, view, _html} = live(conn, ~p"/study/#{material.id}/curate/map")
 
       refute has_element?(view, "#map-focus-root-btn")
 
@@ -755,7 +755,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLiveTest do
           }
         })
 
-      {:ok, view, _html} = live(conn, ~p"/adaptive-study/#{material.id}/curate/map")
+      {:ok, view, _html} = live(conn, ~p"/study/#{material.id}/curate/map")
       legend = view |> element("#mindmap-legend") |> render()
 
       assert legend =~ "Conceito"
@@ -787,7 +787,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLiveTest do
           }
         })
 
-      {:ok, view, _html} = live(conn, ~p"/adaptive-study/#{material.id}/curate/map")
+      {:ok, view, _html} = live(conn, ~p"/study/#{material.id}/curate/map")
       card = view |> element("#map-node-root") |> render()
 
       # cor da prioridade e contraste do texto na mesma marca do ícone do tipo
@@ -801,7 +801,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLiveTest do
       conn: conn,
       material: material
     } do
-      {:ok, view, _html} = live(conn, ~p"/adaptive-study/#{material.id}/curate/map")
+      {:ok, view, _html} = live(conn, ~p"/study/#{material.id}/curate/map")
 
       # Sem as coordenadas do nó de entrada o JS não tem como abrir mirando nele
       # e cairia no enquadramento do mapa inteiro.
@@ -811,7 +811,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLiveTest do
     end
 
     test "fechar a gaveta no foco não desfaz a navegação", %{conn: conn, material: material} do
-      {:ok, view, _html} = live(conn, ~p"/adaptive-study/#{material.id}/curate/map")
+      {:ok, view, _html} = live(conn, ~p"/study/#{material.id}/curate/map")
 
       view |> element("#map-mode-focus") |> render_click()
       view |> element("#map-explore-b1") |> render_click()
@@ -827,7 +827,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLiveTest do
     end
 
     test "fecha a gaveta do nó", %{conn: conn, material: material} do
-      {:ok, view, _html} = live(conn, ~p"/adaptive-study/#{material.id}/curate/map")
+      {:ok, view, _html} = live(conn, ~p"/study/#{material.id}/curate/map")
 
       view |> element("#map-node-b2") |> render_click()
       assert has_element?(view, "#map-drawer-b2")

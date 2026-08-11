@@ -106,10 +106,10 @@ defmodule QuizProjectWeb.Router do
       live "/quiz/:quiz_id/manage", QuizManageLive
       live "/quiz/:quiz_id/evolution", QuizEvolutionLive
 
-      live "/adaptive-study", AdaptiveStudyLive.Index
-      live "/adaptive-study/new", AdaptiveStudyLive.Upload
-      live "/adaptive-study/:id/curate", AdaptiveStudyLive.Curate, :curate
-      live "/adaptive-study/:id/curate/map", AdaptiveStudyLive.Curate, :map
+      live "/study", AdaptiveStudyLive.Index
+      live "/study/new", AdaptiveStudyLive.Upload
+      live "/study/:id/curate", AdaptiveStudyLive.Curate, :curate
+      live "/study/:id/curate/map", AdaptiveStudyLive.Curate, :map
 
       # Leitura é seção própria: ciclo de vida, volume e estado não têm
       # interseção com a curadoria. `/new` vem antes de `/:id` porque o

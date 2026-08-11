@@ -88,7 +88,7 @@ defmodule QuizProjectWeb.Layouts do
 
         <.nav_item
           id="desktop-nav-adaptive-study"
-          navigate={~p"/adaptive-study"}
+          navigate={~p"/study"}
           icon="hero-academic-cap"
           label="Estudo Adaptativo"
           active?={@active_nav == :adaptive_study}
