@@ -104,7 +104,7 @@ defmodule QuizProjectWeb.QuizManageLive do
             ({format_decimal(attempt.percent)}%)
           </span>
           <.link
-            navigate={~p"/tentativa/#{attempt.id}/resultado"}
+            navigate={~p"/attempt/#{attempt.id}/result"}
             class="btn btn-sm btn-outline rounded-full"
             id={"view-attempt-#{attempt.id}"}
           >
@@ -225,13 +225,13 @@ defmodule QuizProjectWeb.QuizManageLive do
         {:ok,
          socket
          |> put_flash(:error, "Este quiz ainda não tem versão publicada.")
-         |> push_navigate(to: ~p"/painel")}
+         |> push_navigate(to: ~p"/dashboard")}
 
       {:error, _} ->
         {:ok,
          socket
          |> put_flash(:error, "Você não tem acesso a esse quiz.")
-         |> push_navigate(to: ~p"/painel")}
+         |> push_navigate(to: ~p"/dashboard")}
     end
   end
 
@@ -265,7 +265,7 @@ defmodule QuizProjectWeb.QuizManageLive do
   def handle_event("edit_new_version", _params, socket) do
     case Quizzes.ensure_draft(socket.assigns.quiz, socket.assigns.current_user) do
       {:ok, draft} ->
-        {:noreply, push_navigate(socket, to: ~p"/quiz/#{draft.id}/editar")}
+        {:noreply, push_navigate(socket, to: ~p"/quiz/#{draft.id}/edit")}
 
       {:error, _} ->
         {:noreply, put_flash(socket, :error, "Não foi possível criar o rascunho.")}

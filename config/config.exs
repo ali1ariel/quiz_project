@@ -57,9 +57,21 @@ config :quiz_project,
     QuizProject.Accounts,
     QuizProject.Quizzes,
     QuizProject.Attempts,
-    QuizProject.Notifications
+    QuizProject.Notifications,
+    QuizProject.AdaptiveStudy
   ],
   generators: [timestamp_type: :utc_datetime]
+
+# Modelo padrão de cada provedor de IA. Esta é a única fonte: `runtime.exs` só
+# sobrescreve quando a variável de ambiente existe, e `QuizProject.AI` lê daqui
+# sem fallback próprio — assim não há um segundo lugar para envelhecer.
+#
+# Trocar de modelo é editar estas três linhas e a tabela `@models` em
+# `lib/quiz_project/ai.ex`. O procedimento está em `priv/docs/modelos_de_ia.md`.
+config :quiz_project,
+  openai_model: "gpt-5.6-sol",
+  gemini_model: "gemini-3.6-flash",
+  anthropic_model: "claude-opus-5"
 
 # Configure the endpoint
 config :quiz_project, QuizProjectWeb.Endpoint,
@@ -85,6 +97,11 @@ config :phoenix_live_view,
 # For production it's recommended to configure a different adapter
 # at the `config/runtime.exs`.
 config :quiz_project, QuizProject.Mailer, adapter: Swoosh.Adapters.Local
+
+# Imagens dos livros ficam em disco, não no banco: são bytes estáticos, e servi-los
+# pelo Postgres gastaria uma conexão do pool por arquivo. Em produção o caminho
+# precisa apontar para um volume que sobreviva ao deploy (veja runtime.exs).
+config :quiz_project, :book_images_dir, Path.expand("priv/book_images")
 
 # Configure esbuild (the version is required)
 config :esbuild,

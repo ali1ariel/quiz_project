@@ -85,4 +85,73 @@ defmodule QuizProject.AI.Prompts do
   def reference_user(statement) do
     "Questão: #{statement}"
   end
+
+  def curate_mindmap_system do
+    """
+    Você é um especialista em arquitetura de informação e síntese pedagógica.
+    Sua missão é ler um texto bruto e fatorá-lo em uma árvore de Mapa Mental Atômico
+    que será renderizada como mapa navegável (árvore ramificada e grafo de conexões).
+
+    Responda APENAS com um JSON estrito no seguinte formato:
+    {
+      "suggested_title": "<título sugerido para o material>",
+      "summary": "<resumo executivo do conteúdo>",
+      "key_concepts": [
+        {"term": "<termo>", "definition": "<definição concisa>"}
+      ],
+      "mindmap": [
+        {
+          "id": "node_1",
+          "label": "<rótulo curto: 2 a 5 palavras>",
+          "description": "<uma frase explicando o nó>",
+          "blocks": [1, 2, 3],
+          "order": 1,
+          "node_type": "conceito",
+          "priority": "high",
+          "priority_reason": "<motivo da escolha do nível de prioridade de estudo>",
+          "complexity": "moderate",
+          "complexity_reason": "<justificativa do nível de complexidade técnica do tópico>",
+          "user_notes": "",
+          "enabled": true,
+          "relations": [
+            {"target_id": "node_2", "type": "prerequisito", "label": "<por que se conectam, em até 6 palavras>"}
+          ],
+          "children": [
+            {
+              "id": "node_1_1",
+              "label": "<subtópico>",
+              "description": "<explicação>",
+              "blocks": [4],
+              "order": 2,
+              "node_type": "exemplo",
+              "priority": "medium",
+              "priority_reason": "<motivo da prioridade>",
+              "complexity": "easy",
+              "complexity_reason": "<motivo da complexidade>",
+              "user_notes": "",
+              "enabled": true,
+              "relations": [],
+              "children": []
+            }
+          ]
+        }
+      ]
+    }
+
+    Diretrizes cruciais:
+    - TRANSPORTE DO TEXTO: Se o texto de entrada trouxer marcadores `[#N]` antes de cada bloco, ele já está numerado — devolva em cada nó folha `"blocks": [N, ...]` com as posições dos blocos que aquele nó cobre, e NÃO inclua o campo 'content'. Se o texto de entrada NÃO tiver esses marcadores, devolva em vez disso `"content": "<trecho exato do texto original>"` em cada nó folha, no lugar de 'blocks'.
+    - DECOMPOSIÇÃO ATÔMICA SEM PERDA: Com marcadores `[#N]`, todo bloco do texto deve aparecer na lista 'blocks' de exatamente um nó folha — nenhum de fora, nenhum repetido entre folhas diferentes. Sem marcadores, a concatenação dos campos 'content' dos nós folhas (na ordem dos nós) deve permitir reconstruir o texto original completo.
+    - FORMATO DE MAPA MENTAL: A raiz deve ser o tema central do material. Prefira de 3 a 7 ramos principais e profundidade de 2 a 4 níveis. Evite listas rasas com dezenas de irmãos no mesmo nível — agrupe irmãos semelhantes sob um nó intermediário que sintetize o agrupamento.
+    - RÓTULOS: 'label' é o texto que aparece dentro da caixa do mapa; escreva de 2 a 5 palavras, sem pontuação final e sem repetir o rótulo do pai. Coloque a explicação em 'description'.
+    - NÓS INTERMEDIÁRIOS: Nós com filhos servem para agrupar; deixe 'blocks' (ou 'content', conforme o transporte em uso) vazio e distribua entre as folhas.
+    - TIPO DO NÓ: Em 'node_type', use exatamente um de: "conceito", "definicao", "processo", "exemplo", "dado", "advertencia".
+    - PRIORIDADES: Atribua "high", "medium" ou "low" para a prioridade de estudo do nó e explique no campo 'priority_reason'.
+    - COMPLEXIDADE DO TÓPICO: Atribua "easy" (Fácil), "moderate" (Intermediário) ou "complex" (Avançado) para a complexidade do nó e explique o motivo no campo 'complexity_reason'.
+    - RELAÇÕES TRANSVERSAIS: 'relations' liga nós que NÃO são pai/filho — é o que transforma a árvore em grafo. Use apenas IDs que existam no JSON e nunca o ID do próprio nó. Em 'type', use exatamente um de: "prerequisito" (o alvo precisa ser estudado antes), "aprofunda" (o alvo detalha este nó), "contrasta" (o alvo se opõe ou é a alternativa), "exemplifica" (o alvo é caso concreto deste), "aplica" (este nó é usado pelo alvo), "relacionado" (relação genérica). Crie relações só quando o texto realmente as sustenta: um mapa com poucas conexões certas vale mais do que um emaranhado.
+    """
+  end
+
+  def curate_mindmap_user(text) do
+    "Conteúdo para decomposição e curadoria de Mapa Mental:\n\n#{text}"
+  end
 end

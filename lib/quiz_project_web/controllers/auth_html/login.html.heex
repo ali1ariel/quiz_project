@@ -3,14 +3,14 @@
     <h1 class="text-2xl font-bold text-center mb-1">Entrar</h1>
     <p class="text-center text-sm opacity-70 mb-6">
       Não tem conta?
-      <.link navigate={~p"/criar-conta"} class="link link-primary">Crie uma agora</.link>
+      <.link navigate={~p"/register"} class="link link-primary">Crie uma agora</.link>
     </p>
 
     <div :if={@error} class="alert alert-error rounded-2xl mb-4 text-sm" id="login-error">
       {@error}
     </div>
 
-    <form method="post" action={~p"/entrar"} class="space-y-4" id="login-form">
+    <form method="post" action={~p"/login"} class="space-y-4" id="login-form">
       <input type="hidden" name="_csrf_token" value={Plug.CSRFProtection.get_csrf_token()} />
       <div>
         <label class="label text-sm mb-1" for="login-email">E-mail</label>

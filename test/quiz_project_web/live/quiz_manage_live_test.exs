@@ -26,7 +26,7 @@ defmodule QuizProjectWeb.QuizManageLiveTest do
   end
 
   test "mostra link público e abas", %{conn: conn, quiz: quiz} do
-    {:ok, view, html} = live(conn, ~p"/quiz/#{quiz.id}/gerenciar")
+    {:ok, view, html} = live(conn, ~p"/quiz/#{quiz.id}/manage")
 
     assert html =~ quiz.public_slug
     assert has_element?(view, "#manage-tab-attempts")
@@ -37,7 +37,7 @@ defmodule QuizProjectWeb.QuizManageLiveTest do
   test "anula questão com motivo", %{conn: conn, quiz: quiz, published: published} do
     [question] = published.questions
 
-    {:ok, view, _html} = live(conn, ~p"/quiz/#{quiz.id}/gerenciar")
+    {:ok, view, _html} = live(conn, ~p"/quiz/#{quiz.id}/manage")
 
     view |> element("#manage-tab-questions") |> render_click()
     view |> element("#annul-#{question.id}") |> render_click()
@@ -70,7 +70,7 @@ defmodule QuizProjectWeb.QuizManageLiveTest do
 
     {:ok, _} = Attempts.finalize(attempt, force: true)
 
-    {:ok, view, _html} = live(conn, ~p"/quiz/#{quiz.id}/gerenciar")
+    {:ok, view, _html} = live(conn, ~p"/quiz/#{quiz.id}/manage")
 
     assert render(view) =~ "Visitante Anônimo"
     assert has_element?(view, "#view-attempt-#{attempt.id}")
@@ -78,7 +78,7 @@ defmodule QuizProjectWeb.QuizManageLiveTest do
   end
 
   test "histórico mostra changelog", %{conn: conn, quiz: quiz} do
-    {:ok, view, _html} = live(conn, ~p"/quiz/#{quiz.id}/gerenciar")
+    {:ok, view, _html} = live(conn, ~p"/quiz/#{quiz.id}/manage")
 
     view |> element("#manage-tab-versions") |> render_click()
 
@@ -88,7 +88,7 @@ defmodule QuizProjectWeb.QuizManageLiveTest do
   test "quiz sem publicação redireciona ao painel", %{conn: conn, user: user} do
     {:ok, draft} = Quizzes.create_draft_quiz(user)
 
-    assert {:error, {:live_redirect, %{to: "/painel"}}} =
-             live(conn, ~p"/quiz/#{draft.quiz_id}/gerenciar")
+    assert {:error, {:live_redirect, %{to: "/dashboard"}}} =
+             live(conn, ~p"/quiz/#{draft.quiz_id}/manage")
   end
 end

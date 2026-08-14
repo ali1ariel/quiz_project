@@ -28,7 +28,39 @@ defmodule QuizProject.Notifications do
         body:
           "Você fez #{format_decimal(attempt.score)}/#{format_decimal(attempt.max_score)} pontos " <>
             "(#{format_decimal(attempt.percent)}%).",
-        path: "/tentativa/#{attempt.id}/resultado"
+        path: "/attempt/#{attempt.id}/result"
+      },
+      authorize?: false
+    )
+    |> Ash.create!()
+  end
+
+  @doc "Registra a notificação de Mapa Mental concluído para o usuário."
+  def notify_mindmap_generated(material) do
+    Notification
+    |> Ash.Changeset.for_create(
+      :create,
+      %{
+        user_id: material.user_id,
+        title: "Mapa Mental gerado: \"#{material.title}\"",
+        body: "O conteúdo foi decomposto em um Mapa Mental atômico. Clique para ver a curadoria.",
+        path: "/study/#{material.id}/curate"
+      },
+      authorize?: false
+    )
+    |> Ash.create!()
+  end
+
+  @doc "Registra a notificação de falha no processamento do Mapa Mental."
+  def notify_mindmap_failed(material) do
+    Notification
+    |> Ash.Changeset.for_create(
+      :create,
+      %{
+        user_id: material.user_id,
+        title: "Falha ao gerar Mapa Mental",
+        body: "Ocorreu um erro no processamento por IA do material \"#{material.title}\".",
+        path: "/study"
       },
       authorize?: false
     )

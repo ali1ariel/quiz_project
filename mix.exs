@@ -73,7 +73,12 @@ defmodule QuizProject.MixProject do
       {:jason, "~> 1.2"},
       {:dns_cluster, "~> 0.2.0"},
       {:bandit, "~> 1.5"},
-      {:chromic_pdf, "~> 1.17"}
+      {:chromic_pdf, "~> 1.17"},
+      {:mdex, "~> 0.13"},
+      # Ingestão de EPUB: `sweet_xml` lê container.xml/OPF/NCX e `floki` converte
+      # o XHTML dos capítulos em blocos. O `lazy_html` acima é `only: :test`.
+      {:sweet_xml, "~> 0.7"},
+      {:floki, "~> 0.36"}
     ]
   end
 

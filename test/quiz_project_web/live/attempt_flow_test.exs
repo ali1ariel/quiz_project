@@ -61,7 +61,7 @@ defmodule QuizProjectWeb.AttemptFlowTest do
     |> render_submit()
 
     {path, _flash} = assert_redirect(view)
-    assert path =~ ~r{^/tentativa/}
+    assert path =~ ~r{^/attempt/}
 
     {:ok, attempt_view, _html} = live(conn, path)
     {conn, attempt_view, path}
@@ -126,7 +126,7 @@ defmodule QuizProjectWeb.AttemptFlowTest do
     view |> element("#finalize-forced") |> render_click()
 
     {result_path, _flash} = assert_redirect(view)
-    assert result_path =~ ~r{/resultado$}
+    assert result_path =~ ~r{/result$}
 
     # resultado: correção aparece, pendente virou "não sei"
     {:ok, result_view, result_html} = live(conn, result_path)
@@ -243,7 +243,7 @@ defmodule QuizProjectWeb.AttemptFlowTest do
     |> Ash.Changeset.for_update(:start_processing, %{}, authorize?: false)
     |> Ash.update!()
 
-    {:ok, view, html} = live(conn, ~p"/tentativa/#{attempt.id}/resultado")
+    {:ok, view, html} = live(conn, ~p"/attempt/#{attempt.id}/result")
 
     assert has_element?(view, "#processing-result")
     assert html =~ "Corrigindo suas respostas"
@@ -321,14 +321,14 @@ defmodule QuizProjectWeb.AttemptFlowTest do
     # o endpoint do card responde uma imagem PNG (em teste, sem Chrome, cai no
     # fallback estático — mas ainda assim 200 com image/png)
     id = result_path |> String.split("/") |> Enum.at(2)
-    png_conn = get(build_conn(), "/tentativa/#{id}/og.png")
+    png_conn = get(build_conn(), "/attempt/#{id}/og.png")
     assert get_resp_header(png_conn, "content-type") |> hd() =~ "image/png"
     png = response(png_conn, 200)
     assert String.starts_with?(png, <<137, 80, 78, 71>>)
   end
 
   test "card de preview responde PNG mesmo para tentativa inexistente (fallback)", %{} do
-    conn = get(build_conn(), "/tentativa/#{Ecto.UUID.generate()}/og.png")
+    conn = get(build_conn(), "/attempt/#{Ecto.UUID.generate()}/og.png")
     assert get_resp_header(conn, "content-type") |> hd() =~ "image/png"
     assert String.starts_with?(response(conn, 200), <<137, 80, 78, 71>>)
   end

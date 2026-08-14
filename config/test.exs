@@ -11,6 +11,12 @@ config :quiz_project, :ai_provider, QuizProject.AI.Fake
 # dependência do sandbox de conexões)
 config :quiz_project, :jobs_mode, :inline
 
+# Cada execução da suíte escreve imagem num diretório temporário próprio, para
+# não sujar priv/ nem herdar arquivo de uma execução anterior.
+config :quiz_project,
+       :book_images_dir,
+       Path.join([System.tmp_dir!(), "quiz_project_test", "book_images"])
+
 # Configure your database
 #
 # The MIX_TEST_PARTITION environment variable can be used

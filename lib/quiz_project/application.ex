@@ -7,6 +7,8 @@ defmodule QuizProject.Application do
 
   @impl true
   def start(_type, _args) do
+    ensure_book_images_dir!()
+
     children =
       [
         QuizProjectWeb.Telemetry,
@@ -34,6 +36,26 @@ defmodule QuizProject.Application do
   def config_change(changed, _new, removed) do
     QuizProjectWeb.Endpoint.config_change(changed, removed)
     :ok
+  end
+
+  # As imagens dos livros são o único estado em disco (ver ImageStore). Se o
+  # volume persistente não estiver montado em produção, é melhor a aplicação
+  # não subir do que subir e falhar só no primeiro upload de um usuário.
+  defp ensure_book_images_dir! do
+    dir = Application.fetch_env!(:quiz_project, :book_images_dir)
+
+    case File.mkdir_p(dir) do
+      :ok ->
+        probe = Path.join(dir, ".write_check")
+
+        case File.write(probe, "") do
+          :ok -> File.rm(probe)
+          {:error, reason} -> raise "BOOK_IMAGES_DIR (#{dir}) não é gravável: #{:file.format_error(reason)}"
+        end
+
+      {:error, reason} ->
+        raise "BOOK_IMAGES_DIR (#{dir}) inacessível: #{:file.format_error(reason)}"
+    end
   end
 
   # Chrome headless para gerar os cards de preview (Open Graph). Desligado em

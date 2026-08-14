@@ -26,7 +26,7 @@ defmodule QuizProjectWeb.QuizEvolutionLive do
       wide
     >
       <div class="flex items-center gap-3 flex-wrap">
-        <.link navigate={~p"/painel"} class="btn btn-sm btn-ghost rounded-full">
+        <.link navigate={~p"/dashboard"} class="btn btn-sm btn-ghost rounded-full">
           <.icon name="hero-arrow-left" class="size-4" /> Voltar
         </.link>
         <h1 class="text-2xl font-bold truncate">{@quiz_name}</h1>
@@ -266,7 +266,7 @@ defmodule QuizProjectWeb.QuizEvolutionLive do
       {:ok,
        socket
        |> put_flash(:error, "Você ainda não finalizou nenhuma tentativa nesse quiz.")
-       |> push_navigate(to: ~p"/painel")}
+       |> push_navigate(to: ~p"/dashboard")}
     else
       {:ok,
        socket

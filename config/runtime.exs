@@ -20,16 +20,40 @@ if System.get_env("PHX_SERVER") do
   config :quiz_project, QuizProjectWeb.Endpoint, server: true
 end
 
+# As imagens dos livros são o único estado em disco da aplicação. Em produção o
+# release fica em diretório recriado a cada deploy, então BOOK_IMAGES_DIR precisa
+# apontar para um volume persistente; sem ele, os livros já enviados perderiam as
+# figuras no próximo deploy e só voltariam com uma reingestão.
+if config_env() == :prod do
+  config :quiz_project,
+         :book_images_dir,
+         System.get_env("BOOK_IMAGES_DIR") || "/var/lib/quiz_project/book_images"
+end
+
 # Integração com IA: as API keys vêm de variáveis de ambiente do sistema
 # (não por usuário no protótipo). AI_PROVIDER escolhe explicitamente
-# ("openai", "gemini" ou "fake"); sem ela, usa o primeiro provider com chave
-# configurada, caindo no Fake (heurística local) se não houver nenhuma.
+# ("openai", "gemini", "claude" ou "fake"); sem ela, usa o primeiro provider com
+# chave configurada, caindo no Fake (heurística local) se não houver nenhuma.
 if config_env() != :test do
+  openai_key = System.get_env("OPENAI_API_KEY") || System.get_env("OPEN_AI_KEY")
+  anthropic_key = System.get_env("ANTHROPIC_API_KEY")
+
   config :quiz_project,
-    openai_api_key: System.get_env("OPENAI_API_KEY"),
-    openai_model: System.get_env("OPENAI_MODEL", "gpt-5.5"),
+    openai_api_key: openai_key,
     gemini_api_key: System.get_env("GEMINI_API_KEY"),
-    gemini_model: System.get_env("GEMINI_MODEL", "gemini-2.0-flash")
+    anthropic_api_key: anthropic_key
+
+  # Só sobrescreve o que veio do ambiente: o padrão de cada modelo mora em
+  # `config.exs`, e repeti-lo aqui criaria dois lugares para desatualizar.
+  for {var, chave} <- [
+        {"OPENAI_MODEL", :openai_model},
+        {"GEMINI_MODEL", :gemini_model},
+        {"ANTHROPIC_MODEL", :anthropic_model}
+      ],
+      valor = System.get_env(var),
+      valor != "" do
+    config :quiz_project, [{chave, valor}]
+  end
 
   ai_provider =
     case System.get_env("AI_PROVIDER") do
@@ -39,18 +63,24 @@ if config_env() != :test do
       "gemini" ->
         QuizProject.AI.Gemini
 
+      provider when provider in ["claude", "anthropic"] ->
+        QuizProject.AI.Claude
+
       "fake" ->
         QuizProject.AI.Fake
 
       nil ->
+        # Claude entra por último na detecção automática para que quem já tinha
+        # OPENAI_API_KEY ou GEMINI_API_KEY exportada continue no mesmo provider.
         cond do
-          System.get_env("OPENAI_API_KEY") not in [nil, ""] -> QuizProject.AI.OpenAI
+          openai_key not in [nil, ""] -> QuizProject.AI.OpenAI
           System.get_env("GEMINI_API_KEY") not in [nil, ""] -> QuizProject.AI.Gemini
+          anthropic_key not in [nil, ""] -> QuizProject.AI.Claude
           true -> QuizProject.AI.Fake
         end
 
       other ->
-        raise "AI_PROVIDER inválido: #{inspect(other)}. Use \"openai\", \"gemini\" ou \"fake\"."
+        raise "AI_PROVIDER inválido: #{inspect(other)}. Use \"openai\", \"gemini\", \"claude\" ou \"fake\"."
     end
 
   config :quiz_project, ai_provider: ai_provider

@@ -50,7 +50,10 @@ defmodule QuizProjectWeb.OgImage do
     times =
       Enum.map(1..n, fn i ->
         {micros, result} = :timer.tc(fn -> result_png(id, cache: false) end)
-        tag = with {:ok, png} <- result, do: "ok #{byte_size(png)}b", else: (other -> inspect(other))
+
+        tag =
+          with {:ok, png} <- result, do: "ok #{byte_size(png)}b", else: (other -> inspect(other))
+
         IO.puts("#{i}/#{n}: #{div(micros, 1000)}ms (#{tag})")
         micros
       end)

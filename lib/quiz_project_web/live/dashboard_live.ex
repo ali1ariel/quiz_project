@@ -106,7 +106,7 @@ defmodule QuizProjectWeb.DashboardLive do
             <.link
               :if={published_version(quiz)}
               id={"manage-quiz-#{quiz.id}"}
-              navigate={~p"/quiz/#{quiz.id}/gerenciar"}
+              navigate={~p"/quiz/#{quiz.id}/manage"}
               class="btn btn-sm btn-outline rounded-full"
             >
               Respostas e versões
@@ -154,7 +154,7 @@ defmodule QuizProjectWeb.DashboardLive do
             <.link
               :if={group.has_stats}
               id={"quiz-stats-#{group.quiz_id}"}
-              navigate={~p"/quiz/#{group.quiz_id}/evolucao"}
+              navigate={~p"/quiz/#{group.quiz_id}/evolution"}
               class="btn btn-xs btn-outline rounded-full ml-auto"
             >
               <.icon name="hero-chart-bar" class="size-3" /> Ver estatísticas
@@ -226,21 +226,21 @@ defmodule QuizProjectWeb.DashboardLive do
               <div class="flex gap-2">
                 <.link
                   :if={attempt.status == :finished}
-                  navigate={~p"/tentativa/#{attempt.id}/resultado"}
+                  navigate={~p"/attempt/#{attempt.id}/result"}
                   class="btn btn-sm btn-outline rounded-full"
                 >
                   Ver resultado
                 </.link>
                 <.link
                   :if={attempt.status == :processing}
-                  navigate={~p"/tentativa/#{attempt.id}/resultado"}
+                  navigate={~p"/attempt/#{attempt.id}/result"}
                   class="btn btn-sm btn-outline rounded-full"
                 >
                   Acompanhar correção
                 </.link>
                 <.link
                   :if={attempt.status == :in_progress}
-                  navigate={~p"/tentativa/#{attempt.id}"}
+                  navigate={~p"/attempt/#{attempt.id}"}
                   class="btn btn-sm btn-primary rounded-full"
                 >
                   Continuar
@@ -511,7 +511,7 @@ defmodule QuizProjectWeb.DashboardLive do
 
   def handle_event("create_quiz", _params, socket) do
     {:ok, version} = Quizzes.create_draft_quiz(socket.assigns.current_user)
-    {:noreply, push_navigate(socket, to: ~p"/quiz/#{version.id}/editar")}
+    {:noreply, push_navigate(socket, to: ~p"/quiz/#{version.id}/edit")}
   end
 
   def handle_event("toggle_active", %{"quiz-id" => quiz_id}, socket) do
@@ -536,7 +536,7 @@ defmodule QuizProjectWeb.DashboardLive do
 
     case Quizzes.ensure_draft(quiz, socket.assigns.current_user) do
       {:ok, draft} ->
-        {:noreply, push_navigate(socket, to: ~p"/quiz/#{draft.id}/editar")}
+        {:noreply, push_navigate(socket, to: ~p"/quiz/#{draft.id}/edit")}
 
       {:error, _} ->
         {:noreply, put_flash(socket, :error, "Não foi possível abrir o quiz para edição.")}
@@ -588,7 +588,7 @@ defmodule QuizProjectWeb.DashboardLive do
         {:noreply,
          socket
          |> put_flash(:info, "Quiz importado como rascunho. Revise antes de publicar.")
-         |> push_navigate(to: ~p"/quiz/#{version.id}/editar")}
+         |> push_navigate(to: ~p"/quiz/#{version.id}/edit")}
 
       {:error, errors} when is_list(errors) ->
         {:noreply, assign(socket, import_preview: nil, import_errors: errors)}

@@ -9,14 +9,14 @@ defmodule QuizProject.AI.OpenAI do
 
   @impl true
   def generate_tags(statement) do
-    with {:ok, body} <- chat(Prompts.tags_system(), Prompts.tags_user(statement)) do
+    with {:ok, body, _usage} <- chat(Prompts.tags_system(), Prompts.tags_user(statement)) do
       parse_tags(body)
     end
   end
 
   @impl true
   def grade_text_answer(statement, reference, answer) do
-    with {:ok, body} <-
+    with {:ok, body, _usage} <-
            chat(Prompts.grade_system(), Prompts.grade_user(statement, reference, answer)) do
       parse_grade(body)
     end
@@ -24,17 +24,31 @@ defmodule QuizProject.AI.OpenAI do
 
   @impl true
   def generate_reference(statement) do
-    with {:ok, body} <- chat(Prompts.reference_system(), Prompts.reference_user(statement)) do
+    with {:ok, body, _usage} <-
+           chat(Prompts.reference_system(), Prompts.reference_user(statement)) do
       parse_reference(body)
     end
   end
 
   @impl true
   def evaluate_progression(summary) do
-    with {:ok, body} <- chat(Prompts.progression_system(), Prompts.progression_user(summary)) do
+    with {:ok, body, _usage} <-
+           chat(Prompts.progression_system(), Prompts.progression_user(summary)) do
       parse_evaluation(body)
     end
   end
+
+  @impl true
+  def curate_mindmap(text, opts \\ []) do
+    with {:ok, body, usage} <-
+           chat(Prompts.curate_mindmap_system(), Prompts.curate_mindmap_user(text), opts),
+         {:ok, resultado} <- parse_mindmap(body) do
+      {:ok, resultado, usage}
+    end
+  end
+
+  def parse_mindmap(map) when is_map(map), do: {:ok, map}
+  def parse_mindmap(other), do: {:error, {:unexpected_response, other}}
 
   def parse_tags(%{"tags" => tags}) when is_list(tags) do
     {:ok, tags |> Enum.filter(&is_binary/1) |> Enum.take(4)}
@@ -60,13 +74,20 @@ defmodule QuizProject.AI.OpenAI do
 
   def parse_evaluation(other), do: {:error, {:unexpected_response, other}}
 
-  defp chat(system, user) do
+  require Logger
+
+  defp chat(system, user, opts \\ []) do
     api_key = Application.get_env(:quiz_project, :openai_api_key)
 
     if is_nil(api_key) or api_key == "" do
+      Logger.error(
+        "[AI.OpenAI] Chave de API ausente! Verifique as variáveis OPENAI_API_KEY ou OPEN_AI_KEY."
+      )
+
       {:error, :missing_api_key}
     else
-      model = Application.get_env(:quiz_project, :openai_model, "gpt-5.5")
+      model = Keyword.get(opts, :model) || Application.get_env(:quiz_project, :openai_model)
+      Logger.info("[AI.OpenAI] Enviando requisição para OpenAI (modelo: #{model})...")
 
       request =
         Req.new(
@@ -81,19 +102,25 @@ defmodule QuizProject.AI.OpenAI do
                 %{role: "user", content: user}
               ]
             },
-            receive_timeout: 60_000
+            receive_timeout: :infinity
           ] ++ Application.get_env(:quiz_project, :ai_req_options, [])
         )
 
       case Req.post(request) do
         {:ok, %Req.Response{status: 200, body: body}} ->
+          Logger.info("[AI.OpenAI] Resposta HTTP 200 recebida com sucesso da OpenAI.")
           content = get_in(body, ["choices", Access.at(0), "message", "content"])
-          decode_json_content(content)
+
+          with {:ok, mapa} <- decode_json_content(content) do
+            {:ok, mapa, usage(body)}
+          end
 
         {:ok, %Req.Response{status: status, body: body}} ->
+          Logger.error("[AI.OpenAI] Erro HTTP #{status} retornado pela OpenAI: #{inspect(body)}")
           {:error, {:http_error, status, body}}
 
         {:error, reason} ->
+          Logger.error("[AI.OpenAI] Erro de conexão/rede na chamada OpenAI: #{inspect(reason)}")
           {:error, reason}
       end
     end
@@ -107,4 +134,11 @@ defmodule QuizProject.AI.OpenAI do
   end
 
   defp decode_json_content(other), do: {:error, {:unexpected_response, other}}
+
+  defp usage(%{"usage" => %{"prompt_tokens" => entrada, "completion_tokens" => saida}})
+       when is_integer(entrada) and is_integer(saida) do
+    %{input: entrada, output: saida}
+  end
+
+  defp usage(_body), do: nil
 end
