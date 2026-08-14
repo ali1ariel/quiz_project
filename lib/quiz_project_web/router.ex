@@ -70,6 +70,8 @@ defmodule QuizProjectWeb.Router do
 
     patch "/questions/:id", QuestionController, :update
     delete "/questions/:id", QuestionController, :delete
+
+    post "/study/import", StudyController, :import
   end
 
   scope "/api", QuizProjectWeb do

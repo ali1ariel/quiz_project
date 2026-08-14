@@ -5,7 +5,7 @@ defmodule QuizProject.Accounts do
 
   alias QuizProject.Accounts.ApiToken
 
-  @api_scopes ["quizzes:read", "quizzes:write", "quizzes:publish"]
+  @api_scopes ["quizzes:read", "quizzes:write", "quizzes:publish", "study:write"]
 
   resources do
     resource QuizProject.Accounts.User do

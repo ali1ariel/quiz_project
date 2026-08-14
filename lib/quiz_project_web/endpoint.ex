@@ -45,9 +45,14 @@ defmodule QuizProjectWeb.Endpoint do
   plug Plug.RequestId
   plug Plug.Telemetry, event_prefix: [:phoenix, :endpoint]
 
+  # `length` bem acima do padrão (8MB) porque POST /api/v1/study/import sobe
+  # um bundle de livro inteiro — um técnico ilustrado passa de 20MB só de
+  # imagem. Vale para todas as rotas, mas a única mutação sem porte pequeno é
+  # essa, e ela já exige token de API.
   plug Plug.Parsers,
     parsers: [:urlencoded, :multipart, :json],
     pass: ["*/*"],
+    length: 150_000_000,
     json_decoder: Phoenix.json_library()
 
   plug Plug.MethodOverride
