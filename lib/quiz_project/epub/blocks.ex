@@ -359,7 +359,12 @@ defmodule QuizProject.Epub.Blocks do
   # `div id="p5"` com dois parágrafos produziria dois blocos com a mesma chave.
   # Só o primeiro fica com o id; a chave `(capítulo, source_id)` continua única e
   # os demais se localizam por `position`.
-  defp drop_repeated_source_ids(blocks) do
+  #
+  # Público porque a ingestão reaplica a mesma regra ao juntar blocos de
+  # arquivos diferentes num capítulo só (fragmento de seção sem sumário nem
+  # cabeçalho próprio): cada arquivo já chega deduplicado, mas dois arquivos
+  # podem repetir o mesmo id de contêiner (`p1`, `p2`, ...) entre si.
+  def drop_repeated_source_ids(blocks) do
     {reversed, _seen} =
       Enum.reduce(blocks, {[], MapSet.new()}, fn block, {acc, seen} ->
         cond do

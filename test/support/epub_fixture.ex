@@ -49,6 +49,20 @@ defmodule QuizProject.EpubFixture do
     })
   end
 
+  @doc """
+  Pacote com um fragmento de seção no meio do spine: arquivo próprio, sem
+  entrada no sumário e sem cabeçalho — como a editora que quebra uma seção em
+  vários arquivos por motivo de produção (trecho de código isolado, quebra de
+  página). É o caso que a ingestão precisa juntar ao capítulo anterior em vez
+  de tratar como capítulo novo.
+  """
+  def build_with_continuation_split do
+    build(%{
+      "OEBPS/content.opf" => opf_with_continuation_split(),
+      "OEBPS/Text/chapter-1-cont.xhtml" => chapter_one_continuation()
+    })
+  end
+
   @doc "Pacote com DRM: o capítulo do spine aparece cifrado no `encryption.xml`."
   def build_drm do
     build(%{"META-INF/encryption.xml" => encryption("OEBPS/Text/chapter-1.xhtml")})
@@ -145,6 +159,44 @@ defmodule QuizProject.EpubFixture do
       <spine toc="ncx">
         <itemref idref="copyright"/>
         <itemref idref="chapter-1"/>
+        <itemref idref="chapter-2"/>
+        <itemref idref="index"/>
+      </spine>
+      <guide>
+        <reference href="Text/copyright.xhtml" title="Copyright" type="copyright-page"/>
+      </guide>
+    </package>
+    """
+  end
+
+  defp opf_with_continuation_split do
+    """
+    <?xml version="1.0" encoding="utf-8"?>
+    <package xmlns="http://www.idpf.org/2007/opf" unique-identifier="pub-id" version="2.0">
+      <metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf">
+        <dc:title>Tratado das Coisas Pequenas</dc:title>
+        <dc:creator>Ana Ribeiro</dc:creator>
+        <dc:language>pt-BR</dc:language>
+        <dc:identifier id="pub-id">urn:isbn:9780000000001</dc:identifier>
+      </metadata>
+      <manifest>
+        <item href="Text/copyright.xhtml" id="copyright" media-type="application/xhtml+xml"/>
+        <item href="Text/chapter-1.xhtml" id="chapter-1" media-type="application/xhtml+xml"/>
+        <item href="Text/chapter-1-cont.xhtml" id="P70010000000000000000000068F" media-type="application/xhtml+xml"/>
+        <item href="Text/chapter-2.xhtml" id="chapter-2" media-type="application/xhtml+xml"/>
+        <item href="Text/index.xhtml" id="index" media-type="application/xhtml+xml"/>
+        <item href="Styles/style.css" id="css" media-type="text/css"/>
+        <item href="Fonts/mono.woff2" id="mono" media-type="font/woff2"/>
+        <item href="Images/parafuso.png" id="img-parafuso" media-type="image/png"/>
+        <item href="Images/equacao.png" id="img-equacao" media-type="image/png"/>
+        <item href="Images/captura.png" id="img-captura" media-type="image/png"/>
+        <item href="Images/nao-referenciada.png" id="img-sobra" media-type="image/png"/>
+        <item href="toc.ncx" id="ncx" media-type="application/x-dtbncx+xml"/>
+      </manifest>
+      <spine toc="ncx">
+        <itemref idref="copyright"/>
+        <itemref idref="chapter-1"/>
+        <itemref idref="P70010000000000000000000068F"/>
         <itemref idref="chapter-2"/>
         <itemref idref="index"/>
       </spine>
@@ -392,6 +444,16 @@ defmodule QuizProject.EpubFixture do
     <div class="figure-container" id="p8">
       <img alt="Tela da bancada" src="../Images/captura.png"/>
       <h5 class="figure-container-h5">Figura 1.2 A bancada montada</h5>
+    </div>
+    """)
+  end
+
+  defp chapter_one_continuation do
+    page("""
+    <div class="listing-container" id="p1">
+      <div class="code-area-container">
+        <pre class="code-area">rosca.passo</pre>
+      </div>
     </div>
     """)
   end

@@ -101,9 +101,10 @@ defmodule QuizProject.Epub do
 
     {chapters, _position, _index} =
       Enum.reduce(package.spine, {[], 1, 1}, fn item, {acc, position, index} ->
-        {chapter, next_position} = chapter(files, package, toc, item, index, position)
-        on_chapter.({index, total, chapter.title})
-        {[chapter | acc], next_position, index + 1}
+        {chapter, next_position, continuation?} = chapter(files, package, toc, item, index, position)
+        new_acc = merge_or_prepend(acc, chapter, continuation?)
+        on_chapter.({index, total, hd(new_acc).title})
+        {new_acc, next_position, index + 1}
       end)
 
     chapters =
@@ -139,24 +140,25 @@ defmodule QuizProject.Epub do
         :error -> {[], position}
       end
 
+    chapter_kind = kind(item, manifest_item, package, entry)
+    heading = Enum.find(blocks, &(&1.type == :heading))
+
     chapter = %Chapter{
       source_id: item.idref,
       href: manifest_item.href,
-      title: chapter_title(entry, blocks, item.idref),
+      title: chapter_title(entry, heading, item.idref),
       position: index,
       level: (entry && entry.level) || 1,
-      kind: kind(item, manifest_item, package, entry),
+      kind: chapter_kind,
       blocks: blocks
     }
 
-    {chapter, next_position}
+    {chapter, next_position, continuation?(chapter_kind, entry, heading)}
   end
 
   # O sumário é a melhor fonte de título; sem ele, o primeiro cabeçalho do
   # próprio capítulo; sem nenhum dos dois, o id do spine, que ao menos é único.
-  defp chapter_title(entry, blocks, idref) do
-    heading = Enum.find(blocks, &(&1.type == :heading))
-
+  defp chapter_title(entry, heading, idref) do
     cond do
       entry && entry.title != "" -> entry.title
       heading -> Block.heading_text(heading)
@@ -167,6 +169,22 @@ defmodule QuizProject.Epub do
   defp humanize(idref) do
     idref |> String.replace(~r/[-_]+/, " ") |> String.trim() |> :string.titlecase()
   end
+
+  # Algumas editoras quebram uma seção em vários arquivos do spine por motivo
+  # de produção (um trecho de código isolado, uma quebra de página), sem que
+  # isso signifique conteúdo novo: o item não aparece no sumário e não abre
+  # com cabeçalho próprio. Sem essa distinção, cada fragmento vira um
+  # "capítulo" de um bloco só cujo título é o id interno do spine (algo como
+  # "P700101801700000000000000000068F").
+  defp continuation?(:body, entry, heading), do: is_nil(entry) and is_nil(heading)
+  defp continuation?(_kind, _entry, _heading), do: false
+
+  defp merge_or_prepend([%Chapter{kind: :body} = previous | rest], chapter, true) do
+    merged = Blocks.drop_repeated_source_ids(previous.blocks ++ chapter.blocks)
+    [%{previous | blocks: merged} | rest]
+  end
+
+  defp merge_or_prepend(acc, chapter, _continuation?), do: [chapter | acc]
 
   # Página de sumário impresso do próprio livro (o "Text/contents.html" ou
   # "Table of Contents" que a editora inclui como página de leitura, além do

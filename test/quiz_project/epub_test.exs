@@ -73,6 +73,26 @@ defmodule QuizProject.EpubTest do
                "Índice remissivo"
              ]
     end
+
+    # Algumas editoras quebram uma seção em vários arquivos do spine por motivo
+    # de produção, sem entrada no sumário nem cabeçalho próprio no fragmento.
+    # Sem tratamento, cada um vira um "capítulo" de um bloco só cujo título é o
+    # id interno do spine.
+    test "fragmento de seção sem sumário nem cabeçalho vira continuação do capítulo anterior" do
+      {:ok, book} = Epub.parse(EpubFixture.build_with_continuation_split())
+
+      titles = Enum.map(book.chapters, & &1.title)
+
+      assert titles == [
+               "Direitos autorais",
+               "1 O parafuso",
+               "2 A dobradiça",
+               "Índice remissivo"
+             ]
+
+      blocks = blocks_of(book, "1 O parafuso")
+      assert Enum.any?(blocks, &(&1.content == "rosca.passo"))
+    end
   end
 
   describe "numeração dos blocos" do
