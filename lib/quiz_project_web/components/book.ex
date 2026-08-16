@@ -9,6 +9,7 @@ defmodule QuizProjectWeb.Components.Book do
   use Phoenix.Component
 
   import Phoenix.HTML, only: [raw: 1]
+  import QuizProjectWeb.CoreComponents, only: [icon: 1]
 
   alias QuizProject.AdaptiveStudy.Block
 
@@ -25,7 +26,7 @@ defmodule QuizProjectWeb.Components.Book do
   """
   def chapter(assigns) do
     ~H"""
-    <article class="qreader-book qprose">
+    <article id="chapter-body" phx-hook=".CopyCode" class="qreader-book qprose">
       <.block
         :for={block <- @blocks}
         block={block}
@@ -34,6 +35,31 @@ defmodule QuizProjectWeb.Components.Book do
         nodes={Map.get(@covered, block.id, [])}
       />
     </article>
+
+    <script :type={Phoenix.LiveView.ColocatedHook} name=".CopyCode">
+      // Um alvo explícito (o botão do bloco de código) e um implícito (o
+      // próprio código inline, que não tem espaço para um botão do lado sem
+      // quebrar a linha de texto). O <code> dentro de <pre> fica de fora do
+      // segundo caso porque já é coberto pelo primeiro.
+      export default {
+        mounted() {
+          this.el.addEventListener("click", (event) => {
+            const button = event.target.closest("[data-copy]")
+            if (button) { return this.copy(button.dataset.copy, button) }
+
+            const code = event.target.closest("code")
+            if (code && !code.closest("pre")) { this.copy(code.textContent, code) }
+          })
+        },
+
+        copy(text, target) {
+          navigator.clipboard.writeText(text)
+          clearTimeout(this.timer)
+          target.classList.add("qreader-copied")
+          this.timer = setTimeout(() => target.classList.remove("qreader-copied"), 1200)
+        }
+      }
+    </script>
     """
   end
 
@@ -59,12 +85,25 @@ defmodule QuizProjectWeb.Components.Book do
   end
 
   defp render_body(%{block: %{type: :code}} = assigns) do
+    assigns = assign(assigns, :code, strip_prompt(assigns.block.content))
+
     ~H"""
     <figure class="qreader-listing">
       <figcaption :if={@block.caption} class="qreader-listing-title">
         {@block.caption}
       </figcaption>
-      <pre class="code-area"><code class={@block.lang && "language-#{@block.lang}"}>{@block.content}</code></pre>
+      <div class="qreader-code-wrap">
+        <pre class="code-area"><code class={@block.lang && "language-#{@block.lang}"}>{@code}</code></pre>
+        <button
+          type="button"
+          class="qreader-copy"
+          data-copy={@code}
+          aria-label="Copiar código"
+          title="Copiar código"
+        >
+          <.icon name="hero-clipboard-document" class="size-4" />
+        </button>
+      </div>
       <ol :if={@block.annotations != []} class="qreader-annotations">
         <li :for={annotation <- @block.annotations}>{annotation}</li>
       </ol>
@@ -145,6 +184,17 @@ defmodule QuizProjectWeb.Components.Book do
   end
 
   defp image_url(material_id, path), do: "/contents/#{material_id}/images/#{path}"
+
+  # Livros costumam reproduzir o prompt do terminal junto com o comando ("$ npm
+  # install"), útil impresso e inútil colado — quem cola vê o "$" como parte do
+  # comando e o shell recusa. A tira só quando "$ " abre a linha: no meio dela é
+  # variável de shell ou de PHP, não prompt.
+  defp strip_prompt(content) do
+    content
+    |> String.split("\n")
+    |> Enum.map(&String.replace(&1, ~r/^\$ /, ""))
+    |> Enum.join("\n")
+  end
 
   attr :chapters, :list, required: true
   attr :current, :map, required: true

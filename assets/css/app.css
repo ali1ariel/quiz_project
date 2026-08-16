@@ -723,12 +723,76 @@ h1, h2, h3 {
   color: var(--color-primary-content);
   background-color: var(--color-primary);
 }
-.qreader-listing-title + pre {
+.qreader-listing-title + .qreader-code-wrap pre {
   border-start-start-radius: 0;
   border-start-end-radius: 0;
 }
 .qreader-listing pre {
   margin-block: 0;
+}
+
+.qreader-code-wrap {
+  position: relative;
+}
+
+/* Some no hover/foco no desktop, e não repete o alvo de 44px do resto da
+   barra: aqui é ação secundária pousada sobre o texto, não um botão de
+   navegação. No touch não existe hover, então fica sempre visível. */
+.qreader-copy {
+  position: absolute;
+  inset-block-start: 0.6em;
+  inset-inline-end: 0.6em;
+  display: inline-grid;
+  place-items: center;
+  inline-size: 2rem;
+  block-size: 2rem;
+  border-radius: 0.45rem;
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
+  background-color: color-mix(in oklab, var(--color-base-100) 75%, transparent);
+  opacity: 0;
+  transition: opacity 0.15s ease, color 0.15s ease, background-color 0.15s ease;
+}
+.qreader-code-wrap:hover .qreader-copy,
+.qreader-code-wrap:focus-within .qreader-copy {
+  opacity: 1;
+}
+.qreader-copy:hover {
+  color: var(--color-base-content);
+  background-color: color-mix(in oklab, var(--color-base-100) 90%, transparent);
+}
+@media (hover: none) {
+  .qreader-copy { opacity: 1; }
+}
+
+/* Código inline dentro do texto: sem espaço para um botão do lado, então o
+   próprio trecho é o alvo — o cursor é a única pista antes do primeiro uso. */
+.qreader-book code:not(pre code) {
+  cursor: pointer;
+}
+
+.qreader-copy.qreader-copied::after,
+.qreader-book code.qreader-copied::after {
+  content: "Copiado!";
+  position: absolute;
+  inset-inline-end: 0;
+  inset-block-end: 100%;
+  margin-block-end: 0.35em;
+  padding: 0.2em 0.6em;
+  border-radius: 0.35rem;
+  font-family: var(--skin-font-display, system-ui, sans-serif);
+  font-size: 0.7rem;
+  font-weight: 650;
+  white-space: nowrap;
+  color: var(--color-success-content);
+  background-color: var(--color-success);
+  pointer-events: none;
+}
+.qreader-copy.qreader-copied {
+  opacity: 1;
+  color: var(--color-success);
+}
+.qreader-book code.qreader-copied {
+  position: relative;
 }
 
 /* As anotações numeradas explicam as marcas dentro do código:

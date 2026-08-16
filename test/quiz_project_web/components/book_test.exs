@@ -1,7 +1,7 @@
 defmodule QuizProjectWeb.Components.BookTest do
   use ExUnit.Case, async: true
 
-  import Phoenix.LiveViewTest, only: [rendered_to_string: 1]
+  import Phoenix.LiveViewTest, only: [rendered_to_string: 1, render_component: 2]
 
   alias QuizProjectWeb.Components.Book
 
@@ -24,6 +24,26 @@ defmodule QuizProjectWeb.Components.BookTest do
     %{chapters: chapters, current: current, material_id: "livro-1"}
     |> Book.contents()
     |> rendered_to_string()
+  end
+
+  defp block(attrs) do
+    Map.merge(
+      %{
+        id: Ecto.UUID.generate(),
+        position: 1,
+        type: :paragraph,
+        lang: nil,
+        caption: nil,
+        image_path: nil,
+        content: "",
+        annotations: []
+      },
+      attrs
+    )
+  end
+
+  defp render_block(block) do
+    render_component(&Book.block/1, %{block: block, material_id: "livro-1"})
   end
 
   describe "contents/1" do
@@ -99,6 +119,55 @@ defmodule QuizProjectWeb.Components.BookTest do
       html = render_contents([capitulo], capitulo)
 
       refute html =~ "tabular-nums"
+    end
+  end
+
+  describe "block/1 - :code" do
+    # Livros costumam reproduzir o prompt do terminal junto com o comando —
+    # útil impresso, mas quem cola o comando na própria linha de comando cola
+    # o "$" junto e o shell recusa.
+    test "remove o prompt de terminal (cifrão + espaço) do início de cada linha e do botão de copiar" do
+      codigo =
+        block(%{
+          type: :code,
+          lang: "bash",
+          content: "$ asdf install elixir 1.14.3\n$ elixir --version"
+        })
+
+      html = render_block(codigo)
+
+      assert html =~ "asdf install elixir 1.14.3"
+      assert html =~ "elixir --version"
+      refute html =~ "$ asdf"
+      refute html =~ "$ elixir"
+      assert html =~ ~s(data-copy="asdf install elixir 1.14.3\nelixir --version")
+    end
+
+    test "não mexe no cifrão que não abre a linha (variável de shell)" do
+      codigo = block(%{type: :code, lang: "bash", content: "echo $HOME"})
+
+      html = render_block(codigo)
+
+      assert html =~ "echo $HOME"
+    end
+
+    test "traz um botão de copiar com o conteúdo já tratado" do
+      codigo = block(%{type: :code, lang: "elixir", content: "IO.puts(\"oi\")"})
+
+      html = render_block(codigo)
+
+      assert html =~ "qreader-copy"
+      assert html =~ "data-copy=\"IO.puts(&quot;oi&quot;)\""
+    end
+  end
+
+  describe "block/1 - código inline no texto" do
+    test "não remove o cifrão de dentro de um trecho de código inline" do
+      texto = block(%{type: :paragraph, content: "Rode `$ mix test` para conferir."})
+
+      html = render_block(texto)
+
+      assert html =~ "<code>$ mix test</code>"
     end
   end
 end
