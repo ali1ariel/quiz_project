@@ -620,13 +620,43 @@ h1, h2, h3 {
    e não alcança os contêineres que normalizamos, cujo papel
    passa a ser das regras .qreader-* daqui.
    ============================================================ */
+.qreader-book,
+.qreader-pagination {
+  max-width: var(--qreader-width, 72ch);
+}
+
 .qreader-book {
   font-family: var(--qreader-font, ui-serif, Georgia, serif);
   font-size: var(--qreader-size, 1rem);
   line-height: var(--qreader-leading, 1.75);
-  max-width: var(--qreader-width, 72ch);
   margin-inline: auto;
   padding-block: 1rem 4rem;
+}
+
+/* Até a faixa de tablet — retrato e deitado, o iPad Pro 12.9" deitado é
+   1366px e o Galaxy Tab S10 FE+ deitado fica perto de 1440px — a medida em
+   `ch` sobra pouco uso: ela deixa uma margem vazia de sobra dos dois lados,
+   que numa tela grande de desktop é o que evita linha longa demais. No
+   tablet essa mesma margem só reduz a área de leitura sem ganhar nada em
+   legibilidade — então até 1500px o texto ocupa a largura inteira
+   disponível (o respiro lateral continua vindo do padding do `<main>` do
+   layout), e a preferência de largura de coluna volta a valer só a partir
+   de tela de desktop/notebook de verdade.
+
+   `.qlayout-wide` é o contêiner de página que carrega o leitor (e outras
+   telas densas, como a curadoria) — sem soltar o limite dele junto, ele
+   corta a página em 1024px antes mesmo do texto ter a chance de usar a
+   largura liberada aqui. */
+.qlayout-wide {
+  max-width: 64rem;
+}
+
+@media (max-width: 1499.98px) {
+  .qreader-book,
+  .qreader-pagination,
+  .qlayout-wide {
+    max-width: 100%;
+  }
 }
 
 /* Botão da barra do leitor. Alvo de 44px, que é o mínimo

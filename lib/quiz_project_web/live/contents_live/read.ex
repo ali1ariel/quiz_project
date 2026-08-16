@@ -1272,7 +1272,7 @@ defmodule QuizProjectWeb.ContentsLive.Read do
       )
 
     ~H"""
-    <nav class="mx-auto flex max-w-[var(--qreader-width)] items-center justify-between gap-3 border-t border-base-200 pt-4">
+    <nav class="qreader-pagination mx-auto flex items-center justify-between gap-3 border-t border-base-200 pt-4">
       <.link
         :if={@previous}
         patch={~p"/contents/#{@material.id}/#{@previous.position}"}
