@@ -45,7 +45,8 @@ defmodule QuizProjectWeb.ContentsLive.Read do
            appearance_open?: false,
            confirm_chapter: nil,
            curation_choice: AI.default_selection(),
-           usage_chapter: nil
+           usage_chapter: nil,
+           ai_authorized?: QuizProject.AI.Authorization.authorized?(to_string(user.email))
          )}
 
       _ ->
@@ -176,12 +177,20 @@ defmodule QuizProjectWeb.ContentsLive.Read do
 
   # O botão de IA abre o resumo do processamento antes de gastar: quem clica
   # decide olhando tamanho, provedor, modelo e custo, não só o ícone.
+  #
+  # A guarda de autorização mora também aqui, e não só no botão desabilitado:
+  # o evento chega pelo socket e o clique já desabilitado na tela não impede
+  # quem manda o evento direto.
   def handle_event("confirm_curation", %{"id" => chapter_id}, socket) do
-    {:noreply,
-     assign(socket,
-       confirm_chapter: Enum.find(socket.assigns.chapters, &(&1.id == chapter_id)),
-       curation_choice: AI.default_selection()
-     )}
+    if socket.assigns.ai_authorized? do
+      {:noreply,
+       assign(socket,
+         confirm_chapter: Enum.find(socket.assigns.chapters, &(&1.id == chapter_id)),
+         curation_choice: AI.default_selection()
+       )}
+    else
+      {:noreply, socket}
+    end
   end
 
   def handle_event("cancel_curation", _params, socket) do
@@ -222,7 +231,8 @@ defmodule QuizProjectWeb.ContentsLive.Read do
     escolha = socket.assigns.curation_choice
     socket = assign(socket, confirm_chapter: nil)
 
-    with chapter when not is_nil(chapter) <-
+    with true <- socket.assigns.ai_authorized?,
+         chapter when not is_nil(chapter) <-
            Enum.find(socket.assigns.chapters, &(&1.id == chapter_id)),
          {:ok, %{available?: true} = info} <- AI.resolve(escolha.provider, escolha.model) do
       case Books.curate_chapter_async(chapter, user, provider: info.module, model: info.model) do
@@ -244,9 +254,10 @@ defmodule QuizProjectWeb.ContentsLive.Read do
           {:noreply, socket}
       end
     else
-      # Provedor sem chave, modelo que não é do provedor, capítulo que sumiu: o
-      # botão já estava desabilitado para o primeiro caso, mas o evento chega
-      # pelo socket e não se confia nele.
+      # Usuário não autorizado, provedor sem chave, modelo que não é do
+      # provedor, capítulo que sumiu: o botão já estava desabilitado para os
+      # três primeiros casos, mas o evento chega pelo socket e não se confia
+      # nele.
       _ -> {:noreply, socket}
     end
   end
@@ -350,7 +361,7 @@ defmodule QuizProjectWeb.ContentsLive.Read do
       <% else %>
         <link rel="stylesheet" href={~p"/contents/#{@material.id}/book.css"} />
 
-        <.toolbar chapter={@chapter} chapters={@chapters} />
+        <.toolbar chapter={@chapter} chapters={@chapters} ai_authorized?={@ai_authorized?} />
 
         <.appearance_sheet preference={@preference} open?={@appearance_open?} />
 
@@ -647,6 +658,7 @@ defmodule QuizProjectWeb.ContentsLive.Read do
 
   attr :chapter, :map, required: true
   attr :chapters, :list, required: true
+  attr :ai_authorized?, :boolean, required: true
 
   # `--qnav-h` é a altura real da navbar, medida no cliente: ela muda com o
   # ponto de quebra e com a skin, e um `top` chutado deixa uma fresta por onde o
@@ -678,6 +690,7 @@ defmodule QuizProjectWeb.ContentsLive.Read do
           chapter={@chapter}
           state={@ai_state}
           risky?={Books.curation_risky?(@chapter.estimated_tokens)}
+          authorized?={@ai_authorized?}
         />
 
         <button
@@ -706,6 +719,7 @@ defmodule QuizProjectWeb.ContentsLive.Read do
   attr :chapter, :map, required: true
   attr :state, :atom, required: true
   attr :risky?, :boolean, default: false
+  attr :authorized?, :boolean, required: true
 
   # `:none`/`:failed` disparam o processamento; `:processing` só mostra o
   # andamento (o clique não repete a chamada, o guard já está no servidor);
@@ -749,8 +763,13 @@ defmodule QuizProjectWeb.ContentsLive.Read do
       id={"chapter-ai-#{@chapter.id}"}
       phx-click="confirm_curation"
       phx-value-id={@chapter.id}
+      disabled={not @authorized?}
       class={["qreader-tool bg-error/15", counted?(@chapter) && "qreader-tool-wide"]}
-      title={"Falhou — tentar novamente. " <> curation_hint(@chapter, @risky?)}
+      title={
+        if @authorized?,
+          do: "Falhou — tentar novamente. " <> curation_hint(@chapter, @risky?),
+          else: "Falhou — seu usuário não está autorizado a processar com IA"
+      }
       aria-label="Falhou — tentar novamente"
     >
       <.icon name="hero-exclamation-triangle" class="size-5" />
@@ -768,13 +787,22 @@ defmodule QuizProjectWeb.ContentsLive.Read do
       id={"chapter-ai-#{@chapter.id}"}
       phx-click="confirm_curation"
       phx-value-id={@chapter.id}
+      disabled={not @authorized?}
       class={[
         "qreader-tool",
         if(@risky?, do: "bg-warning/20", else: "bg-info/15"),
         counted?(@chapter) && "qreader-tool-wide"
       ]}
-      title={curation_hint(@chapter, @risky?)}
-      aria-label={curation_hint(@chapter, @risky?)}
+      title={
+        if @authorized?,
+          do: curation_hint(@chapter, @risky?),
+          else: "Seu usuário não está autorizado a processar com IA"
+      }
+      aria-label={
+        if @authorized?,
+          do: curation_hint(@chapter, @risky?),
+          else: "Seu usuário não está autorizado a processar com IA"
+      }
     >
       <.icon name="hero-sparkles" class="size-5" />
       <span :if={counted?(@chapter)} class="qreader-tool-count">

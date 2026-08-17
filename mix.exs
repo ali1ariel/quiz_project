@@ -67,6 +67,11 @@ defmodule QuizProject.MixProject do
        depth: 1},
       {:swoosh, "~> 1.16"},
       {:req, "~> 0.5"},
+      # Só a lista de autorização de IA usa isto (busca no SSM Parameter
+      # Store). Cliente HTTP fica sendo o `Req` de sempre — ver
+      # `QuizProject.Aws.ReqHttpClient` — em vez de trazer `hackney` para o
+      # projeto só por causa desta única chamada.
+      {:ex_aws, "~> 2.7"},
       {:telemetry_metrics, "~> 1.0"},
       {:telemetry_poller, "~> 1.0"},
       {:gettext, "~> 1.0"},

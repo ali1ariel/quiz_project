@@ -7,6 +7,12 @@ config :bcrypt_elixir, :log_rounds, 1
 # Nos testes a IA é sempre o provider heurístico local
 config :quiz_project, :ai_provider, QuizProject.AI.Fake
 
+# Nos testes a autorização de IA é sempre a lista fixa (sem SSM, sem
+# GenServer subindo) — vazia por padrão, e cada teste que precisa de alguém
+# autorizado configura via `Application.put_env/3` no próprio `setup`.
+config :quiz_project, :ai_authorization, QuizProject.AI.Authorization.Fake
+config :quiz_project, :fake_authorized_emails, []
+
 # Trabalho em background roda inline nos testes (sem concorrência nem
 # dependência do sandbox de conexões)
 config :quiz_project, :jobs_mode, :inline
