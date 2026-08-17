@@ -84,6 +84,59 @@ if config_env() != :test do
     end
 
   config :quiz_project, ai_provider: ai_provider
+
+  # Quem pode disparar processamento de IA (custo real por chamada) vem do
+  # AWS SSM Parameter Store, não do banco da aplicação — é a conta AWS quem
+  # decide, não uma tela do produto. AI_AUTHORIZATION força o módulo
+  # ("ssm" ou "fake"); sem ela, usa SSM só quando há credencial AWS
+  # configurada, e cai no Fake (lista fixa abaixo) quando não há — do
+  # contrário todo mundo que desenvolve sem acesso à conta AWS veria o botão
+  # de IA sempre desativado.
+  aws_access_key_id = System.get_env("AWS_ACCESS_KEY_ID")
+  aws_secret_access_key = System.get_env("AWS_SECRET_ACCESS_KEY")
+
+  config :ex_aws,
+    access_key_id: aws_access_key_id,
+    secret_access_key: aws_secret_access_key,
+    region: System.get_env("AWS_REGION") || "us-east-1"
+
+  if parameter = System.get_env("AI_AUTHORIZATION_PARAMETER") do
+    config :quiz_project, ai_authorization_parameter: parameter
+  end
+
+  ai_authorization =
+    case System.get_env("AI_AUTHORIZATION") do
+      "ssm" ->
+        QuizProject.AI.Authorization.SSM
+
+      "fake" ->
+        QuizProject.AI.Authorization.Fake
+
+      nil ->
+        if aws_access_key_id not in [nil, ""] and aws_secret_access_key not in [nil, ""] do
+          QuizProject.AI.Authorization.SSM
+        else
+          QuizProject.AI.Authorization.Fake
+        end
+
+      other ->
+        raise "AI_AUTHORIZATION inválido: #{inspect(other)}. Use \"ssm\" ou \"fake\"."
+    end
+
+  config :quiz_project, ai_authorization: ai_authorization
+
+  # Só entra em uso quando `ai_authorization` cai no Fake (sem credencial
+  # AWS). Sem nenhum e-mail fixo aqui — o repositório é público, e quem
+  # desenvolve sem acesso à conta AWS libera o próprio e-mail exportando
+  # AI_AUTHORIZATION_EMAILS localmente (nunca commitado).
+  fake_emails =
+    case System.get_env("AI_AUTHORIZATION_EMAILS") do
+      nil -> []
+      "" -> []
+      emails -> String.split(emails, ",")
+    end
+
+  config :quiz_project, fake_authorized_emails: fake_emails
 end
 
 config :quiz_project, QuizProjectWeb.Endpoint,

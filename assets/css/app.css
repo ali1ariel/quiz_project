@@ -649,6 +649,17 @@ h1, h2, h3 {
   background-color: color-mix(in oklab, var(--color-base-content) 8%, transparent);
 }
 
+/* O botão de IA carrega cor de fundo própria (aviso, erro, risco) mesmo
+   desabilitado — sem isto ele continuaria com a mesma aparência "acionável"
+   de sempre, e só o cursor diria que não faz nada. */
+.qreader-tool:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+.qreader-tool:disabled:hover {
+  background-color: transparent;
+}
+
 /* Variante que carrega um número ao lado do ícone. O botão deixa de
    ser quadrado e vira pílula, mantendo os 44px de altura. */
 .qreader-tool-wide {
