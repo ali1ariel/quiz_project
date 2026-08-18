@@ -33,7 +33,7 @@ defmodule QuizProjectWeb.Layouts do
 
   attr :active_nav, :atom,
     default: nil,
-    doc: "destino principal ativo: :quizzes, :contents, :adaptive_study ou :account"
+    doc: "destino principal ativo: :quizzes, :contents, :priorities, :adaptive_study ou :account"
 
   attr :attempt_started_at, :any,
     default: nil,
@@ -84,6 +84,16 @@ defmodule QuizProjectWeb.Layouts do
           active?={@active_nav == :contents}
           title_active="Voltar para a biblioteca de Conteúdos"
           title_inactive="Sua biblioteca de livros, focada na leitura"
+        />
+
+        <.nav_item
+          id="desktop-nav-priorities"
+          navigate={~p"/priorities"}
+          icon="hero-flag"
+          label="Prioridades"
+          active?={@active_nav == :priorities}
+          title_active="Voltar para Prioridades"
+          title_inactive="Categorias, itens e evolução pessoal"
         />
 
         <.nav_item
@@ -230,6 +240,20 @@ defmodule QuizProjectWeb.Layouts do
                 <span class="min-w-0 text-left">
                   <span class="block text-sm font-semibold">Conteúdos</span>
                   <span class="block truncate text-[0.68rem] opacity-70">Biblioteca e leitura</span>
+                </span>
+              </.link>
+              <.link
+                navigate={~p"/priorities"}
+                class="flex items-center gap-3 rounded-2xl border border-transparent px-3 py-2.5 transition hover:border-base-300 hover:bg-base-100"
+              >
+                <span class="grid size-9 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+                  <.icon name="hero-flag" class="size-4" />
+                </span>
+                <span class="min-w-0 text-left">
+                  <span class="block text-sm font-semibold">Prioridades</span>
+                  <span class="block truncate text-[0.68rem] opacity-70">
+                    Categorias, itens e evolução
+                  </span>
                 </span>
               </.link>
               <.link
