@@ -58,7 +58,8 @@ config :quiz_project,
     QuizProject.Quizzes,
     QuizProject.Attempts,
     QuizProject.Notifications,
-    QuizProject.AdaptiveStudy
+    QuizProject.AdaptiveStudy,
+    QuizProject.Priorities
   ],
   generators: [timestamp_type: :utc_datetime]
 
