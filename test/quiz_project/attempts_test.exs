@@ -703,4 +703,35 @@ defmodule QuizProject.AttemptsTest do
       assert Decimal.equal?(Attempts.get_attempt_full!(finished.id).percent, Decimal.new("50.0"))
     end
   end
+
+  describe "best_percent_for_quiz/2" do
+    test "sem tentativa finalizada devolve nil", %{owner: owner, logged: logged} do
+      v1 = two_tf_published(owner)
+
+      assert Attempts.best_percent_for_quiz(logged.user, v1.quiz_id) == nil
+    end
+
+    test "devolve o maior percentual entre as tentativas finalizadas", %{
+      owner: owner,
+      logged: logged
+    } do
+      v1 = two_tf_published(owner)
+      [q1, q2] = Enum.sort_by(v1.questions, & &1.position)
+
+      {:ok, pior} = Attempts.start_attempt(v1, logged, "Beltrano")
+      {:ok, _} = Attempts.save_answer(pior, answer_for(pior, q1), q1, %{"value" => false})
+      {:ok, _} = Attempts.save_answer(pior, answer_for(pior, q2), q2, %{"value" => true})
+      {:ok, _} = Attempts.finalize(pior)
+
+      {:ok, melhor} = Attempts.start_attempt(v1, logged, "Beltrano")
+      {:ok, _} = Attempts.save_answer(melhor, answer_for(melhor, q1), q1, %{"value" => true})
+      {:ok, _} = Attempts.save_answer(melhor, answer_for(melhor, q2), q2, %{"value" => true})
+      {:ok, _} = Attempts.finalize(melhor)
+
+      assert Decimal.equal?(
+               Attempts.best_percent_for_quiz(logged.user, v1.quiz_id),
+               Decimal.new("100.0")
+             )
+    end
+  end
 end
