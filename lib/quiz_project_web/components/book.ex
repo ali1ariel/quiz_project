@@ -274,7 +274,14 @@ defmodule QuizProjectWeb.Components.Book do
 
           const rect = range.getBoundingClientRect();
           const width = toolbar.offsetWidth;
-          const top = Math.max(8, rect.top - toolbar.offsetHeight - 10);
+          const height = toolbar.offsetHeight;
+          // Em touch (tablet/celular), o menu nativo de seleção (copiar,
+          // selecionar tudo...) ocupa o espaço acima do trecho — nosso menu
+          // precisa aparecer abaixo pra não ficar tampado por ele.
+          const coarsePointer = window.matchMedia("(pointer: coarse)").matches;
+          const top = coarsePointer
+            ? Math.min(window.innerHeight - height - 8, rect.bottom + 10)
+            : Math.max(8, rect.top - height - 10);
           const left = Math.min(
             Math.max(8, rect.left + rect.width / 2 - width / 2),
             window.innerWidth - width - 8
