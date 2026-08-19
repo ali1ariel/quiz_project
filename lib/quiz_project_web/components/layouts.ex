@@ -314,7 +314,7 @@ defmodule QuizProjectWeb.Layouts do
     </header>
 
     <main class="px-4 py-8 sm:px-6 lg:px-8">
-      <div class={["mx-auto space-y-4", if(@wide, do: "max-w-5xl", else: "max-w-2xl")]}>
+      <div class={["mx-auto space-y-4", if(@wide, do: "qlayout-wide", else: "max-w-2xl")]}>
         {render_slot(@inner_block)}
       </div>
     </main>

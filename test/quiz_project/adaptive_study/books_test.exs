@@ -462,6 +462,132 @@ defmodule QuizProject.AdaptiveStudy.BooksTest do
     end
   end
 
+  describe "marcação e notas" do
+    setup %{material: material, user: user} do
+      material = ingest(material, user)
+      {:ok, chapter} = Books.get_chapter(material.id, 2)
+      block = chapter.id |> Books.list_blocks() |> List.first()
+
+      %{material: material, chapter: chapter, block: block}
+    end
+
+    test "marca um trecho do bloco e aparece agrupada por bloco", %{
+      user: user,
+      chapter: chapter,
+      block: block
+    } do
+      {:ok, highlight} =
+        Books.create_highlight(user, chapter, block.position, %{
+          start_offset: 0,
+          end_offset: 5,
+          quote: "trecho",
+          color: :green
+        })
+
+      assert highlight.block_id == block.id
+      assert highlight.note == nil
+
+      grouped = Books.list_highlights(chapter.id, user.id)
+      assert Map.keys(grouped) == [block.id]
+      assert [%{id: id}] = Map.fetch!(grouped, block.id)
+      assert id == highlight.id
+    end
+
+    test "posição de bloco inexistente não marca nada", %{user: user, chapter: chapter} do
+      assert {:error, :block_not_found} =
+               Books.create_highlight(user, chapter, 999_999, %{
+                 start_offset: 0,
+                 end_offset: 3,
+                 quote: "abc",
+                 color: :yellow
+               })
+    end
+
+    # A seleção num bloco de código serve para copiar o trecho, não para
+    # marcar — o cliente já nem mostra a barra ali; isto cobre quem manda o
+    # evento direto pelo socket, sem passar pela interface.
+    test "bloco de código não marca", %{user: user, chapter: chapter} do
+      codigo = Enum.find(Books.list_blocks(chapter.id), &(&1.type == :code))
+      assert codigo
+
+      assert {:error, :unsupported_block_type} =
+               Books.create_highlight(user, chapter, codigo.position, %{
+                 start_offset: 0,
+                 end_offset: 3,
+                 quote: "def",
+                 color: :yellow
+               })
+    end
+
+    test "só o dono lê a própria marcação", %{user: user, chapter: chapter, block: block} do
+      {:ok, highlight} =
+        Books.create_highlight(user, chapter, block.position, %{
+          start_offset: 0,
+          end_offset: 3,
+          quote: "abc",
+          color: :yellow
+        })
+
+      {:ok, outro} =
+        Accounts.register_user(%{
+          email: "outro#{System.unique_integer([:positive])}@teste.com",
+          name: "Outro leitor",
+          password: "Password123!"
+        })
+
+      assert {:ok, %{id: id}} = Books.get_own_highlight(highlight.id, user.id)
+      assert id == highlight.id
+      assert {:error, :unauthorized} = Books.get_own_highlight(highlight.id, outro.id)
+    end
+
+    test "atualizar grava nota e cor", %{user: user, chapter: chapter, block: block} do
+      {:ok, highlight} =
+        Books.create_highlight(user, chapter, block.position, %{
+          start_offset: 0,
+          end_offset: 3,
+          quote: "abc",
+          color: :yellow
+        })
+
+      {:ok, updated} = Books.update_highlight(highlight, %{note: "Lembrar disso", color: :pink})
+
+      assert updated.note == "Lembrar disso"
+      assert updated.color == :pink
+    end
+
+    test "apagar remove a marcação", %{user: user, chapter: chapter, block: block} do
+      {:ok, highlight} =
+        Books.create_highlight(user, chapter, block.position, %{
+          start_offset: 0,
+          end_offset: 3,
+          quote: "abc",
+          color: :yellow
+        })
+
+      assert :ok = Books.delete_highlight(highlight)
+      assert Books.list_highlights(chapter.id, user.id) == %{}
+    end
+
+    test "a lista do livro traz capítulo e posição do bloco junto", %{
+      material: material,
+      user: user,
+      chapter: chapter,
+      block: block
+    } do
+      {:ok, _highlight} =
+        Books.create_highlight(user, chapter, block.position, %{
+          start_offset: 0,
+          end_offset: 3,
+          quote: "abc",
+          color: :yellow
+        })
+
+      assert [entry] = Books.list_highlights_for_material(user.id, material.id)
+      assert entry.chapter.id == chapter.id
+      assert entry.block_position == block.position
+    end
+  end
+
   describe "curadoria de capítulo por IA" do
     setup %{material: material, user: user} do
       material = ingest(material, user)

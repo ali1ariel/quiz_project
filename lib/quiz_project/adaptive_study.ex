@@ -8,6 +8,7 @@ defmodule QuizProject.AdaptiveStudy do
 
   alias QuizProject.AdaptiveStudy.Block
   alias QuizProject.AdaptiveStudy.Chapter
+  alias QuizProject.AdaptiveStudy.Highlight
   alias QuizProject.AdaptiveStudy.NodeBlock
   alias QuizProject.AdaptiveStudy.ReadingPosition
   alias QuizProject.AdaptiveStudy.ReadingPreference
@@ -20,6 +21,7 @@ defmodule QuizProject.AdaptiveStudy do
     resource NodeBlock
     resource ReadingPosition
     resource ReadingPreference
+    resource Highlight
   end
 
   @doc "Cria um material de estudo para o usuário."
