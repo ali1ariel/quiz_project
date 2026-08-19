@@ -143,6 +143,14 @@ config :quiz_project, :chromic_pdf,
   session_pool: [size: 1, timeout: 20_000],
   chrome_args: ["--no-sandbox", "--disable-dev-shm-usage"]
 
+# Cliente HTTP e codec do ex_aws (usado só pela lista de autorização de IA,
+# que lê o SSM Parameter Store). Sem segredo aqui — credencial e região
+# entram por variável de ambiente no runtime.exs, porque mudam por ambiente
+# e config.exs é compilado junto com o release.
+config :ex_aws,
+  json_codec: Jason,
+  http_client: QuizProject.Aws.ReqHttpClient
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{config_env()}.exs"

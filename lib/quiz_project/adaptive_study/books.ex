@@ -13,6 +13,7 @@ defmodule QuizProject.AdaptiveStudy.Books do
 
   alias QuizProject.AdaptiveStudy.Block
   alias QuizProject.AdaptiveStudy.Chapter
+  alias QuizProject.AdaptiveStudy.Highlight
   alias QuizProject.AdaptiveStudy.ImageStore
   alias QuizProject.AdaptiveStudy.NodeBlock
   alias QuizProject.AdaptiveStudy.ReadingPosition
@@ -820,5 +821,121 @@ defmodule QuizProject.AdaptiveStudy.Books do
     ReadingPreference
     |> Ash.Changeset.for_create(:upsert, Map.put(attrs, :user_id, user_id), authorize?: false)
     |> Ash.create()
+  end
+
+  # Marcação e notas
+
+  @doc "Cores de marcação disponíveis."
+  def highlight_colors, do: Highlight.colors()
+
+  @doc """
+  Marcações de um capítulo, agrupadas por bloco: `%{block_id => [marcação]}`.
+
+  Mesma forma de `coverage/1`, e pelo mesmo motivo — é o mapa que o cliente lê
+  para desenhar as marcas ao montar o capítulo, sem varrer texto no servidor.
+  Ordenadas por `start_offset` porque duas marcações no mesmo bloco desenham
+  na ordem em que aparecem no texto.
+  """
+  def list_highlights(chapter_id, user_id) do
+    Highlight
+    |> Ash.Query.filter(chapter_id == ^chapter_id and user_id == ^user_id)
+    |> Ash.Query.sort(start_offset: :asc)
+    |> Ash.read!(authorize?: false)
+    |> Enum.group_by(& &1.block_id)
+  end
+
+  @doc """
+  Todas as marcações e notas do usuário num livro, para a lista "Minhas
+  anotações" — mais recentes primeiro.
+
+  Capítulo e posição do bloco chegam num mapa à parte, montado com duas
+  consultas para o livro inteiro (o mesmo desenho de `library_progress/2`),
+  em vez de um join por linha.
+  """
+  def list_highlights_for_material(user_id, material_id) do
+    highlights =
+      Highlight
+      |> Ash.Query.filter(user_id == ^user_id and material_id == ^material_id)
+      |> Ash.Query.sort(inserted_at: :desc)
+      |> Ash.read!(authorize?: false)
+
+    chapters = material_id |> list_chapters() |> Map.new(&{&1.id, &1})
+
+    block_positions =
+      Block
+      |> Ash.Query.filter(id in ^Enum.map(highlights, & &1.block_id))
+      |> Ash.read!(authorize?: false)
+      |> Map.new(&{&1.id, &1.position})
+
+    Enum.map(highlights, fn highlight ->
+      %{
+        highlight: highlight,
+        chapter: Map.get(chapters, highlight.chapter_id),
+        block_position: Map.get(block_positions, highlight.block_id)
+      }
+    end)
+  end
+
+  @doc """
+  Marca um trecho de um bloco, com nota opcional.
+
+  `block_position` é a posição absoluta que o cliente já tem em
+  `data-position` — resolvida aqui, e não recebida como uuid, porque o bloco
+  nunca chega ao cliente com o próprio id como valor confiável de evento (o
+  data-attribute existe para outra coisa e trocar de capítulo não invalida o
+  clique já em voo).
+
+  Bloco de código não marca: a seleção ali serve para copiar o trecho exato,
+  e o cliente já nem mostra a barra de marcação em cima dele — aqui é só a
+  mesma regra valendo para quem manda o evento direto pelo socket.
+  """
+  def create_highlight(user, chapter, block_position, attrs) do
+    with %Block{type: type} = block when type != :code <-
+           Enum.find(list_blocks(chapter.id), &(&1.position == block_position)) do
+      Highlight
+      |> Ash.Changeset.for_create(
+        :create,
+        Map.merge(attrs, %{
+          user_id: user.id,
+          material_id: chapter.material_id,
+          chapter_id: chapter.id,
+          block_id: block.id
+        }),
+        authorize?: false
+      )
+      |> Ash.create()
+    else
+      nil -> {:error, :block_not_found}
+      %Block{} -> {:error, :unsupported_block_type}
+    end
+  end
+
+  @doc "Busca uma marcação do usuário, para garantir que só o dono edita ou apaga."
+  def get_own_highlight(id, user_id) do
+    case Ash.get(Highlight, id, authorize?: false) do
+      {:ok, %Highlight{user_id: ^user_id} = highlight} -> {:ok, highlight}
+      {:ok, _} -> {:error, :unauthorized}
+      error -> error
+    end
+  end
+
+  @doc "Atualiza a nota e/ou a cor de uma marcação já validada como do usuário."
+  def update_highlight(highlight, attrs) do
+    highlight
+    |> Ash.Changeset.for_update(:update, attrs, authorize?: false)
+    |> Ash.update()
+  end
+
+  # `Ash.destroy/2` devolve `:ok` ou `{:ok, resultado}` dependendo da ação —
+  # ver `AdaptiveStudy.delete_material/2`, que já lida com as duas formas.
+  # Normalizado aqui para `:ok` | `{:error, motivo}`, então quem chama nunca
+  # precisa casar as duas.
+  @doc "Remove uma marcação já validada como do usuário."
+  def delete_highlight(highlight) do
+    case Ash.destroy(highlight, authorize?: false) do
+      :ok -> :ok
+      {:ok, _} -> :ok
+      error -> error
+    end
   end
 end

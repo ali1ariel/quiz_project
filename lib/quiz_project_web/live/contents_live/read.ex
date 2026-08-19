@@ -45,7 +45,13 @@ defmodule QuizProjectWeb.ContentsLive.Read do
            appearance_open?: false,
            confirm_chapter: nil,
            curation_choice: AI.default_selection(),
-           usage_chapter: nil
+           usage_chapter: nil,
+           highlights: %{},
+           highlight_colors: Books.highlight_colors(),
+           note_editor: nil,
+           notes_open?: false,
+           material_highlights: [],
+           ai_authorized?: QuizProject.AI.Authorization.authorized?(to_string(user.email))
          )}
 
       _ ->
@@ -103,13 +109,20 @@ defmodule QuizProjectWeb.ContentsLive.Read do
   end
 
   defp load_chapter(socket, chapter) do
+    user = socket.assigns.current_user
+
     socket
     |> assign(
       chapter: chapter,
       blocks: Books.list_blocks(chapter.id),
       covered: Books.coverage(chapter.id),
+      highlights: Books.list_highlights(chapter.id, user.id),
       page_title: "#{chapter.title} — #{socket.assigns.material.title}",
-      contents_open?: false
+      contents_open?: false,
+      notes_open?: false,
+      # O rascunho aponta para bloco e deslocamento do capítulo anterior — sem
+      # fechar aqui, "Salvar" gravaria a nota no capítulo errado.
+      note_editor: nil
     )
   end
 
@@ -148,16 +161,44 @@ defmodule QuizProjectWeb.ContentsLive.Read do
     {:noreply, assign(socket, preference: preference)}
   end
 
-  # Os dois painéis se excluem: abertos juntos, um cobriria o outro no telefone,
-  # e o Esc fecharia os dois de uma vez.
+  # Os painéis se excluem: abertos juntos, um cobriria o outro no telefone, e o
+  # Esc fecharia todos de uma vez.
   def handle_event("toggle_appearance", _params, socket) do
     {:noreply,
-     assign(socket, appearance_open?: not socket.assigns.appearance_open?, contents_open?: false)}
+     assign(socket,
+       appearance_open?: not socket.assigns.appearance_open?,
+       contents_open?: false,
+       notes_open?: false
+     )}
   end
 
   def handle_event("toggle_contents", _params, socket) do
     {:noreply,
-     assign(socket, contents_open?: not socket.assigns.contents_open?, appearance_open?: false)}
+     assign(socket,
+       contents_open?: not socket.assigns.contents_open?,
+       appearance_open?: false,
+       notes_open?: false
+     )}
+  end
+
+  # A lista carrega ao abrir, e não fica sincronizada por PubSub: é o próprio
+  # usuário marcando ou apagando, nunca outra aba ou outro processo.
+  def handle_event("toggle_notes", _params, socket) do
+    open? = not socket.assigns.notes_open?
+
+    socket =
+      assign(socket, notes_open?: open?, contents_open?: false, appearance_open?: false)
+
+    socket =
+      if open? do
+        user = socket.assigns.current_user
+        material = socket.assigns.material
+        assign(socket, material_highlights: Books.list_highlights_for_material(user.id, material.id))
+      else
+        socket
+      end
+
+    {:noreply, socket}
   end
 
   # Busca
@@ -174,14 +215,137 @@ defmodule QuizProjectWeb.ContentsLive.Read do
     {:noreply, assign(socket, search_term: "", results: [])}
   end
 
-  # O botão de IA abre o resumo do processamento antes de gastar: quem clica
-  # decide olhando tamanho, provedor, modelo e custo, não só o ícone.
-  def handle_event("confirm_curation", %{"id" => chapter_id}, socket) do
+  # Marcação e notas
+  #
+  # `create_highlight` é o caminho rápido — cor sem nota, disparado direto da
+  # barra flutuante de seleção. `save_note_editor` é o caminho lento — nota
+  # com cor, disparado da folha, tanto para criar quanto para editar (o `id`
+  # do rascunho decide qual das duas).
+
+  def handle_event(
+        "create_highlight",
+        %{"block" => position, "start" => start, "end" => end_, "quote" => quote, "color" => color},
+        socket
+      ) do
+    user = socket.assigns.current_user
+    chapter = socket.assigns.chapter
+
+    case Books.create_highlight(user, chapter, position, %{
+           start_offset: start,
+           end_offset: end_,
+           quote: String.trim(quote),
+           color: highlight_color(socket, color)
+         }) do
+      {:ok, highlight} -> {:noreply, put_highlight(socket, highlight)}
+      {:error, _reason} -> {:noreply, socket}
+    end
+  end
+
+  def handle_event(
+        "open_note_draft",
+        %{"block" => position, "start" => start, "end" => end_, "quote" => quote},
+        socket
+      ) do
+    draft = %{
+      id: nil,
+      block_position: position,
+      start_offset: start,
+      end_offset: end_,
+      quote: String.trim(quote),
+      color: :yellow,
+      note: ""
+    }
+
     {:noreply,
      assign(socket,
-       confirm_chapter: Enum.find(socket.assigns.chapters, &(&1.id == chapter_id)),
-       curation_choice: AI.default_selection()
+       note_editor: draft,
+       contents_open?: false,
+       appearance_open?: false,
+       notes_open?: false
      )}
+  end
+
+  # Reabrir uma marcação existente busca o registro de novo em vez de confiar
+  # no que já está desenhado na tela: garante que só o dono edita, mesmo que o
+  # clique tenha vindo de uma marca que sobrou de outra sessão de leitura.
+  def handle_event("open_highlight", %{"id" => id}, socket) do
+    user = socket.assigns.current_user
+
+    case Books.get_own_highlight(id, user.id) do
+      {:ok, highlight} ->
+        editor = %{
+          id: highlight.id,
+          block_position: nil,
+          start_offset: highlight.start_offset,
+          end_offset: highlight.end_offset,
+          quote: highlight.quote,
+          color: highlight.color,
+          note: highlight.note || ""
+        }
+
+        {:noreply,
+         assign(socket,
+           note_editor: editor,
+           contents_open?: false,
+           appearance_open?: false,
+           notes_open?: false
+         )}
+
+      {:error, _reason} ->
+        {:noreply, socket}
+    end
+  end
+
+  def handle_event("pick_note_color", %{"color" => color}, socket) do
+    case socket.assigns.note_editor do
+      nil -> {:noreply, socket}
+      editor -> {:noreply, assign(socket, note_editor: %{editor | color: highlight_color(socket, color)})}
+    end
+  end
+
+  def handle_event("cancel_note_editor", _params, socket) do
+    {:noreply, assign(socket, note_editor: nil)}
+  end
+
+  def handle_event("save_note_editor", %{"note" => note_text}, socket) do
+    editor = socket.assigns.note_editor
+    note = blank_to_nil(note_text)
+
+    socket =
+      case editor.id do
+        nil -> create_from_draft(socket, editor, note)
+        _ -> update_note(socket, editor, note)
+      end
+
+    {:noreply, assign(socket, note_editor: nil)}
+  end
+
+  def handle_event("delete_highlight_editor", _params, socket) do
+    editor = socket.assigns.note_editor
+    socket = if editor && editor.id, do: do_delete_highlight(socket, editor.id), else: socket
+    {:noreply, assign(socket, note_editor: nil)}
+  end
+
+  def handle_event("delete_highlight_from_list", %{"id" => id}, socket) do
+    {:noreply, do_delete_highlight(socket, id)}
+  end
+
+  # O botão de IA abre o resumo do processamento antes de gastar: quem clica
+  # decide olhando tamanho, provedor, modelo e custo, não só o ícone.
+  #
+  # A guarda de autorização mora também aqui, e não só no botão desabilitado:
+  # o evento chega pelo socket e o clique já desabilitado na tela não impede
+  # quem manda o evento direto.
+  def handle_event("confirm_curation", %{"id" => chapter_id}, socket) do
+    if socket.assigns.ai_authorized? do
+      {:noreply,
+       assign(socket,
+         confirm_chapter: Enum.find(socket.assigns.chapters, &(&1.id == chapter_id)),
+         curation_choice: AI.default_selection()
+       )}
+    else
+      {:noreply, socket}
+    end
   end
 
   def handle_event("cancel_curation", _params, socket) do
@@ -222,7 +386,8 @@ defmodule QuizProjectWeb.ContentsLive.Read do
     escolha = socket.assigns.curation_choice
     socket = assign(socket, confirm_chapter: nil)
 
-    with chapter when not is_nil(chapter) <-
+    with true <- socket.assigns.ai_authorized?,
+         chapter when not is_nil(chapter) <-
            Enum.find(socket.assigns.chapters, &(&1.id == chapter_id)),
          {:ok, %{available?: true} = info} <- AI.resolve(escolha.provider, escolha.model) do
       case Books.curate_chapter_async(chapter, user, provider: info.module, model: info.model) do
@@ -244,9 +409,10 @@ defmodule QuizProjectWeb.ContentsLive.Read do
           {:noreply, socket}
       end
     else
-      # Provedor sem chave, modelo que não é do provedor, capítulo que sumiu: o
-      # botão já estava desabilitado para o primeiro caso, mas o evento chega
-      # pelo socket e não se confia nele.
+      # Usuário não autorizado, provedor sem chave, modelo que não é do
+      # provedor, capítulo que sumiu: o botão já estava desabilitado para os
+      # três primeiros casos, mas o evento chega pelo socket e não se confia
+      # nele.
       _ -> {:noreply, socket}
     end
   end
@@ -294,6 +460,111 @@ defmodule QuizProjectWeb.ContentsLive.Read do
   # `{:attempt_finished, ...}` e `{:mindmap_generated, ...}` mesmo sem assinar
   # nada — e sem esta cláusula o leitor cairia com `FunctionClauseError`.
   def handle_info(_message, socket), do: {:noreply, socket}
+
+  defp highlight_color(socket, value) do
+    Enum.find(socket.assigns.highlight_colors, :yellow, &(to_string(&1) == value))
+  end
+
+  defp blank_to_nil(text) do
+    case String.trim(text) do
+      "" -> nil
+      trimmed -> trimmed
+    end
+  end
+
+  # Grava a marcação nova no assign por bloco — para a folha de notas e para
+  # sobreviver a uma troca de capítulo e volta — e avisa o cliente para
+  # desenhar a marca: `push_event` é quem faz o trabalho visual, o assign só
+  # mantém a lista consistente.
+  defp put_highlight(socket, highlight) do
+    socket
+    |> update(:highlights, fn highlights ->
+      Map.update(highlights, highlight.block_id, [highlight], &(&1 ++ [highlight]))
+    end)
+    |> push_event("highlight_created", %{
+      block_id: highlight.block_id,
+      highlight: highlight_payload(highlight)
+    })
+    |> refresh_material_highlights_if_open()
+  end
+
+  defp highlight_payload(highlight) do
+    %{
+      id: highlight.id,
+      start: highlight.start_offset,
+      end: highlight.end_offset,
+      color: highlight.color,
+      note: not is_nil(highlight.note)
+    }
+  end
+
+  defp create_from_draft(socket, draft, note) do
+    user = socket.assigns.current_user
+    chapter = socket.assigns.chapter
+
+    case Books.create_highlight(user, chapter, draft.block_position, %{
+           start_offset: draft.start_offset,
+           end_offset: draft.end_offset,
+           quote: draft.quote,
+           color: draft.color,
+           note: note
+         }) do
+      {:ok, highlight} -> put_highlight(socket, highlight)
+      {:error, _reason} -> socket
+    end
+  end
+
+  defp update_note(socket, editor, note) do
+    user = socket.assigns.current_user
+
+    with {:ok, highlight} <- Books.get_own_highlight(editor.id, user.id),
+         {:ok, updated} <- Books.update_highlight(highlight, %{note: note, color: editor.color}) do
+      socket
+      |> update(:highlights, fn highlights ->
+        Map.update(highlights, updated.block_id, [updated], fn list ->
+          Enum.map(list, &if(&1.id == updated.id, do: updated, else: &1))
+        end)
+      end)
+      |> push_event("highlight_changed", %{
+        id: updated.id,
+        color: updated.color,
+        note: not is_nil(updated.note)
+      })
+      |> refresh_material_highlights_if_open()
+    else
+      _ -> socket
+    end
+  end
+
+  defp do_delete_highlight(socket, id) do
+    user = socket.assigns.current_user
+
+    with {:ok, highlight} <- Books.get_own_highlight(id, user.id),
+         :ok <- Books.delete_highlight(highlight) do
+      socket
+      |> update(:highlights, fn highlights ->
+        Map.update(highlights, highlight.block_id, [], fn list ->
+          Enum.reject(list, &(&1.id == highlight.id))
+        end)
+      end)
+      |> update(:material_highlights, fn list ->
+        Enum.reject(list, &(&1.highlight.id == highlight.id))
+      end)
+      |> push_event("highlight_deleted", %{id: highlight.id})
+    else
+      _ -> socket
+    end
+  end
+
+  defp refresh_material_highlights_if_open(socket) do
+    if socket.assigns.notes_open? do
+      user = socket.assigns.current_user
+      material = socket.assigns.material
+      assign(socket, material_highlights: Books.list_highlights_for_material(user.id, material.id))
+    else
+      socket
+    end
+  end
 
   defp atom_param(nil, _allowed, fallback), do: fallback
 
@@ -350,7 +621,7 @@ defmodule QuizProjectWeb.ContentsLive.Read do
       <% else %>
         <link rel="stylesheet" href={~p"/contents/#{@material.id}/book.css"} />
 
-        <.toolbar chapter={@chapter} chapters={@chapters} />
+        <.toolbar chapter={@chapter} chapters={@chapters} ai_authorized?={@ai_authorized?} />
 
         <.appearance_sheet preference={@preference} open?={@appearance_open?} />
 
@@ -362,6 +633,8 @@ defmodule QuizProjectWeb.ContentsLive.Read do
 
         <.usage_dialog :if={@usage_chapter} chapter={@usage_chapter} />
 
+        <.note_sheet editor={@note_editor} colors={@highlight_colors} />
+
         <%!-- O sumário é navegação, não leitura: fica fora da tela até ser
              chamado, em vez de comer uma coluna fixa ao lado do texto. --%>
         <.contents_drawer
@@ -372,6 +645,8 @@ defmodule QuizProjectWeb.ContentsLive.Read do
           results={@results}
           open?={@contents_open?}
         />
+
+        <.notes_drawer material={@material} entries={@material_highlights} open?={@notes_open?} />
 
         <%!-- As variáveis ficam no quadro, e não no texto, para a navegação de
              rodapé acompanhar a largura de coluna escolhida. --%>
@@ -390,6 +665,7 @@ defmodule QuizProjectWeb.ContentsLive.Read do
             <.chapter
               blocks={@blocks}
               covered={@covered}
+              highlights={@highlights}
               material_id={@material.id}
               invertible={@material.image_flags}
             />
@@ -690,6 +966,7 @@ defmodule QuizProjectWeb.ContentsLive.Read do
 
   attr :chapter, :map, required: true
   attr :chapters, :list, required: true
+  attr :ai_authorized?, :boolean, required: true
 
   # `--qnav-h` é a altura real da navbar, medida no cliente: ela muda com o
   # ponto de quebra e com a skin, e um `top` chutado deixa uma fresta por onde o
@@ -721,7 +998,19 @@ defmodule QuizProjectWeb.ContentsLive.Read do
           chapter={@chapter}
           state={@ai_state}
           risky?={Books.curation_risky?(@chapter.estimated_tokens)}
+          authorized?={@ai_authorized?}
         />
+
+        <button
+          type="button"
+          id="open-notes"
+          phx-click="toggle_notes"
+          class="qreader-tool"
+          title="Minhas anotações"
+          aria-label="Minhas anotações"
+        >
+          <.icon name="hero-bookmark" class="size-5" />
+        </button>
 
         <button
           type="button"
@@ -749,6 +1038,7 @@ defmodule QuizProjectWeb.ContentsLive.Read do
   attr :chapter, :map, required: true
   attr :state, :atom, required: true
   attr :risky?, :boolean, default: false
+  attr :authorized?, :boolean, required: true
 
   # `:none`/`:failed` disparam o processamento; `:processing` só mostra o
   # andamento (o clique não repete a chamada, o guard já está no servidor);
@@ -792,8 +1082,13 @@ defmodule QuizProjectWeb.ContentsLive.Read do
       id={"chapter-ai-#{@chapter.id}"}
       phx-click="confirm_curation"
       phx-value-id={@chapter.id}
+      disabled={not @authorized?}
       class={["qreader-tool bg-error/15", counted?(@chapter) && "qreader-tool-wide"]}
-      title={"Falhou — tentar novamente. " <> curation_hint(@chapter, @risky?)}
+      title={
+        if @authorized?,
+          do: "Falhou — tentar novamente. " <> curation_hint(@chapter, @risky?),
+          else: "Falhou — seu usuário não está autorizado a processar com IA"
+      }
       aria-label="Falhou — tentar novamente"
     >
       <.icon name="hero-exclamation-triangle" class="size-5" />
@@ -811,13 +1106,22 @@ defmodule QuizProjectWeb.ContentsLive.Read do
       id={"chapter-ai-#{@chapter.id}"}
       phx-click="confirm_curation"
       phx-value-id={@chapter.id}
+      disabled={not @authorized?}
       class={[
         "qreader-tool",
         if(@risky?, do: "bg-warning/20", else: "bg-info/15"),
         counted?(@chapter) && "qreader-tool-wide"
       ]}
-      title={curation_hint(@chapter, @risky?)}
-      aria-label={curation_hint(@chapter, @risky?)}
+      title={
+        if @authorized?,
+          do: curation_hint(@chapter, @risky?),
+          else: "Seu usuário não está autorizado a processar com IA"
+      }
+      aria-label={
+        if @authorized?,
+          do: curation_hint(@chapter, @risky?),
+          else: "Seu usuário não está autorizado a processar com IA"
+      }
     >
       <.icon name="hero-sparkles" class="size-5" />
       <span :if={counted?(@chapter)} class="qreader-tool-count">
@@ -1141,6 +1445,198 @@ defmodule QuizProjectWeb.ContentsLive.Read do
     </div>
     """
   end
+
+  attr :editor, :map, default: nil
+  attr :colors, :list, required: true
+
+  # Uma folha só para os dois caminhos: `@editor.id` presente é edição (mostra
+  # Remover), ausente é a marcação recém-selecionada virando nota (não
+  # mostra). O texto marcado aparece em cima, sempre — é o que ancora a nota
+  # a um trecho, então some da tela junto com ele.
+  defp note_sheet(assigns) do
+    ~H"""
+    <div
+      :if={@editor}
+      id="note-backdrop"
+      phx-click="cancel_note_editor"
+      phx-window-keydown="cancel_note_editor"
+      phx-key="escape"
+      class="fixed inset-0 z-[80] touch-none bg-base-content/30 backdrop-blur-[1px]"
+      aria-hidden="true"
+    >
+    </div>
+
+    <div
+      :if={@editor}
+      id="note-editor"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="note-editor-title"
+      class={[
+        "fixed inset-x-0 bottom-0 z-[90] mx-auto max-h-[90vh] w-full max-w-md overflow-y-auto",
+        "rounded-t-3xl border border-base-300 bg-base-100 shadow-2xl",
+        "sm:inset-y-auto sm:top-1/2 sm:-translate-y-1/2 sm:rounded-3xl"
+      ]}
+    >
+      <div class="flex items-start justify-between gap-2 rounded-t-3xl bg-primary/10 px-5 py-4 sm:rounded-t-3xl">
+        <div class="min-w-0">
+          <h2 id="note-editor-title" class="text-sm font-semibold text-primary">
+            {if @editor && @editor.id, do: "Editar marcação", else: "Marcar trecho"}
+          </h2>
+          <p :if={@editor} class="mt-1 line-clamp-2 text-xs italic opacity-70">
+            "{@editor.quote}"
+          </p>
+        </div>
+        <button
+          type="button"
+          id="close-note-editor"
+          phx-click="cancel_note_editor"
+          class="qreader-tool"
+          aria-label="Fechar"
+        >
+          <.icon name="hero-x-mark" class="size-5" />
+        </button>
+      </div>
+
+      <div :if={@editor} class="flex items-center gap-2 px-5 pt-4">
+        <button
+          :for={color <- @colors}
+          type="button"
+          phx-click="pick_note_color"
+          phx-value-color={color}
+          class={[
+            "size-7 rounded-full border-2 transition",
+            highlight_swatch_class(color),
+            @editor.color == color && "ring-2 ring-offset-2 ring-primary ring-offset-base-100"
+          ]}
+          aria-label={"Cor #{color}"}
+          aria-pressed={@editor.color == color}
+        >
+        </button>
+      </div>
+
+      <form :if={@editor} id="note-form" phx-submit="save_note_editor" class="px-5 pt-4">
+        <textarea
+          name="note"
+          rows="4"
+          placeholder="Escreva uma nota sobre este trecho (opcional)"
+          class="textarea textarea-bordered w-full rounded-2xl"
+        >{@editor.note}</textarea>
+
+        <div class="flex items-center gap-2 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-4">
+          <button
+            :if={@editor.id}
+            type="button"
+            phx-click="delete_highlight_editor"
+            class="btn btn-ghost text-error rounded-full"
+          >
+            Remover
+          </button>
+          <span class="flex-1"></span>
+          <button type="button" phx-click="cancel_note_editor" class="btn btn-ghost rounded-full">
+            Cancelar
+          </button>
+          <button type="submit" class="btn btn-primary rounded-full px-6">
+            Salvar
+          </button>
+        </div>
+      </form>
+    </div>
+    """
+  end
+
+  defp highlight_swatch_class(:yellow), do: "bg-warning border-warning"
+  defp highlight_swatch_class(:green), do: "bg-success border-success"
+  defp highlight_swatch_class(:blue), do: "bg-info border-info"
+  defp highlight_swatch_class(:pink), do: "bg-error border-error"
+
+  attr :material, :map, required: true
+  attr :entries, :list, required: true
+  attr :open?, :boolean, required: true
+
+  # Lista achatada por livro, e não por capítulo: quem abre esta gaveta quer
+  # repassar o que marcou antes de continuar, não navegar pelo sumário de
+  # novo — o título do capítulo aparece junto de cada linha para dar contexto
+  # sem precisar de uma segunda hierarquia.
+  defp notes_drawer(assigns) do
+    ~H"""
+    <div
+      :if={@open?}
+      id="notes-backdrop"
+      phx-click="toggle_notes"
+      phx-window-keydown="toggle_notes"
+      phx-key="escape"
+      class="fixed inset-0 z-[60] touch-none bg-base-content/20 backdrop-blur-[1px]"
+      aria-hidden="true"
+    >
+    </div>
+
+    <aside
+      id="notes-drawer"
+      class={[
+        "fixed inset-y-0 right-0 z-[70] flex w-80 max-w-[85vw] flex-col gap-3",
+        "border-l border-base-300 bg-base-100 shadow-xl",
+        "overscroll-contain p-4 pt-[max(1rem,env(safe-area-inset-top))]",
+        "transition-transform duration-200 ease-out motion-reduce:transition-none",
+        @open? && "translate-x-0",
+        not @open? && "translate-x-full"
+      ]}
+      aria-hidden={not @open?}
+    >
+      <div class="flex items-center justify-between gap-2">
+        <h2 class="text-sm font-semibold">Minhas anotações</h2>
+        <button
+          type="button"
+          id="close-notes"
+          phx-click="toggle_notes"
+          class="qreader-tool"
+          aria-label="Fechar anotações"
+        >
+          <.icon name="hero-x-mark" class="size-4" />
+        </button>
+      </div>
+
+      <div class="-mx-1 min-h-0 flex-1 overscroll-contain overflow-y-auto px-1">
+        <p :if={@entries == []} class="px-2 py-4 text-sm opacity-60">
+          Nenhum trecho marcado ainda. Selecione um trecho do texto para marcar ou anotar.
+        </p>
+
+        <div
+          :for={entry <- @entries}
+          :if={entry.chapter}
+          class="mb-2 rounded-xl border border-base-300 py-2 pl-3 pr-2"
+          style={"border-inline-start: 3px solid var(--color-#{highlight_border_color(entry.highlight.color)})"}
+        >
+          <.link
+            patch={~p"/contents/#{@material.id}/#{entry.chapter.position}" <> "#block-#{entry.block_position}"}
+            class="block"
+          >
+            <p class="truncate text-[0.65rem] font-semibold uppercase tracking-wide opacity-50">
+              {entry.chapter.title}
+            </p>
+            <p class="mt-0.5 line-clamp-2 text-xs italic opacity-80">"{entry.highlight.quote}"</p>
+            <p :if={entry.highlight.note} class="mt-1 line-clamp-3 text-xs opacity-70">
+              {entry.highlight.note}
+            </p>
+          </.link>
+          <button
+            type="button"
+            phx-click="delete_highlight_from_list"
+            phx-value-id={entry.highlight.id}
+            class="mt-1 text-[0.65rem] font-medium text-error/80 hover:text-error"
+          >
+            Remover
+          </button>
+        </div>
+      </div>
+    </aside>
+    """
+  end
+
+  defp highlight_border_color(:yellow), do: "warning"
+  defp highlight_border_color(:green), do: "success"
+  defp highlight_border_color(:blue), do: "info"
+  defp highlight_border_color(:pink), do: "error"
 
   defp usage_tokens_label(nil), do: "não registrado"
   defp usage_tokens_label(tokens), do: "#{format_tokens(tokens)} tokens"

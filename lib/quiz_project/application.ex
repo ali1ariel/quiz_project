@@ -19,6 +19,7 @@ defmodule QuizProject.Application do
         {Task.Supervisor, name: QuizProject.TaskSupervisor}
       ] ++
         chromic_pdf_child() ++
+        authorization_child() ++
         [
           # Start to serve requests, typically the last entry
           QuizProjectWeb.Endpoint
@@ -65,6 +66,18 @@ defmodule QuizProject.Application do
   defp chromic_pdf_child do
     if Application.get_env(:quiz_project, :enable_chromic_pdf, true) do
       [{ChromicPDF, Application.get_env(:quiz_project, :chromic_pdf, [])}]
+    else
+      []
+    end
+  end
+
+  # Só sobe o poller quando ele é de fato a implementação escolhida: em teste
+  # e em desenvolvimento sem credencial AWS, `:ai_authorization` aponta para
+  # `Fake` (lista de configuração, sem rede) — subir o GenServer ali seria
+  # trabalho e log de erro sem nenhum uso.
+  defp authorization_child do
+    if Application.get_env(:quiz_project, :ai_authorization) == QuizProject.AI.Authorization.SSM do
+      [QuizProject.AI.Authorization.SSM]
     else
       []
     end

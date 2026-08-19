@@ -5,13 +5,16 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Upload do
 
   @impl true
   def mount(_params, _session, socket) do
+    user = socket.assigns.current_user
+
     {:ok,
      socket
      |> assign(
        page_title: "Novo Conteúdo - Estudo Adaptativo",
        loading?: false,
        title: "",
-       raw_content: ""
+       raw_content: "",
+       ai_authorized?: QuizProject.AI.Authorization.authorized?(to_string(user.email))
      )
      |> allow_upload(:content_file, accept: ~w(.txt .md .pdf), max_entries: 1)}
   end
@@ -40,32 +43,41 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Upload do
         true -> ""
       end
 
-    if final_content == "" do
-      {:noreply,
-       put_flash(socket, :error, "Insira um texto ou faça upload de um arquivo para continuar.")}
-    else
-      user = socket.assigns.current_user
+    cond do
+      # O botão já vem desabilitado para quem não está autorizado — isto é a
+      # garantia do lado do servidor, para o evento que chega direto pelo
+      # socket não processar mesmo assim.
+      not socket.assigns.ai_authorized? ->
+        {:noreply,
+         put_flash(socket, :error, "Seu usuário não está autorizado a processar com IA.")}
 
-      case AdaptiveStudy.create_material(user, %{
-             title: if(title != "", do: title, else: "Processando material..."),
-             raw_content: final_content,
-             status: "draft"
-           }) do
-        {:ok, material} ->
-          # Processa com IA em background via Jobs.run para evitar timeouts
-          AdaptiveStudy.process_material_async(material, user)
+      final_content == "" ->
+        {:noreply,
+         put_flash(socket, :error, "Insira um texto ou faça upload de um arquivo para continuar.")}
 
-          {:noreply,
-           socket
-           |> put_flash(
-             :info,
-             "Seu conteúdo está sendo processado em segundo plano pela IA. Você receberá uma notificação assim que o Mapa Mental estiver pronto!"
-           )
-           |> push_navigate(to: ~p"/study")}
+      true ->
+        user = socket.assigns.current_user
 
-        {:error, _} ->
-          {:noreply, put_flash(socket, :error, "Não foi possível salvar o material.")}
-      end
+        case AdaptiveStudy.create_material(user, %{
+               title: if(title != "", do: title, else: "Processando material..."),
+               raw_content: final_content,
+               status: "draft"
+             }) do
+          {:ok, material} ->
+            # Processa com IA em background via Jobs.run para evitar timeouts
+            AdaptiveStudy.process_material_async(material, user)
+
+            {:noreply,
+             socket
+             |> put_flash(
+               :info,
+               "Seu conteúdo está sendo processado em segundo plano pela IA. Você receberá uma notificação assim que o Mapa Mental estiver pronto!"
+             )
+             |> push_navigate(to: ~p"/study")}
+
+          {:error, _} ->
+            {:noreply, put_flash(socket, :error, "Não foi possível salvar o material.")}
+        end
     end
   end
 
@@ -146,6 +158,10 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Upload do
             >{@raw_content}</textarea>
           </div>
 
+          <p :if={not @ai_authorized?} class="text-sm text-error">
+            Seu usuário não está autorizado a processar conteúdo com IA.
+          </p>
+
           <%!-- Empilhado no telefone, com a ação principal em cima: lado a lado
                os dois botões somam ~320px e estouram a tela de 320px.
                `flex-col-reverse` mantém a ordem de tabulação com Cancelar antes
@@ -161,7 +177,10 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Upload do
               type="submit"
               id="submit-generate-mindmap"
               class="btn btn-primary inline-flex items-center justify-center gap-2 rounded-full px-8 max-sm:w-full"
-              disabled={@loading?}
+              disabled={@loading? or not @ai_authorized?}
+              title={
+                if @ai_authorized?, do: nil, else: "Seu usuário não está autorizado a processar com IA"
+              }
             >
               <%= if @loading? do %>
                 <.icon name="hero-arrow-path" class="size-5 motion-safe:animate-spin" />

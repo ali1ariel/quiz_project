@@ -1,5 +1,8 @@
 defmodule QuizProjectWeb.ContentsReadLiveTest do
-  use QuizProjectWeb.ConnCase, async: true
+  # `async: false` porque a lista de autorizados de IA vive em
+  # `Application.env` (estado global do BEAM, ver `AI.Authorization.Fake`) —
+  # dois testes em paralelo autorizando usuários diferentes se atropelariam.
+  use QuizProjectWeb.ConnCase, async: false
 
   import Phoenix.LiveViewTest
 
@@ -8,6 +11,16 @@ defmodule QuizProjectWeb.ContentsReadLiveTest do
   alias QuizProject.EpubFixture
 
   setup :register_and_log_in_user
+
+  # O leitor em si não distingue autorizado de não autorizado; só o botão de
+  # IA distingue (ver describe "curadoria de capítulo por IA" abaixo, e
+  # "autorização de IA" para o comportamento de quem não está na lista) — os
+  # demais testes deste arquivo autorizam por padrão para continuarem
+  # exercitando o resto da tela sem se importar com isto.
+  setup %{user: user} do
+    Application.put_env(:quiz_project, :fake_authorized_emails, [to_string(user.email)])
+    on_exit(fn -> Application.put_env(:quiz_project, :fake_authorized_emails, []) end)
+  end
 
   setup %{user: user} do
     {:ok, material} =
@@ -730,6 +743,300 @@ defmodule QuizProjectWeb.ContentsReadLiveTest do
 
       refute has_element?(view, "#usage-dialog")
       assert html =~ chapter.title
+    end
+  end
+
+  describe "marcação e notas" do
+    setup %{conn: conn, material: material} do
+      {:ok, view, _html} = live(conn, ~p"/contents/#{material.id}/2")
+      {:ok, chapter} = Books.get_chapter(material.id, 2)
+      block = chapter.id |> Books.list_blocks() |> List.first()
+
+      %{view: view, chapter: chapter, block: block}
+    end
+
+    # O evento chega como chegaria da barra flutuante de seleção — o teste não
+    # simula a seleção de texto em si, que é DOM puro no cliente, só o
+    # `pushEvent` que ela dispara.
+    test "marcar sem nota grava a marcação e devolve o dono à leitura", %{
+      view: view,
+      block: block,
+      user: user,
+      chapter: chapter
+    } do
+      render_hook(view, "create_highlight", %{
+        "block" => block.position,
+        "start" => 0,
+        "end" => 5,
+        "quote" => "trecho",
+        "color" => "green"
+      })
+
+      grouped = Books.list_highlights(chapter.id, user.id)
+      assert [highlight] = Map.fetch!(grouped, block.id)
+      assert highlight.color == :green
+      assert highlight.note == nil
+
+      refute has_element?(view, "#note-editor")
+    end
+
+    test "anotar abre a folha com o trecho selecionado", %{view: view, block: block} do
+      html =
+        render_hook(view, "open_note_draft", %{
+          "block" => block.position,
+          "start" => 0,
+          "end" => 5,
+          "quote" => "trecho selecionado"
+        })
+
+      assert html =~ "trecho selecionado"
+      assert has_element?(view, "#note-editor")
+    end
+
+    test "salvar a folha em modo criação grava marcação com nota", %{
+      view: view,
+      block: block,
+      user: user,
+      chapter: chapter
+    } do
+      render_hook(view, "open_note_draft", %{
+        "block" => block.position,
+        "start" => 0,
+        "end" => 5,
+        "quote" => "trecho"
+      })
+
+      view |> form("#note-form", %{"note" => "Lembrar disso"}) |> render_submit()
+
+      grouped = Books.list_highlights(chapter.id, user.id)
+      assert [highlight] = Map.fetch!(grouped, block.id)
+      assert highlight.note == "Lembrar disso"
+      assert highlight.color == :yellow
+
+      refute has_element?(view, "#note-editor")
+    end
+
+    test "escolher cor na folha muda o que vai ser salvo", %{
+      view: view,
+      block: block,
+      user: user,
+      chapter: chapter
+    } do
+      render_hook(view, "open_note_draft", %{
+        "block" => block.position,
+        "start" => 0,
+        "end" => 5,
+        "quote" => "trecho"
+      })
+
+      render_click(view, "pick_note_color", %{"color" => "pink"})
+      view |> form("#note-form", %{"note" => ""}) |> render_submit()
+
+      grouped = Books.list_highlights(chapter.id, user.id)
+      assert [highlight] = Map.fetch!(grouped, block.id)
+      assert highlight.color == :pink
+      assert highlight.note == nil
+    end
+
+    test "abrir uma marcação existente preenche a folha para edição", %{
+      view: view,
+      block: block,
+      user: user,
+      chapter: chapter
+    } do
+      {:ok, highlight} =
+        Books.create_highlight(user, chapter, block.position, %{
+          start_offset: 0,
+          end_offset: 3,
+          quote: "abc",
+          color: :blue,
+          note: "nota antiga"
+        })
+
+      html = render_hook(view, "open_highlight", %{"id" => highlight.id})
+
+      assert html =~ "Editar marcação"
+      assert has_element?(view, "textarea[name=note]", "nota antiga")
+    end
+
+    test "editar a nota atualiza sem duplicar a marcação", %{
+      view: view,
+      block: block,
+      user: user,
+      chapter: chapter
+    } do
+      {:ok, highlight} =
+        Books.create_highlight(user, chapter, block.position, %{
+          start_offset: 0,
+          end_offset: 3,
+          quote: "abc",
+          color: :blue
+        })
+
+      render_hook(view, "open_highlight", %{"id" => highlight.id})
+      view |> form("#note-form", %{"note" => "agora com nota"}) |> render_submit()
+
+      grouped = Books.list_highlights(chapter.id, user.id)
+      assert [updated] = Map.fetch!(grouped, block.id)
+      assert updated.id == highlight.id
+      assert updated.note == "agora com nota"
+    end
+
+    test "remover pela folha apaga a marcação", %{
+      view: view,
+      block: block,
+      user: user,
+      chapter: chapter
+    } do
+      {:ok, highlight} =
+        Books.create_highlight(user, chapter, block.position, %{
+          start_offset: 0,
+          end_offset: 3,
+          quote: "abc",
+          color: :blue
+        })
+
+      render_hook(view, "open_highlight", %{"id" => highlight.id})
+      view |> element("button", "Remover") |> render_click()
+
+      assert Books.list_highlights(chapter.id, user.id) == %{}
+      refute has_element?(view, "#note-editor")
+    end
+
+    test "usuário sem posse não consegue abrir a marcação de outro leitor", %{
+      view: view,
+      block: block,
+      chapter: chapter
+    } do
+      {:ok, outro} =
+        QuizProject.Accounts.register_user(
+          %{
+            email: "outro#{System.unique_integer([:positive])}@teste.com",
+            password: "senha12345"
+          },
+          authorize?: false
+        )
+
+      {:ok, highlight} =
+        Books.create_highlight(outro, chapter, block.position, %{
+          start_offset: 0,
+          end_offset: 3,
+          quote: "abc",
+          color: :blue
+        })
+
+      render_hook(view, "open_highlight", %{"id" => highlight.id})
+
+      refute has_element?(view, "#note-editor")
+    end
+
+    test "a gaveta de anotações lista o que foi marcado no livro", %{
+      view: view,
+      block: block,
+      user: user,
+      chapter: chapter
+    } do
+      {:ok, _highlight} =
+        Books.create_highlight(user, chapter, block.position, %{
+          start_offset: 0,
+          end_offset: 3,
+          quote: "trecho marcado",
+          color: :blue,
+          note: "uma nota"
+        })
+
+      html = view |> element("#open-notes") |> render_click()
+
+      assert has_element?(view, "#notes-drawer.translate-x-0")
+      assert html =~ "trecho marcado"
+      assert html =~ "uma nota"
+    end
+
+    test "abrir anotações fecha sumário e aparência", %{view: view} do
+      view |> element("#open-contents") |> render_click()
+      view |> element("#open-notes") |> render_click()
+
+      assert has_element?(view, "#notes-drawer.translate-x-0")
+      assert has_element?(view, "#contents-drawer.-translate-x-full")
+    end
+
+    test "remover pela gaveta apaga a marcação", %{
+      view: view,
+      block: block,
+      user: user,
+      chapter: chapter
+    } do
+      {:ok, highlight} =
+        Books.create_highlight(user, chapter, block.position, %{
+          start_offset: 0,
+          end_offset: 3,
+          quote: "abc",
+          color: :blue
+        })
+
+      view |> element("#open-notes") |> render_click()
+      view |> element(~s|button[phx-value-id="#{highlight.id}"]|) |> render_click()
+
+      assert Books.list_highlights(chapter.id, user.id) == %{}
+      refute has_element?(view, ~s|button[phx-value-id="#{highlight.id}"]|)
+    end
+  end
+
+  describe "autorização de IA" do
+    setup do
+      Application.put_env(:quiz_project, :fake_authorized_emails, [])
+      :ok
+    end
+
+    test "usuário fora da lista vê o botão de processar desabilitado", %{
+      conn: conn,
+      material: material
+    } do
+      {:ok, view, html} = live(conn, ~p"/contents/#{material.id}/2")
+      {:ok, chapter} = Books.get_chapter(material.id, 2)
+
+      assert has_element?(view, "#chapter-ai-#{chapter.id}[disabled]")
+      assert html =~ "não está autorizado a processar com IA"
+    end
+
+    # O botão desabilitado é a interface; a garantia é o servidor — o mesmo
+    # espírito de "provedor sem chave" logo abaixo, agora para quem nem
+    # deveria ver a tela de confirmação.
+    test "o evento chega direto pelo socket e ainda assim não abre a confirmação", %{
+      conn: conn,
+      material: material
+    } do
+      {:ok, view, _html} = live(conn, ~p"/contents/#{material.id}/2")
+      {:ok, chapter} = Books.get_chapter(material.id, 2)
+
+      render_click(view, "confirm_curation", %{"id" => chapter.id})
+
+      refute has_element?(view, "#curation-dialog")
+    end
+
+    test "curate_chapter direto pelo socket não processa", %{conn: conn, material: material} do
+      {:ok, view, _html} = live(conn, ~p"/contents/#{material.id}/2")
+      {:ok, chapter} = Books.get_chapter(material.id, 2)
+
+      render_click(view, "curate_chapter", %{"id" => chapter.id})
+
+      intocado = Enum.find(Books.list_chapters(material.id), &(&1.id == chapter.id))
+      refute intocado.curation_status == :done
+    end
+
+    test "capítulo já processado continua abrindo o resumo de uso", %{
+      conn: conn,
+      material: material,
+      user: user
+    } do
+      {:ok, chapter} = Books.get_chapter(material.id, 2)
+      {:ok, _} = Books.curate_chapter_async(chapter, user)
+
+      {:ok, view, _html} = live(conn, ~p"/contents/#{material.id}/2")
+
+      refute has_element?(view, "#chapter-ai-#{chapter.id}[disabled]")
+      view |> element("#chapter-ai-#{chapter.id}") |> render_click()
+      assert has_element?(view, "#usage-dialog")
     end
   end
 

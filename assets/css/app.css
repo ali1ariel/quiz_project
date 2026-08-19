@@ -679,6 +679,17 @@ h1, h2, h3 {
   background-color: color-mix(in oklab, var(--color-base-content) 8%, transparent);
 }
 
+/* O botão de IA carrega cor de fundo própria (aviso, erro, risco) mesmo
+   desabilitado — sem isto ele continuaria com a mesma aparência "acionável"
+   de sempre, e só o cursor diria que não faz nada. */
+.qreader-tool:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+.qreader-tool:disabled:hover {
+  background-color: transparent;
+}
+
 /* Variante que carrega um número ao lado do ícone. O botão deixa de
    ser quadrado e vira pílula, mantendo os 44px de altura. */
 .qreader-tool-wide {
@@ -936,6 +947,94 @@ header.navbar {
 }
 header.navbar.qnav-hidden {
   transform: translateY(-100%);
+}
+
+/* Marcação de trecho. `box-decoration-break: clone` faz a marca clonar
+   fundo e canto arredondado em cada linha quando o trecho quebra no
+   meio — sem isto, uma marcação de duas linhas ganha uma única caixa
+   retangular esticada por cima do espaço entre elas. */
+.qreader-highlight {
+  border-radius: 0.2em;
+  padding-block: 0.05em;
+  cursor: pointer;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+.qreader-highlight[data-color="yellow"] {
+  background-color: color-mix(in oklab, var(--color-warning) 40%, transparent);
+}
+.qreader-highlight[data-color="green"] {
+  background-color: color-mix(in oklab, var(--color-success) 32%, transparent);
+}
+.qreader-highlight[data-color="blue"] {
+  background-color: color-mix(in oklab, var(--color-info) 32%, transparent);
+}
+.qreader-highlight[data-color="pink"] {
+  background-color: color-mix(in oklab, var(--color-error) 28%, transparent);
+}
+
+/* `<mark>` traz `color: black` da folha do navegador, e nenhuma das quatro
+   cores acima é clara o bastante no tema escuro para o texto preto continuar
+   legível por cima. */
+[data-theme="dark"] .qreader-highlight {
+  color: #fff;
+}
+
+/* Ponto que denuncia nota sem precisar abrir a marcação para descobrir. */
+.qreader-highlight[data-note="true"]::after {
+  content: "";
+  display: inline-block;
+  inline-size: 0.35em;
+  block-size: 0.35em;
+  margin-inline-start: 0.15em;
+  margin-block-end: 0.5em;
+  border-radius: 50%;
+  background-color: color-mix(in oklab, var(--color-base-content) 55%, transparent);
+  vertical-align: super;
+}
+
+/* Barra flutuante de seleção. Fica fora do documento até o hook decidir
+   posicioná-la sobre a seleção corrente — não dá para reagir a
+   `selectionchange` por assign do LiveView sem um round-trip a cada
+   arrasto do dedo, então a barra inteira é DOM puro, criada uma vez e
+   reaproveitada. */
+.qreader-toolbar {
+  display: none;
+  position: fixed;
+  z-index: 100;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.35rem;
+  border-radius: 9999px;
+  background-color: var(--color-base-100);
+  border: 1px solid var(--skin-card-line, var(--color-base-300));
+  box-shadow: 0 8px 24px -8px rgba(0, 0, 0, 0.35);
+}
+.qreader-toolbar button {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  inline-size: 2rem;
+  block-size: 2rem;
+  border-radius: 9999px;
+  color: var(--color-base-content);
+}
+.qreader-toolbar button[data-color] {
+  inline-size: 1.5rem;
+  block-size: 1.5rem;
+  align-self: center;
+  border: 2px solid color-mix(in oklab, var(--color-base-content) 15%, transparent);
+}
+.qreader-toolbar button[data-color="yellow"] { background-color: var(--color-warning); }
+.qreader-toolbar button[data-color="green"] { background-color: var(--color-success); }
+.qreader-toolbar button[data-color="blue"] { background-color: var(--color-info); }
+.qreader-toolbar button[data-color="pink"] { background-color: var(--color-error); }
+.qreader-toolbar button[data-note] {
+  background-color: color-mix(in oklab, var(--color-base-content) 8%, transparent);
+}
+.qreader-toolbar button:hover,
+.qreader-toolbar button:focus-visible {
+  filter: brightness(1.08);
 }
 
 /* Botões sem sombra, com microinteração definida por cada skin. */
