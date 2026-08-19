@@ -27,6 +27,13 @@ GEMINI_API_KEY=$(get_param_optional "/quiz_project/prod/gemini_api_key")
 ANTHROPIC_API_KEY=$(get_param_optional "/quiz_project/prod/anthropic_api_key")
 AI_PROVIDER=$(get_param_optional "/quiz_project/prod/ai_provider")
 
+# Quem pode disparar processamento de IA (custo real por chamada). A app não
+# tem credencial AWS em runtime, então lê a lista aqui — igual às chaves
+# acima — em vez de usar o poller QuizProject.AI.Authorization.SSM, que
+# exigiria AWS_ACCESS_KEY_ID/AWS_REGION no processo. Atualiza só a cada
+# deploy, não a cada 5 minutos.
+AI_AUTHORIZATION_EMAILS=$(get_param_optional "/quiz_project/prod/ai_authorized_emails")
+
 echo "Setting up directory permissions..."
 sudo mkdir -p "$APP_DIR/_build/prod/rel/quiz_project/tmp"
 sudo chown -R ubuntu:ubuntu "$APP_DIR/_build/prod/rel/quiz_project/tmp"
@@ -65,6 +72,7 @@ Environment="OPENAI_API_KEY=${OPENAI_API_KEY}"
 Environment="GEMINI_API_KEY=${GEMINI_API_KEY}"
 Environment="ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}"
 Environment="AI_PROVIDER=${AI_PROVIDER}"
+Environment="AI_AUTHORIZATION_EMAILS=${AI_AUTHORIZATION_EMAILS}"
 
 ExecStart=${BIN} start
 ExecStop=${BIN} stop
