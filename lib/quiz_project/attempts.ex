@@ -599,6 +599,24 @@ defmodule QuizProject.Attempts do
     |> Ash.read!(authorize?: false)
   end
 
+  @doc """
+  Melhor percentual entre as tentativas finalizadas do usuário num quiz, ou
+  `nil` se ainda não há tentativa finalizada. Reaproveita
+  `list_finished_for_participant/2` — é a base do progresso de metas de quiz
+  em Prioridades. "Melhor" em vez de "mais recente" porque uma tentativa ruim
+  não deveria fazer a meta parecer regredir.
+  """
+  def best_percent_for_quiz(user, quiz_id) do
+    user
+    |> list_finished_for_participant(quiz_id)
+    |> Enum.map(& &1.percent)
+    |> Enum.reject(&is_nil/1)
+    |> case do
+      [] -> nil
+      percents -> Enum.max(percents, Decimal)
+    end
+  end
+
   @doc "Tentativas do usuário logado (aba \"Quizzes respondidos\")."
   def list_answered(%{id: user_id}) do
     Attempt
