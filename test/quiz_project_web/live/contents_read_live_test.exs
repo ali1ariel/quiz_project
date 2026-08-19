@@ -1,5 +1,8 @@
 defmodule QuizProjectWeb.ContentsReadLiveTest do
-  use QuizProjectWeb.ConnCase, async: true
+  # `async: false` porque a lista de autorizados de IA vive em
+  # `Application.env` (estado global do BEAM, ver `AI.Authorization.Fake`) —
+  # dois testes em paralelo autorizando usuários diferentes se atropelariam.
+  use QuizProjectWeb.ConnCase, async: false
 
   import Phoenix.LiveViewTest
 
@@ -8,6 +11,16 @@ defmodule QuizProjectWeb.ContentsReadLiveTest do
   alias QuizProject.EpubFixture
 
   setup :register_and_log_in_user
+
+  # O leitor em si não distingue autorizado de não autorizado; só o botão de
+  # IA distingue (ver describe "curadoria de capítulo por IA" abaixo, e
+  # "autorização de IA" para o comportamento de quem não está na lista) — os
+  # demais testes deste arquivo autorizam por padrão para continuarem
+  # exercitando o resto da tela sem se importar com isto.
+  setup %{user: user} do
+    Application.put_env(:quiz_project, :fake_authorized_emails, [to_string(user.email)])
+    on_exit(fn -> Application.put_env(:quiz_project, :fake_authorized_emails, []) end)
+  end
 
   setup %{user: user} do
     {:ok, material} =
@@ -966,6 +979,64 @@ defmodule QuizProjectWeb.ContentsReadLiveTest do
 
       assert Books.list_highlights(chapter.id, user.id) == %{}
       refute has_element?(view, ~s|button[phx-value-id="#{highlight.id}"]|)
+    end
+  end
+
+  describe "autorização de IA" do
+    setup do
+      Application.put_env(:quiz_project, :fake_authorized_emails, [])
+      :ok
+    end
+
+    test "usuário fora da lista vê o botão de processar desabilitado", %{
+      conn: conn,
+      material: material
+    } do
+      {:ok, view, html} = live(conn, ~p"/contents/#{material.id}/2")
+      {:ok, chapter} = Books.get_chapter(material.id, 2)
+
+      assert has_element?(view, "#chapter-ai-#{chapter.id}[disabled]")
+      assert html =~ "não está autorizado a processar com IA"
+    end
+
+    # O botão desabilitado é a interface; a garantia é o servidor — o mesmo
+    # espírito de "provedor sem chave" logo abaixo, agora para quem nem
+    # deveria ver a tela de confirmação.
+    test "o evento chega direto pelo socket e ainda assim não abre a confirmação", %{
+      conn: conn,
+      material: material
+    } do
+      {:ok, view, _html} = live(conn, ~p"/contents/#{material.id}/2")
+      {:ok, chapter} = Books.get_chapter(material.id, 2)
+
+      render_click(view, "confirm_curation", %{"id" => chapter.id})
+
+      refute has_element?(view, "#curation-dialog")
+    end
+
+    test "curate_chapter direto pelo socket não processa", %{conn: conn, material: material} do
+      {:ok, view, _html} = live(conn, ~p"/contents/#{material.id}/2")
+      {:ok, chapter} = Books.get_chapter(material.id, 2)
+
+      render_click(view, "curate_chapter", %{"id" => chapter.id})
+
+      intocado = Enum.find(Books.list_chapters(material.id), &(&1.id == chapter.id))
+      refute intocado.curation_status == :done
+    end
+
+    test "capítulo já processado continua abrindo o resumo de uso", %{
+      conn: conn,
+      material: material,
+      user: user
+    } do
+      {:ok, chapter} = Books.get_chapter(material.id, 2)
+      {:ok, _} = Books.curate_chapter_async(chapter, user)
+
+      {:ok, view, _html} = live(conn, ~p"/contents/#{material.id}/2")
+
+      refute has_element?(view, "#chapter-ai-#{chapter.id}[disabled]")
+      view |> element("#chapter-ai-#{chapter.id}") |> render_click()
+      assert has_element?(view, "#usage-dialog")
     end
   end
 

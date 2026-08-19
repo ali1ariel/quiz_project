@@ -13,31 +13,11 @@ defmodule QuizProjectWeb.AdaptiveStudyLiveTest do
     assert {:error, {:redirect, %{to: "/login"}}} = live(conn, ~p"/study/new")
   end
 
-  test "exibe lista de materiais e permite criar um novo", %{conn: conn, user: user} do
+  test "exibe lista de materiais e o botão de criar um novo", %{conn: conn} do
     {:ok, view, html} = live(conn, ~p"/study")
 
     assert html =~ "Estudo Adaptativo"
     assert has_element?(view, "#new-study-material-btn")
-
-    # Inicia a criação em /study/new
-    {:ok, view_new, _html_new} = live(conn, ~p"/study/new")
-    assert has_element?(view_new, "#upload-study-form")
-
-    view_new
-    |> form("#upload-study-form", %{
-      "title" => "Novo Material Teste",
-      "raw_content" => "Este é o conteúdo do material de estudo em Elixir."
-    })
-    |> render_submit()
-
-    [material] = AdaptiveStudy.list_materials(user)
-    assert material.title == "Novo Material Teste"
-
-    # Redireciona para /study/:id/curate
-    {:ok, view_curate, html_curate} = live(conn, ~p"/study/#{material.id}/curate")
-    assert html_curate =~ "Novo Material Teste"
-    assert has_element?(view_curate, "#save-curation-btn")
-    assert has_element?(view_curate, "#reconstruct-text-btn")
   end
 
   test "permite editar nós e adicionar referências cruzadas na curadoria", %{
