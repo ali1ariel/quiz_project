@@ -105,27 +105,6 @@ defmodule QuizProjectWeb.Layouts do
           title_active="Voltar para a lista de Estudo Adaptativo"
           title_inactive="Ingestão e curadoria de materiais de estudo com Mapa Mental"
         />
-
-        <.nav_item
-          id="desktop-nav-account"
-          navigate={~p"/settings"}
-          icon="hero-user-circle"
-          label="Conta e API"
-          active?={@active_nav == :account}
-          title_active="Voltar para Conta e API"
-          title_inactive="Alterar perfil, senha e tokens de integração"
-        />
-
-        <.link
-          id="desktop-nav-api-docs-link"
-          href={~p"/api/docs"}
-          target="_blank"
-          rel="noreferrer"
-          class="inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold opacity-65 transition hover:bg-base-200 hover:opacity-100"
-          title="Documentação da API"
-        >
-          Documentação da API <.icon name="hero-arrow-right" class="size-4" />
-        </.link>
       </nav>
 
       <%!-- cronômetro da tentativa (todas as larguras) --%>
@@ -182,9 +161,29 @@ defmodule QuizProjectWeb.Layouts do
       <%!-- conta e aparência (desktop) --%>
       <div class="hidden flex-none items-center justify-end gap-2 md:flex">
         <%= if @current_user do %>
-          <span class="hidden max-w-44 truncate text-sm opacity-65 xl:block">
-            {@current_user.email}
-          </span>
+          <%!-- E-mail e ícone no mesmo botão: ao passar o mouse, o e-mail cede
+               lugar ao rótulo da ação ("Configurações de conta") em vez de um
+               `title` nativo — junto no mesmo elemento, o hover explica o que
+               o clique faz sem precisar de um segundo alvo separado. --%>
+          <.link
+            id="desktop-nav-account"
+            navigate={~p"/settings"}
+            aria-current={@active_nav == :account && "page"}
+            aria-label="Configurações de conta"
+            class={[
+              "group inline-flex items-center gap-2 rounded-full py-2 pl-3 pr-4 text-sm font-semibold transition",
+              if(@active_nav == :account,
+                do: "bg-primary text-primary-content shadow-sm",
+                else: "opacity-65 hover:bg-base-200 hover:opacity-100"
+              )
+            ]}
+          >
+            <.icon name="hero-user-circle" class="size-5 shrink-0" />
+            <span class="hidden max-w-44 truncate xl:block">
+              <span class="group-hover:hidden">{@current_user.email}</span>
+              <span class="hidden group-hover:inline">Configurações de conta</span>
+            </span>
+          </.link>
           <.link
             id="desktop-logout"
             href={~p"/logout"}

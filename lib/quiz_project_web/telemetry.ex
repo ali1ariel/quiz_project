@@ -1,6 +1,7 @@
 defmodule QuizProjectWeb.Telemetry do
   use Supervisor
   import Telemetry.Metrics
+  require Logger
 
   def start_link(arg) do
     Supervisor.start_link(__MODULE__, arg, name: __MODULE__)
@@ -11,13 +12,35 @@ defmodule QuizProjectWeb.Telemetry do
     children = [
       # Telemetry poller will execute the given period measurements
       # every 10_000ms. Learn more here: https://telemetry-metrics.hexdocs.pm
-      {:telemetry_poller, measurements: periodic_measurements(), period: 10_000}
+      {:telemetry_poller, measurements: periodic_measurements(), period: 10_000},
+      # Rastro de memória/processos no log (journald), a cada 30s, sem
+      # depender do LiveDashboard estar aberto — a única forma de ver a
+      # tendência de memória subindo antes de uma queda por OOM, já que o
+      # kill do kernel não deixa tempo de escrever nada depois do fato.
+      # `id` explícito: os dois filhos são o mesmo módulo `:telemetry_poller`,
+      # e o supervisor exige ids únicos entre os filhos.
+      Supervisor.child_spec(
+        {:telemetry_poller, measurements: [{__MODULE__, :log_vm_usage, []}], period: 30_000},
+        id: :vm_usage_logger
+      )
       # Add reporters as children of your supervision tree.
       # {Telemetry.Metrics.ConsoleReporter, metrics: metrics()}
     ]
 
     Supervisor.init(children, strategy: :one_for_one)
   end
+
+  def log_vm_usage do
+    mem = :erlang.memory()
+
+    Logger.info(
+      "[vm] total_mb=#{mb(mem[:total])} processes_mb=#{mb(mem[:processes])} " <>
+        "binary_mb=#{mb(mem[:binary])} ets_mb=#{mb(mem[:ets])} " <>
+        "process_count=#{:erlang.system_info(:process_count)}"
+    )
+  end
+
+  defp mb(bytes), do: Float.round(bytes / 1_048_576, 1)
 
   def metrics do
     [

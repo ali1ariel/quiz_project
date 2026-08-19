@@ -14,6 +14,8 @@ defmodule QuizProjectWeb.OgImage do
   alias QuizProject.Attempts
   alias QuizProjectWeb.CoreComponents
 
+  require Logger
+
   @width 1200
   @height 630
 
@@ -68,6 +70,20 @@ defmodule QuizProjectWeb.OgImage do
 
   @doc "Rasteriza um HTML completo em PNG 1200×630. Público para verificação."
   def render_png(html) do
+    mem_before = :erlang.memory(:total)
+    {micros, result} = :timer.tc(fn -> do_render_png(html) end)
+    mem_after = :erlang.memory(:total)
+
+    Logger.info(
+      "[OgImage] render_png ok=#{match?({:ok, _}, result)} " <>
+        "duration_ms=#{div(micros, 1000)} " <>
+        "mem_before_mb=#{bytes_to_mb(mem_before)} mem_after_mb=#{bytes_to_mb(mem_after)}"
+    )
+
+    result
+  end
+
+  defp do_render_png(html) do
     ChromicPDF.capture_screenshot({:html, html},
       capture_screenshot: %{
         format: "png",
@@ -77,13 +93,23 @@ defmodule QuizProjectWeb.OgImage do
     )
     |> case do
       {:ok, base64} -> {:ok, Base.decode64!(base64)}
-      _ -> :error
+      other -> log_and_error(other)
     end
   rescue
-    _ -> :error
+    e -> log_and_error(Exception.format(:error, e, __STACKTRACE__))
   catch
-    :exit, _ -> :error
+    :exit, reason -> log_and_error(reason)
   end
+
+  # Silêncio aqui era a causa de nunca ter pista de queda do Chrome — quem
+  # chama já trata `:error` servindo o fallback, então logar não muda o
+  # comportamento, só deixa rastro pra correlacionar com quedas do BEAM.
+  defp log_and_error(reason) do
+    Logger.warning("[OgImage] render_png falhou: #{inspect(reason)}")
+    :error
+  end
+
+  defp bytes_to_mb(bytes), do: Float.round(bytes / 1_048_576, 1)
 
   ## Interno
 
