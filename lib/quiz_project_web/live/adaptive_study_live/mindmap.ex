@@ -264,7 +264,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Mindmap do
 
       <script :type={Phoenix.LiveView.ColocatedHook} name=".MindmapPanZoom">
         const MIN_SCALE = 0.15;
-        const MAX_SCALE = 2.5;
+        const MAX_SCALE = 2.0;
         // Piso de legibilidade da abertura. Enquadrar um mapa de centenas de nós
         // cabia tudo na tela a ~0.2 de escala, onde nenhum rótulo se lê. Ao abrir
         // preferimos escala legível e mostrar um pedaço; o botão de enquadrar
@@ -279,6 +279,8 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Mindmap do
             this.dragging = false;
             this.lastDragEnd = 0;
             this.signature = this.el.dataset.signature;
+            this.pointers = new Map();
+            this.pinch = null;
 
             this.onWheel = (event) => {
               event.preventDefault();
@@ -294,12 +296,31 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Mindmap do
             // reemitir o `click` no elemento que capturou, e não no botão do nó,
             // o que matava o phx-click="select_node". O arrasto é acompanhado
             // pela window, que também entrega o pointerup solto fora do canvas.
+            // Um dedo arrasta (como antes); dois dedos fazem pinça — a escala
+            // muda pela razão de distância entre os dois toques, e o ponto médio
+            // entre eles serve de âncora do zoom, o mesmo papel que o cursor tem
+            // em `onWheel`.
+            //
+            // A baseline (origem do arrasto, ou distância e ponto médio da
+            // pinça) é recalculada a cada mudança na contagem de ponteiros, não
+            // só no primeiro toque: sem isto, tirar ou pousar um dedo no meio do
+            // gesto faz o mapa saltar, porque a fórmula incremental partiria de
+            // um estado que não existe mais.
             this.onPointerDown = (event) => {
               if (event.button !== 0) return;
-              this.origin = {x: event.clientX, y: event.clientY, tx: this.tx, ty: this.ty};
+              this.pointers.set(event.pointerId, {x: event.clientX, y: event.clientY});
+              this.beginGesture();
             };
 
             this.onPointerMove = (event) => {
+              if (!this.pointers.has(event.pointerId)) return;
+              this.pointers.set(event.pointerId, {x: event.clientX, y: event.clientY});
+
+              if (this.pointers.size >= 2) {
+                this.updatePinch();
+                return;
+              }
+
               if (!this.origin) return;
               const dx = event.clientX - this.origin.x;
               const dy = event.clientY - this.origin.y;
@@ -310,13 +331,14 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Mindmap do
               this.apply();
             };
 
-            this.onPointerUp = () => {
-              // Soltar depois de arrastar não pode virar seleção de nó. A janela
-              // é temporal de propósito: uma flag booleana ficaria presa quando o
-              // arrasto termina sem gerar clique.
-              if (this.dragging) this.lastDragEnd = Date.now();
+            this.onPointerUp = (event) => {
+              this.pointers.delete(event.pointerId);
+              // Soltar depois de arrastar ou beliscar não pode virar seleção de
+              // nó. A janela é temporal de propósito: uma flag booleana ficaria
+              // presa quando o gesto termina sem gerar clique.
+              if (this.dragging || this.pinch) this.lastDragEnd = Date.now();
               this.dragging = false;
-              this.origin = null;
+              this.beginGesture();
             };
 
             this.onClickCapture = (event) => {
@@ -331,12 +353,31 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Mindmap do
               this.zoomAt(event.detail?.factor || 1.2, rect.width / 2, rect.height / 2);
             };
 
+            // `dblclick` já é o evento que o browser sintetiza tanto para
+            // duplo-clique de mouse quanto para toque duplo — reaproveitar
+            // evita reimplementar a janela de tempo entre toques.
+            //
+            // Quando este clique for esbarrar no teto do zoom, ele mesmo já
+            // volta ao enquadramento inicial em vez de só grudar no limite —
+            // checar depois de aplicado deixaria um clique "parado" no teto,
+            // sem mudança visível, antes do próximo finalmente resetar.
+            this.onDblClick = (event) => {
+              event.preventDefault();
+              if (this.scale * 1.6 >= MAX_SCALE - 1e-6) {
+                this.frame(true);
+                return;
+              }
+              const rect = this.el.getBoundingClientRect();
+              this.zoomAt(1.6, event.clientX - rect.left, event.clientY - rect.top);
+            };
+
             this.el.addEventListener("wheel", this.onWheel, {passive: false});
             this.el.addEventListener("pointerdown", this.onPointerDown);
             window.addEventListener("pointermove", this.onPointerMove);
             window.addEventListener("pointerup", this.onPointerUp);
             window.addEventListener("pointercancel", this.onPointerUp);
             this.el.addEventListener("click", this.onClickCapture, true);
+            this.el.addEventListener("dblclick", this.onDblClick);
             this.el.addEventListener("mindmap:fit", this.onFit);
             this.el.addEventListener("mindmap:zoom", this.onZoom);
 
@@ -361,6 +402,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Mindmap do
             window.removeEventListener("pointerup", this.onPointerUp);
             window.removeEventListener("pointercancel", this.onPointerUp);
             this.el.removeEventListener("click", this.onClickCapture, true);
+            this.el.removeEventListener("dblclick", this.onDblClick);
             this.el.removeEventListener("mindmap:fit", this.onFit);
             this.el.removeEventListener("mindmap:zoom", this.onZoom);
           },
@@ -421,6 +463,45 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Mindmap do
             this.ty = cy - (cy - this.ty) * ratio;
             this.scale = next;
             this.apply();
+          },
+
+          beginGesture() {
+            const points = [...this.pointers.values()];
+
+            if (points.length === 1) {
+              this.origin = {x: points[0].x, y: points[0].y, tx: this.tx, ty: this.ty};
+              this.pinch = null;
+            } else if (points.length >= 2) {
+              const [p1, p2] = points;
+              const rect = this.el.getBoundingClientRect();
+              this.pinch = {
+                dist: Math.hypot(p2.x - p1.x, p2.y - p1.y),
+                midX: (p1.x + p2.x) / 2 - rect.left,
+                midY: (p1.y + p2.y) / 2 - rect.top
+              };
+              this.origin = null;
+            } else {
+              this.origin = null;
+              this.pinch = null;
+            }
+          },
+
+          updatePinch() {
+            const [p1, p2] = [...this.pointers.values()];
+            const rect = this.el.getBoundingClientRect();
+            const dist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+            const midX = (p1.x + p2.x) / 2 - rect.left;
+            const midY = (p1.y + p2.y) / 2 - rect.top;
+
+            // O ponto médio se desloca por dois motivos ao mesmo tempo — os dois
+            // dedos arrastando juntos, e a própria pinça abrindo ou fechando —
+            // então primeiro acompanha esse deslocamento (pan) e só depois
+            // aplica o zoom ancorado no ponto já reposicionado.
+            this.tx += midX - this.pinch.midX;
+            this.ty += midY - this.pinch.midY;
+            this.zoomAt(dist / this.pinch.dist, midX, midY);
+
+            this.pinch = {dist, midX, midY};
           }
         }
       </script>
