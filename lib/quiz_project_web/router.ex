@@ -120,6 +120,14 @@ defmodule QuizProjectWeb.Router do
       live "/contents/new", ContentsLive.Upload
       live "/contents/:id", ContentsLive.Read
       live "/contents/:id/:chapter", ContentsLive.Read, :chapter
+
+      # Gerenciamento pessoal por categorias e itens. `/ranking` e `/items` vêm
+      # antes de `/:id` pelo mesmo motivo do grupo acima: o roteador casa na
+      # ordem em que as rotas são declaradas.
+      live "/priorities", PrioritiesLive.Index
+      live "/priorities/ranking", PrioritiesLive.Ranking
+      live "/priorities/items", PrioritiesLive.Browse
+      live "/priorities/:id", PrioritiesLive.Show
     end
   end
 
