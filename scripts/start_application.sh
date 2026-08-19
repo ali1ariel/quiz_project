@@ -34,6 +34,13 @@ AI_PROVIDER=$(get_param_optional "/quiz_project/prod/ai_provider")
 # deploy, não a cada 5 minutos.
 AI_AUTHORIZATION_EMAILS=$(get_param_optional "/quiz_project/prod/ai_authorized_emails")
 
+# Journald só persiste entre reboots se este diretório existir — sem ele, um
+# OOM kill que derruba a máquina (não só o processo) leva o log junto com o
+# corpo do crime.
+echo "Ensuring persistent journald storage..."
+sudo mkdir -p /var/log/journal
+sudo systemd-tmpfiles --create --prefix /var/log/journal >/dev/null 2>&1 || true
+
 echo "Setting up directory permissions..."
 sudo mkdir -p "$APP_DIR/_build/prod/rel/quiz_project/tmp"
 sudo chown -R ubuntu:ubuntu "$APP_DIR/_build/prod/rel/quiz_project/tmp"
@@ -73,6 +80,12 @@ Environment="GEMINI_API_KEY=${GEMINI_API_KEY}"
 Environment="ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}"
 Environment="AI_PROVIDER=${AI_PROVIDER}"
 Environment="AI_AUTHORIZATION_EMAILS=${AI_AUTHORIZATION_EMAILS}"
+
+# Dump de post-mortem da VM em crash não-OOM (o BEAM tem tempo de escrever
+# antes de morrer; um SIGKILL do OOM killer não tem, aí só resta o [vm] no
+# journald de antes de cair).
+Environment="ERL_CRASH_DUMP=${APP_DIR}/erl_crash.dump"
+Environment="ERL_CRASH_DUMP_SECONDS=10"
 
 ExecStart=${BIN} start
 ExecStop=${BIN} stop
