@@ -928,6 +928,16 @@ h1, h2, h3 {
   opacity: 0.55;
 }
 
+/* Na leitura, a navbar do app soma com a barra do capítulo. Rolando pra
+   baixo ela sobe pra fora da tela — só a barra do capítulo fica, que já
+   sobe pra colar no topo (o `.ReadingPosition` zera `--qnav-h` junto). */
+header.navbar {
+  transition: transform 0.25s ease;
+}
+header.navbar.qnav-hidden {
+  transform: translateY(-100%);
+}
+
 /* Botões sem sombra, com microinteração definida por cada skin. */
 .btn:not(.btn-ghost):not(.btn-link) {
   border-width: var(--skin-border-w);

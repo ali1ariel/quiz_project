@@ -404,11 +404,14 @@ defmodule QuizProjectWeb.ContentsLive.Read do
           // move o percentual, mas não move o bloco.
           export default {
             mounted() {
+              this.navHidden = false;
+              this.lastScrollY = window.scrollY;
               this.measureNav();
               this.restore();
               this.blocks = () => Array.from(this.el.querySelectorAll("[data-position]"));
 
               this.onScroll = () => {
+                this.updateNavVisibility();
                 clearTimeout(this.timer);
                 this.timer = setTimeout(() => this.report(), 600);
               };
@@ -425,8 +428,42 @@ defmodule QuizProjectWeb.ContentsLive.Read do
             // primeira linha.
             measureNav() {
               const nav = document.querySelector("header.navbar");
-              const height = nav ? Math.round(nav.getBoundingClientRect().height) : 64;
-              document.documentElement.style.setProperty("--qnav-h", `${height}px`);
+              this.navHeight = nav ? Math.round(nav.getBoundingClientRect().height) : 64;
+              // Redimensionar com a navbar escondida não deve trazê-la de volta —
+              // só a rolagem decide isso.
+              if (!this.navHidden) {
+                document.documentElement.style.setProperty("--qnav-h", `${this.navHeight}px`);
+              }
+            },
+
+            // Rolando pra baixo, a navbar do app soma com a barra do capítulo e
+            // rouba espaço de leitura — some, sobrando só a barra do capítulo.
+            // Volta assim que a rolagem inverte ou o topo está por perto, sem
+            // esperar a rolagem parar (diferente do `report`, que é debounced).
+            updateNavVisibility() {
+              const nav = document.querySelector("header.navbar");
+              if (!nav) { return; }
+
+              const y = Math.max(window.scrollY, 0);
+              const delta = y - this.lastScrollY;
+              this.lastScrollY = y;
+
+              if (y < this.navHeight) {
+                this.setNavHidden(nav, false);
+              } else if (delta > 6) {
+                this.setNavHidden(nav, true);
+              } else if (delta < -6) {
+                this.setNavHidden(nav, false);
+              }
+            },
+
+            setNavHidden(nav, hidden) {
+              if (hidden === this.navHidden) { return; }
+              this.navHidden = hidden;
+              nav.classList.toggle("qnav-hidden", hidden);
+              document.documentElement.style.setProperty(
+                "--qnav-h", hidden ? "0px" : `${this.navHeight}px`
+              );
             },
 
             updated() {
@@ -439,6 +476,12 @@ defmodule QuizProjectWeb.ContentsLive.Read do
               window.removeEventListener("scroll", this.onScroll);
               window.removeEventListener("resize", this.onResize);
               clearTimeout(this.timer);
+
+              // Sair da leitura sem devolver a navbar deixaria as outras
+              // páginas com a barra sumida ou com `--qnav-h` fixo em 0.
+              const nav = document.querySelector("header.navbar");
+              if (nav) { nav.classList.remove("qnav-hidden"); }
+              document.documentElement.style.removeProperty("--qnav-h");
             },
 
             // Topo útil da tela: abaixo da navbar e da barra do capítulo. É o
@@ -655,7 +698,7 @@ defmodule QuizProjectWeb.ContentsLive.Read do
     assigns = assign(assigns, :ai_state, Books.chapter_ai_state(assigns.chapter))
 
     ~H"""
-    <div class="sticky top-[var(--qnav-h,4rem)] z-30 rounded-2xl border border-base-300 bg-base-100/95 backdrop-blur">
+    <div class="sticky top-[var(--qnav-h,4rem)] z-30 rounded-2xl border border-base-300 bg-base-100/95 backdrop-blur transition-[top] duration-300 ease-out">
       <%!-- Uma linha só: o título do capítulo é a única informação que a barra
            precisa dar enquanto se lê; o resto são botões que abrem painel. --%>
       <div class="flex items-center gap-1 px-1.5 py-1">
