@@ -90,6 +90,45 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
   end
 
   @impl true
+  def handle_event("set_manual_steps", params, socket) do
+    user = socket.assigns.current_user
+
+    attrs = %{
+      manual_completed_steps: parse_int(params["manual_completed_steps"]) || 0,
+      manual_total_steps: parse_int(params["manual_total_steps"])
+    }
+
+    case Priorities.set_manual_steps(socket.assigns.item, attrs, user) do
+      {:ok, _} -> {:noreply, load_item(socket, socket.assigns.item.id)}
+      _ -> {:noreply, notify_flash(socket, :error, "Não foi possível salvar o progresso.")}
+    end
+  end
+
+  @impl true
+  def handle_event("switch_manual_mode", %{"mode" => "percent"}, socket) do
+    item = socket.assigns.item
+    user = socket.assigns.current_user
+    {:percent, percent} = Priorities.progress_for_item(item)
+
+    attrs = %{manual_progress_mode: :percent, manual_percent: percent || item.manual_percent}
+
+    case Priorities.set_manual_mode(item, attrs, user) do
+      {:ok, _} -> {:noreply, load_item(socket, item.id)}
+      _ -> {:noreply, notify_flash(socket, :error, "Não foi possível salvar.")}
+    end
+  end
+
+  @impl true
+  def handle_event("switch_manual_mode", %{"mode" => "steps"}, socket) do
+    user = socket.assigns.current_user
+
+    case Priorities.set_manual_mode(socket.assigns.item, %{manual_progress_mode: :steps}, user) do
+      {:ok, _} -> {:noreply, load_item(socket, socket.assigns.item.id)}
+      _ -> {:noreply, notify_flash(socket, :error, "Não foi possível salvar.")}
+    end
+  end
+
+  @impl true
   def handle_event("check_in_habit", _params, socket) do
     case Priorities.check_in_habit(socket.assigns.item, socket.assigns.current_user) do
       {:ok, _} ->
@@ -723,7 +762,28 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
   defp type_editor(%{item: %{item_type: :manual}} = assigns) do
     ~H"""
     <.percent_bar progress={@progress} />
+    <div class="join">
+      <button
+        type="button"
+        phx-click="switch_manual_mode"
+        phx-value-mode="percent"
+        phx-target={@myself}
+        class={["btn btn-sm join-item", @item.manual_progress_mode == :percent && "btn-primary"]}
+      >
+        Percentual
+      </button>
+      <button
+        type="button"
+        phx-click="switch_manual_mode"
+        phx-value-mode="steps"
+        phx-target={@myself}
+        class={["btn btn-sm join-item", @item.manual_progress_mode == :steps && "btn-primary"]}
+      >
+        Etapas
+      </button>
+    </div>
     <form
+      :if={@item.manual_progress_mode == :percent}
       id="manual-percent-form"
       phx-submit="set_manual_percent"
       phx-target={@myself}
@@ -739,7 +799,44 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
           max="100"
         />
       </div>
-      <button type="submit" class="btn btn-primary btn-sm rounded-full px-5">Salvar</button>
+      <div class="fieldset mb-2">
+        <label>
+          <span class="label mb-1 invisible">Salvar</span>
+          <button type="submit" class="btn btn-primary btn-sm rounded-full px-5">Salvar</button>
+        </label>
+      </div>
+    </form>
+    <form
+      :if={@item.manual_progress_mode == :steps}
+      id="manual-steps-form"
+      phx-submit="set_manual_steps"
+      phx-target={@myself}
+      class="flex flex-wrap items-end gap-3"
+    >
+      <div class="w-32">
+        <.input
+          type="number"
+          name="manual_completed_steps"
+          label="Concluídas"
+          value={@item.manual_completed_steps}
+          min="0"
+        />
+      </div>
+      <div class="w-32">
+        <.input
+          type="number"
+          name="manual_total_steps"
+          label="Total"
+          value={@item.manual_total_steps}
+          min="1"
+        />
+      </div>
+      <div class="fieldset mb-2">
+        <label>
+          <span class="label mb-1 invisible">Salvar</span>
+          <button type="submit" class="btn btn-primary btn-sm rounded-full px-5">Salvar</button>
+        </label>
+      </div>
     </form>
     """
   end

@@ -230,6 +230,22 @@ defmodule QuizProject.Priorities do
     end
   end
 
+  def set_manual_steps(item, attrs, actor) do
+    with :ok <- authorize_owner(item, actor) do
+      item
+      |> Ash.Changeset.for_update(:set_manual_steps, attrs, authorize?: false)
+      |> Ash.update()
+    end
+  end
+
+  def set_manual_mode(item, attrs, actor) do
+    with :ok <- authorize_owner(item, actor) do
+      item
+      |> Ash.Changeset.for_update(:set_manual_mode, attrs, authorize?: false)
+      |> Ash.update()
+    end
+  end
+
   def check_in_habit(item, actor) do
     with :ok <- authorize_owner(item, actor) do
       item |> Ash.Changeset.for_update(:check_in_habit, %{}, authorize?: false) |> Ash.update()
@@ -481,6 +497,16 @@ defmodule QuizProject.Priorities do
     done = Enum.count(tasks, & &1.done)
 
     percent = if total > 0, do: round(done / total * 100), else: nil
+    {:percent, percent}
+  end
+
+  def progress_for_item(%Item{
+        item_type: :manual,
+        manual_progress_mode: :steps,
+        manual_total_steps: total,
+        manual_completed_steps: current
+      }) do
+    percent = if total && total > 0, do: round(current / total * 100), else: nil
     {:percent, percent}
   end
 

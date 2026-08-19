@@ -77,6 +77,16 @@ defmodule QuizProject.Priorities.Item do
 
     update :set_manual_percent do
       accept [:manual_percent]
+      change set_attribute(:manual_progress_mode, :percent)
+    end
+
+    update :set_manual_steps do
+      accept [:manual_completed_steps, :manual_total_steps]
+      change set_attribute(:manual_progress_mode, :steps)
+    end
+
+    update :set_manual_mode do
+      accept [:manual_progress_mode, :manual_percent]
     end
 
     update :check_in_habit do
@@ -204,6 +214,15 @@ defmodule QuizProject.Priorities.Item do
       default 0
       constraints min: 0, max: 100
     end
+
+    attribute :manual_progress_mode, :atom do
+      allow_nil? false
+      default :percent
+      constraints one_of: ~w(percent steps)a
+    end
+
+    attribute :manual_total_steps, :integer
+    attribute :manual_completed_steps, :integer, default: 0
 
     timestamps()
   end

@@ -238,6 +238,47 @@ defmodule QuizProjectWeb.PrioritiesLiveTest do
       assert Priorities.get_item(item.id, user) |> elem(1) |> Map.get(:tier) == nil
     end
 
+    test "manual: alterna entre percentual e etapas, e o modo persiste ao recarregar", %{
+      conn: conn,
+      user: user
+    } do
+      cat = category(user)
+      item = manual_item(user, cat)
+
+      {:ok, view, html} = live(conn, ~p"/priorities/#{item.id}")
+      assert html =~ "manual-percent-form"
+      refute html =~ "manual-steps-form"
+
+      html = view |> element("button", "Etapas") |> render_click()
+      assert html =~ "manual-steps-form"
+      refute html =~ "manual-percent-form"
+
+      html =
+        view
+        |> form("#manual-steps-form", %{"manual_completed_steps" => "3", "manual_total_steps" => "4"})
+        |> render_submit()
+
+      assert html =~ "75%"
+      assert Priorities.progress_for_item(Priorities.get_item(item.id, user) |> elem(1)) ==
+               {:percent, 75}
+
+      {:ok, view2, html2} = live(conn, ~p"/priorities/#{item.id}")
+      assert html2 =~ "manual-steps-form"
+      assert html2 =~ "75%"
+
+      html2 = view2 |> element("button", "Percentual") |> render_click()
+      assert html2 =~ ~s(value="75")
+
+      html2 =
+        view2
+        |> form("#manual-percent-form", %{"manual_percent" => "10"})
+        |> render_submit()
+
+      assert html2 =~ "10%"
+      assert Priorities.progress_for_item(Priorities.get_item(item.id, user) |> elem(1)) ==
+               {:percent, 10}
+    end
+
     test "item de outro usuário redireciona com aviso", %{conn: conn} do
       {:ok, other} =
         QuizProject.Accounts.register_user(%{email: "outra@teste.com", password: "senha12345"},

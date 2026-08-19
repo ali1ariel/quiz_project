@@ -291,6 +291,36 @@ defmodule QuizProject.PrioritiesTest do
 
       assert Priorities.progress_for_item(item) == {:percent, 73}
     end
+
+    test ":manual em modo etapas calcula o percentual", %{user: user} do
+      cat = category(user)
+      {:ok, item} = Priorities.create_item(user, cat, %{item_type: :manual, title: "Manual"})
+
+      {:ok, item} =
+        Priorities.set_manual_steps(
+          item,
+          %{manual_completed_steps: 3, manual_total_steps: 4},
+          user
+        )
+
+      assert Priorities.progress_for_item(item) == {:percent, 75}
+    end
+
+    test ":manual volta pro modo percentual ao gravar um percentual direto", %{user: user} do
+      cat = category(user)
+      {:ok, item} = Priorities.create_item(user, cat, %{item_type: :manual, title: "Manual"})
+
+      {:ok, item} =
+        Priorities.set_manual_steps(
+          item,
+          %{manual_completed_steps: 1, manual_total_steps: 2},
+          user
+        )
+
+      {:ok, item} = Priorities.set_manual_percent(item, 10, user)
+
+      assert Priorities.progress_for_item(item) == {:percent, 10}
+    end
   end
 
   describe "check_in_habit/2" do
