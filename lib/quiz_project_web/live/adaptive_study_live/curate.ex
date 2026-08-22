@@ -30,13 +30,15 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Curate do
           |> AdaptiveStudy.ensure_root(material.title)
 
         first = List.first(AdaptiveStudy.flatten_nodes(nodes))
+        {book_material_id, chapter_id} = curation_context(material.id)
 
         {:ok,
          socket
          |> assign(
            page_title: "Curadoria: " <> material.title,
            material: material,
-           book_material_id: book_material_id(material.id),
+           book_material_id: book_material_id,
+           chapter_id: chapter_id,
            map_mode: :tree,
            focus_center_id: nil,
            focus_origin_id: nil,
@@ -306,13 +308,15 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Curate do
             |> AdaptiveStudy.ensure_root(reloaded.title)
 
           first = List.first(AdaptiveStudy.flatten_nodes(nodes))
+          {book_material_id, chapter_id} = curation_context(reloaded.id)
 
           {:noreply,
            socket
            |> assign(
              material: reloaded,
              page_title: "Curadoria: " <> reloaded.title,
-             book_material_id: book_material_id(reloaded.id),
+             book_material_id: book_material_id,
+             chapter_id: chapter_id,
              collapsed_ids: MindmapLayout.initial_collapsed(nodes)
            )
            |> assign_tree(nodes, selected_node_id: first && first["id"])
@@ -329,14 +333,15 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Curate do
   @impl true
   def handle_info(_message, socket), do: {:noreply, socket}
 
-  # `nil` para material de upload manual ou de material antigo já com `content`
-  # gravado; o id do material do LIVRO quando este material de texto veio de
-  # curadoria de capítulo — é o que `node_text/2` usa para decidir se resolve o
-  # trecho do nó a partir dos blocos.
-  defp book_material_id(material_id) do
+  # `{nil, nil}` para material de upload manual ou de material antigo já com
+  # `content` gravado; `{book_material_id, chapter_id}` quando este material de
+  # texto veio de curadoria de capítulo — é o que `node_text/3` usa pra decidir
+  # se resolve o trecho do nó a partir dos blocos, e em qual capítulo procurar
+  # (o `node_id` só é único dentro do capítulo, não no livro inteiro).
+  defp curation_context(material_id) do
     case Books.chapter_for_curated_material(material_id) do
-      {:ok, %{material_id: book_id}} -> book_id
-      _ -> nil
+      {:ok, %{} = chapter} -> {chapter.material_id, chapter.id}
+      _ -> {nil, nil}
     end
   end
 
@@ -344,20 +349,21 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Curate do
   # desta mudança, e o upload manual de texto (que não tem blocos), gravam o
   # trecho ali. Só quando o nó veio vazio de um material de livro é que o
   # texto é resolvido a partir dos blocos que a curadoria demarcou.
-  defp node_text(node, book_material_id) do
+  defp node_text(node, book_material_id, chapter_id) do
     case node["content"] do
       content when is_binary(content) and content != "" ->
         content
 
       _ ->
-        resolve_from_blocks(node["id"], book_material_id)
+        resolve_from_blocks(node["id"], book_material_id, chapter_id)
     end
   end
 
-  defp resolve_from_blocks(_node_id, nil), do: ""
+  defp resolve_from_blocks(_node_id, nil, _chapter_id), do: ""
+  defp resolve_from_blocks(_node_id, _book_material_id, nil), do: ""
 
-  defp resolve_from_blocks(node_id, book_material_id) do
-    book_material_id
+  defp resolve_from_blocks(node_id, book_material_id, chapter_id) do
+    chapter_id
     |> Books.blocks_for_node(node_id)
     |> Enum.map_join("\n\n", &block_markdown(&1, book_material_id))
   end
@@ -539,6 +545,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Curate do
                 editing?={@editing_node?}
                 flattened_nodes={@flattened_nodes}
                 book_material_id={@book_material_id}
+                chapter_id={@chapter_id}
               />
             </div>
           </aside>
@@ -665,6 +672,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Curate do
                     editing?={@editing_node?}
                     flattened_nodes={@flattened_nodes}
                     book_material_id={@book_material_id}
+                    chapter_id={@chapter_id}
                   />
                 </div>
               </div>
@@ -852,7 +860,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Curate do
       <%= if @editing? do %>
         <.node_edit_form node={@node} book_material_id={@book_material_id} />
       <% else %>
-        <.node_details node={@node} book_material_id={@book_material_id} />
+        <.node_details node={@node} book_material_id={@book_material_id} chapter_id={@chapter_id} />
       <% end %>
 
       <.cross_references node={@node} flattened_nodes={@flattened_nodes} />
@@ -1191,7 +1199,8 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Curate do
   end
 
   defp node_details(assigns) do
-    assigns = assign(assigns, :node_text, node_text(assigns.node, assigns.book_material_id))
+    node_text = node_text(assigns.node, assigns.book_material_id, assigns.chapter_id)
+    assigns = assign(assigns, :node_text, node_text)
 
     ~H"""
     <div class="space-y-4">

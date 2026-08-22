@@ -45,12 +45,29 @@ defmodule QuizProject.Priorities.Item do
         :quiz_id,
         :course_total_steps,
         :course_completed_steps,
+        :course_access_link,
+        :course_access_login,
+        :course_access_password,
         :manual_percent
       ]
     end
 
     update :update do
       accept [:title, :notes]
+    end
+
+    # Único jeito de mudar `item_type` depois de criado. As validações
+    # condicionais de `study_material_id`/`quiz_id` (bloco `validations`
+    # abaixo) já disparam sozinhas pra qualquer action que grave esses
+    # atributos, então não precisam ser duplicadas aqui.
+    update :change_type do
+      accept [
+        :item_type,
+        :study_material_id,
+        :quiz_id,
+        :course_total_steps,
+        :course_completed_steps
+      ]
     end
 
     update :reposition do
@@ -73,6 +90,10 @@ defmodule QuizProject.Priorities.Item do
 
     update :set_course_progress do
       accept [:course_completed_steps, :course_total_steps]
+    end
+
+    update :set_course_access do
+      accept [:course_access_link, :course_access_login, :course_access_password]
     end
 
     update :set_manual_percent do
@@ -154,10 +175,6 @@ defmodule QuizProject.Priorities.Item do
     validate present(:quiz_id),
       where: [attribute_equals(:item_type, :quiz_goal)],
       message: "obrigatório para itens do tipo meta de quiz"
-
-    validate present(:course_total_steps),
-      where: [attribute_equals(:item_type, :course)],
-      message: "obrigatório para itens do tipo curso"
   end
 
   attributes do
@@ -206,6 +223,12 @@ defmodule QuizProject.Priorities.Item do
     # :course
     attribute :course_total_steps, :integer
     attribute :course_completed_steps, :integer, default: 0
+    # Credenciais de acesso à plataforma do curso, texto plano — sem
+    # criptografia at-rest, porque o usuário precisa recuperar a senha
+    # depois, e o projeto não tem infraestrutura de criptografia hoje.
+    attribute :course_access_link, :string
+    attribute :course_access_login, :string
+    attribute :course_access_password, :string
     # :habit
     attribute :habit_current_streak, :integer, default: 0
     attribute :habit_last_checked_on, :date

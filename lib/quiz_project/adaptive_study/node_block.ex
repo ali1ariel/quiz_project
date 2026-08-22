@@ -25,14 +25,16 @@ defmodule QuizProject.AdaptiveStudy.NodeBlock do
     references do
       reference :block, on_delete: :delete, on_update: :update, index?: false
       reference :material, on_delete: :delete, on_update: :update, index?: false
+      reference :chapter, on_delete: :delete, on_update: :update, index?: false
     end
 
     custom_indexes do
       # Filtro: dado o bloco, quem o cobre.
       index [:block_id]
-      # Curadoria: dado o nó, que texto é.
-      index [:material_id, :node_id]
-      index [:material_id, :node_id, :block_id], unique: true
+      # Curadoria: dado o nó (escopado por capítulo — `node_id` só é único
+      # dentro do capítulo que a IA processou, não no livro inteiro).
+      index [:chapter_id, :node_id]
+      index [:chapter_id, :node_id, :block_id], unique: true
     end
   end
 
@@ -40,7 +42,7 @@ defmodule QuizProject.AdaptiveStudy.NodeBlock do
     defaults [:read, :destroy]
 
     create :create do
-      accept [:material_id, :node_id, :block_id, :confidence]
+      accept [:material_id, :chapter_id, :node_id, :block_id, :confidence]
     end
   end
 
@@ -48,6 +50,10 @@ defmodule QuizProject.AdaptiveStudy.NodeBlock do
     uuid_primary_key :id
 
     attribute :material_id, :uuid do
+      allow_nil? false
+    end
+
+    attribute :chapter_id, :uuid do
       allow_nil? false
     end
 
@@ -77,6 +83,12 @@ defmodule QuizProject.AdaptiveStudy.NodeBlock do
     end
 
     belongs_to :block, QuizProject.AdaptiveStudy.Block do
+      allow_nil? false
+      attribute_writable? true
+      define_attribute? false
+    end
+
+    belongs_to :chapter, QuizProject.AdaptiveStudy.Chapter do
       allow_nil? false
       attribute_writable? true
       define_attribute? false

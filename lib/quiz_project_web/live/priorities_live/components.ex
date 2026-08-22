@@ -324,6 +324,11 @@ defmodule QuizProjectWeb.PrioritiesLive.Components do
   def item_type_label(:checklist), do: "Checklist"
   def item_type_label(:manual), do: "Manual"
 
+  @doc "Opções `{label, value}` de tipo de item pro `<select>`, na ordem em que aparecem no form."
+  def item_type_options do
+    Enum.map(~w(manual book quiz_goal course habit checklist)a, &{item_type_label(&1), Atom.to_string(&1)})
+  end
+
   @doc "Sub-navegação entre as 3 telas de Prioridades, usada no topo de cada uma."
   attr :active, :atom, required: true
 

@@ -75,16 +75,17 @@ defmodule QuizProjectWeb.PrioritiesLiveTest do
       assert html =~ "Duna"
     end
 
-    test "arquivar remove item da listagem", %{conn: conn, user: user} do
+    test "excluir remove item da listagem definitivamente", %{conn: conn, user: user} do
       cat = category(user)
       item = manual_item(user, cat, "Descartável")
       {:ok, view, html} = live(conn, ~p"/priorities")
 
       assert html =~ "Descartável"
 
-      html = render_click(view, "archive_item", %{"id" => item.id})
+      html = render_click(view, "delete_item", %{"id" => item.id})
 
       refute html =~ "Descartável"
+      assert {:error, _} = Priorities.get_item(item.id, user)
     end
 
     test "reordenar itens por drag-and-drop grava a nova posição", %{conn: conn, user: user} do
