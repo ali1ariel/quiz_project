@@ -125,10 +125,10 @@ defmodule QuizProject.PrioritiesTest do
                Priorities.create_item(user, cat, %{item_type: :quiz_goal, title: "Meta"})
     end
 
-    test "recusa :course sem course_total_steps", %{user: user} do
+    test "aceita :course sem course_total_steps (etapas são opcionais)", %{user: user} do
       cat = category(user)
 
-      assert {:error, %Ash.Error.Invalid{}} =
+      assert {:ok, %{item_type: :course, course_total_steps: nil}} =
                Priorities.create_item(user, cat, %{item_type: :course, title: "Curso"})
     end
 
@@ -222,6 +222,97 @@ defmodule QuizProject.PrioritiesTest do
 
       recarregado_b = Enum.find(ativos, &(&1.id == b.id))
       assert recarregado_b.manual_percent == 20
+    end
+  end
+
+  describe "delete_item/2" do
+    test "dono exclui definitivamente", %{user: user} do
+      cat = category(user)
+      {:ok, item} = Priorities.create_item(user, cat, %{item_type: :manual, title: "Descartável"})
+
+      assert {:ok, _} = Priorities.delete_item(item, user)
+      assert {:error, _} = Priorities.get_item(item.id, user)
+    end
+
+    test "recusa exclusão por quem não é dono", %{user: user, other: other} do
+      cat = category(user)
+      {:ok, item} = Priorities.create_item(user, cat, %{item_type: :manual, title: "Descartável"})
+
+      assert {:error, :unauthorized} = Priorities.delete_item(item, other)
+      assert {:ok, _} = Priorities.get_item(item.id, user)
+    end
+
+    test "exclui subtarefas e tags junto (sem deixar órfãos)", %{user: user} do
+      cat = category(user)
+      {:ok, item} = Priorities.create_item(user, cat, %{item_type: :checklist, title: "Lista"})
+      {:ok, _task} = Priorities.create_task(item, "Fazer algo", user)
+      {:ok, tag} = Priorities.find_or_create_tag(user, "urgente")
+      {:ok, _} = Priorities.add_tag_to_item(item, tag, user)
+
+      assert {:ok, _} = Priorities.delete_item(item, user)
+      assert Priorities.list_tasks(item.id) == []
+    end
+  end
+
+  describe "método de acesso do curso" do
+    test "set_course_access/3 grava link, login e senha", %{user: user} do
+      cat = category(user)
+      {:ok, item} = Priorities.create_item(user, cat, %{item_type: :course, title: "Curso"})
+
+      attrs = %{
+        course_access_link: "https://curso.exemplo.com",
+        course_access_login: "aluno@exemplo.com",
+        course_access_password: "s3nha"
+      }
+
+      assert {:ok, atualizado} = Priorities.set_course_access(item, attrs, user)
+      assert atualizado.course_access_link == "https://curso.exemplo.com"
+      assert atualizado.course_access_login == "aluno@exemplo.com"
+      assert atualizado.course_access_password == "s3nha"
+    end
+
+    test "create_item aceita os campos de acesso direto na criação", %{user: user} do
+      cat = category(user)
+
+      assert {:ok, item} =
+               Priorities.create_item(user, cat, %{
+                 item_type: :course,
+                 title: "Curso",
+                 course_access_link: "https://curso.exemplo.com"
+               })
+
+      assert item.course_access_link == "https://curso.exemplo.com"
+    end
+  end
+
+  describe "change_item_type/3" do
+    test "troca o tipo mantendo o registro", %{user: user} do
+      cat = category(user)
+      {:ok, item} = Priorities.create_item(user, cat, %{item_type: :habit, title: "Hábito"})
+
+      assert {:ok, atualizado} =
+               Priorities.change_item_type(
+                 item,
+                 %{item_type: :course, course_total_steps: 5},
+                 user
+               )
+
+      assert atualizado.item_type == :course
+      assert atualizado.course_total_steps == 5
+      assert atualizado.id == item.id
+    end
+
+    test "recusa livro de outro usuário ao trocar para :book", %{user: user, other: other} do
+      cat = category(user)
+      livro_alheio = book(other)
+      {:ok, item} = Priorities.create_item(user, cat, %{item_type: :manual, title: "Manual"})
+
+      assert {:error, _} =
+               Priorities.change_item_type(
+                 item,
+                 %{item_type: :book, study_material_id: livro_alheio.id},
+                 user
+               )
     end
   end
 

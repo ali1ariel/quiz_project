@@ -376,21 +376,22 @@ defmodule QuizProject.AdaptiveStudy.BooksTest do
 
   describe "demarcação" do
     setup %{material: material, user: user} do
-      %{material: ingest(material, user)}
+      material = ingest(material, user)
+      {:ok, chapter} = Books.get_chapter(material.id, 2)
+      %{material: material, chapter: chapter}
     end
 
-    test "liga o nó a um intervalo de blocos", %{material: material} do
-      assert Books.demarcate(material.id, "no_rosca", [3, 4, 5]) == 3
+    test "liga o nó a um intervalo de blocos", %{chapter: chapter} do
+      assert Books.demarcate(chapter, "no_rosca", [3, 4, 5]) == 3
 
-      blocks = Books.blocks_for_node(material.id, "no_rosca")
+      blocks = Books.blocks_for_node(chapter.id, "no_rosca")
       assert Enum.map(blocks, & &1.position) == [3, 4, 5]
     end
 
-    test "o mesmo bloco pode ser coberto por mais de um nó", %{material: material} do
-      Books.demarcate(material.id, "retropropagacao", [4])
-      Books.demarcate(material.id, "treinamento", [4, 5])
+    test "o mesmo bloco pode ser coberto por mais de um nó", %{chapter: chapter} do
+      Books.demarcate(chapter, "retropropagacao", [4])
+      Books.demarcate(chapter, "treinamento", [4, 5])
 
-      {:ok, chapter} = Books.get_chapter(material.id, 2)
       coverage = Books.coverage(chapter.id)
 
       bloco = Books.list_blocks(chapter.id) |> Enum.find(&(&1.position == 4))
@@ -398,18 +399,37 @@ defmodule QuizProject.AdaptiveStudy.BooksTest do
       assert Enum.sort(coverage[bloco.id]) == ["retropropagacao", "treinamento"]
     end
 
-    test "redemarcar o nó substitui a cobertura anterior", %{material: material} do
-      Books.demarcate(material.id, "no_rosca", [3, 4, 5])
-      Books.demarcate(material.id, "no_rosca", [6])
+    test "redemarcar o nó substitui a cobertura anterior", %{chapter: chapter} do
+      Books.demarcate(chapter, "no_rosca", [3, 4, 5])
+      Books.demarcate(chapter, "no_rosca", [6])
 
-      assert Books.blocks_for_node(material.id, "no_rosca") |> Enum.map(& &1.position) == [6]
+      assert Books.blocks_for_node(chapter.id, "no_rosca") |> Enum.map(& &1.position) == [6]
     end
 
-    test "apagar o material leva a demarcação junto", %{material: material, user: user} do
-      Books.demarcate(material.id, "no_rosca", [3])
+    test "apagar o material leva a demarcação junto", %{material: material, chapter: chapter, user: user} do
+      Books.demarcate(chapter, "no_rosca", [3])
       {:ok, _} = AdaptiveStudy.delete_material(material, user)
 
-      assert Books.blocks_for_node(material.id, "no_rosca") == []
+      assert Books.blocks_for_node(chapter.id, "no_rosca") == []
+    end
+
+    test "dois capítulos do mesmo livro podem reusar o mesmo node_id sem colidir",
+         %{material: material} do
+      {:ok, chapter1} = Books.get_chapter(material.id, 1)
+      {:ok, chapter2} = Books.get_chapter(material.id, 2)
+
+      posicoes_1 = chapter1.id |> Books.list_blocks() |> Enum.map(& &1.position) |> Enum.take(1)
+      posicoes_2 = chapter2.id |> Books.list_blocks() |> Enum.map(& &1.position) |> Enum.take(2)
+
+      Books.demarcate(chapter1, "no_1", posicoes_1)
+      Books.demarcate(chapter2, "no_1", posicoes_2)
+
+      blocos_1 = Books.blocks_for_node(chapter1.id, "no_1")
+      blocos_2 = Books.blocks_for_node(chapter2.id, "no_1")
+
+      assert Enum.map(blocos_1, & &1.position) == posicoes_1
+      assert Enum.map(blocos_2, & &1.position) == posicoes_2
+      assert posicoes_1 != posicoes_2
     end
   end
 
@@ -692,8 +712,8 @@ defmodule QuizProject.AdaptiveStudy.BooksTest do
         |> Enum.find(&(&1["children"] in [[], nil]))
         |> Map.fetch!("id")
 
-      assert Books.demarcate(chapter.material_id, node_id, [999_999]) == 0
-      assert Books.blocks_for_node(chapter.material_id, node_id) == []
+      assert Books.demarcate(chapter, node_id, [999_999]) == 0
+      assert Books.blocks_for_node(chapter.id, node_id) == []
     end
   end
 

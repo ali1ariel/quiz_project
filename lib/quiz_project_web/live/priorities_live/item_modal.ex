@@ -15,7 +15,9 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
   """
   use QuizProjectWeb, :live_component
 
+  alias QuizProject.AdaptiveStudy
   alias QuizProject.Priorities
+  alias QuizProject.Quizzes
   alias QuizProjectWeb.PrioritiesLive.Components
 
   @impl true
@@ -25,6 +27,9 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
       |> assign(assigns)
       |> assign_new(:show_new_field_form?, fn -> false end)
       |> assign_new(:new_field_type, fn -> "text" end)
+      |> assign_new(:type_form_value, fn -> nil end)
+      |> assign_new(:books, fn -> AdaptiveStudy.list_books(assigns.current_user) end)
+      |> assign_new(:quizzes, fn -> Quizzes.list_created(assigns.current_user) end)
       |> load_item(assigns.item_id)
 
     {:ok, socket}
@@ -75,6 +80,45 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
     case Priorities.set_course_progress(socket.assigns.item, attrs, user) do
       {:ok, _} -> {:noreply, load_item(socket, socket.assigns.item.id)}
       _ -> {:noreply, notify_flash(socket, :error, "Não foi possível salvar o progresso.")}
+    end
+  end
+
+  @impl true
+  def handle_event("set_course_access", params, socket) do
+    user = socket.assigns.current_user
+
+    attrs = %{
+      course_access_link: blank_to_nil(params["course_access_link"]),
+      course_access_login: blank_to_nil(params["course_access_login"]),
+      course_access_password: blank_to_nil(params["course_access_password"])
+    }
+
+    case Priorities.set_course_access(socket.assigns.item, attrs, user) do
+      {:ok, _} -> {:noreply, load_item(socket, socket.assigns.item.id)}
+      _ -> {:noreply, notify_flash(socket, :error, "Não foi possível salvar o acesso.")}
+    end
+  end
+
+  @impl true
+  def handle_event("type_form_change", %{"item_type" => type}, socket) do
+    {:noreply, assign(socket, type_form_value: type)}
+  end
+
+  @impl true
+  def handle_event("change_type", params, socket) do
+    user = socket.assigns.current_user
+
+    with {:ok, attrs} <- build_change_type_attrs(params),
+         {:ok, _} <- Priorities.change_item_type(socket.assigns.item, attrs, user) do
+      {:noreply,
+       socket
+       |> notify_flash(:info, "Tipo atualizado.")
+       |> assign(type_form_value: nil)
+       |> load_item(socket.assigns.item.id)}
+    else
+      _ ->
+        {:noreply,
+         notify_flash(socket, :error, "Não foi possível trocar o tipo. Confira os campos.")}
     end
   end
 
@@ -327,6 +371,33 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
     end
   end
 
+  defp blank_to_nil(nil), do: nil
+  defp blank_to_nil(""), do: nil
+  defp blank_to_nil(value), do: value
+
+  @item_types ~w(book quiz_goal course habit checklist manual)
+
+  defp parse_item_type(value) when value in @item_types,
+    do: {:ok, String.to_existing_atom(value)}
+
+  defp parse_item_type(_value), do: :error
+
+  defp build_change_type_attrs(params) do
+    with {:ok, item_type} <- parse_item_type(params["item_type"]) do
+      base = %{item_type: item_type}
+
+      attrs =
+        case item_type do
+          :book -> Map.put(base, :study_material_id, blank_to_nil(params["study_material_id"]))
+          :quiz_goal -> Map.put(base, :quiz_id, blank_to_nil(params["quiz_id"]))
+          :course -> Map.put(base, :course_total_steps, parse_int(params["course_total_steps"]))
+          _ -> base
+        end
+
+      {:ok, attrs}
+    end
+  end
+
   @field_types ~w(text select number)
 
   defp parse_field_type(value) when value in @field_types,
@@ -365,6 +436,9 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
           field_definitions={@field_definitions}
           show_new_field_form?={@show_new_field_form?}
           new_field_type={@new_field_type}
+          type_form_value={@type_form_value}
+          books={@books}
+          quizzes={@quizzes}
         />
       </div>
 
@@ -392,6 +466,9 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
             field_definitions={@field_definitions}
             show_new_field_form?={@show_new_field_form?}
             new_field_type={@new_field_type}
+            type_form_value={@type_form_value}
+            books={@books}
+            quizzes={@quizzes}
           />
         </div>
 
@@ -416,6 +493,9 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
   attr :field_definitions, :list, required: true
   attr :show_new_field_form?, :boolean, required: true
   attr :new_field_type, :string, required: true
+  attr :type_form_value, :string, default: nil
+  attr :books, :list, required: true
+  attr :quizzes, :list, required: true
 
   defp content(assigns) do
     ~H"""
@@ -454,6 +534,60 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
         <.input type="textarea" name="notes" label="Notas" value={@item.notes} rows="3" />
         <div class="flex justify-end">
           <button type="submit" class="btn btn-primary btn-sm rounded-full px-5">Salvar</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="card qcard space-y-3 border border-base-300 bg-base-100 p-5">
+      <h2 class="text-sm font-bold uppercase tracking-wide opacity-60">Tipo</h2>
+      <form
+        id="change-type-form"
+        phx-submit="change_type"
+        phx-change="type_form_change"
+        phx-target={@myself}
+        class="space-y-3"
+      >
+        <.input
+          type="select"
+          name="item_type"
+          label="Tipo"
+          value={@type_form_value || Atom.to_string(@item.item_type)}
+          options={Components.item_type_options()}
+        />
+
+        <.input
+          :if={(@type_form_value || Atom.to_string(@item.item_type)) == "book"}
+          type="select"
+          name="study_material_id"
+          label="Livro"
+          value=""
+          options={Enum.map(@books, &{&1.title, &1.id})}
+          prompt="Escolha um livro"
+        />
+
+        <.input
+          :if={(@type_form_value || Atom.to_string(@item.item_type)) == "quiz_goal"}
+          type="select"
+          name="quiz_id"
+          label="Quiz"
+          value=""
+          options={Enum.map(@quizzes, &{quiz_display_name(&1), &1.id})}
+          prompt="Escolha um quiz"
+        />
+
+        <.input
+          :if={(@type_form_value || Atom.to_string(@item.item_type)) == "course"}
+          type="number"
+          name="course_total_steps"
+          label="Total de etapas (opcional)"
+          min="1"
+          value=""
+        />
+
+        <div class="flex justify-end">
+          <button type="submit" class="btn btn-primary btn-sm rounded-full px-5">
+            Salvar tipo
+          </button>
         </div>
       </form>
     </section>
@@ -691,6 +825,38 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
         />
       </div>
       <button type="submit" class="btn btn-primary btn-sm rounded-full px-5">Salvar</button>
+    </form>
+
+    <form
+      id="course-access-form"
+      phx-submit="set_course_access"
+      phx-target={@myself}
+      class="space-y-3 border-t border-base-200 pt-3"
+    >
+      <p class="text-xs font-semibold uppercase tracking-wide opacity-50">Método de acesso</p>
+      <.input
+        type="text"
+        name="course_access_link"
+        label="Link"
+        value={@item.course_access_link}
+      />
+      <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <.input
+          type="text"
+          name="course_access_login"
+          label="Login"
+          value={@item.course_access_login}
+        />
+        <.input
+          type="text"
+          name="course_access_password"
+          label="Senha"
+          value={@item.course_access_password}
+        />
+      </div>
+      <div class="flex justify-end">
+        <button type="submit" class="btn btn-soft btn-sm rounded-full px-5">Salvar acesso</button>
+      </div>
     </form>
     """
   end

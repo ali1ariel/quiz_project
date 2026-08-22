@@ -462,7 +462,8 @@ defmodule QuizProjectWeb.ContentsReadLiveTest do
       conn: conn,
       material: material
     } do
-      Books.demarcate(material.id, "no_rosca", [3, 4])
+      {:ok, chapter} = Books.get_chapter(material.id, 2)
+      Books.demarcate(chapter, "no_rosca", [3, 4])
 
       {:ok, _view, html} = live(conn, ~p"/contents/#{material.id}/2")
 

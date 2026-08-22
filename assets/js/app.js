@@ -98,6 +98,16 @@ window.addEventListener("phx:page-loading-stop", _info => {
 // connect if there are any LiveViews on the page
 liveSocket.connect()
 
+// Navegadores suspendem/throttlam timers em abas em background, então o
+// heartbeat do socket pode parar de ser enviado e o servidor derruba a
+// conexão por inatividade. Ao voltar para a aba, força a reconexão em vez
+// de esperar o ciclo padrão do socket retomar.
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && !liveSocket.isConnected()) {
+    liveSocket.connect()
+  }
+})
+
 // expose liveSocket on window for web console debug logs and latency simulation:
 // >> liveSocket.enableDebug()
 // >> liveSocket.enableLatencySim(1000)  // enabled for duration of browser session

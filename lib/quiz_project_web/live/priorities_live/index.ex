@@ -90,13 +90,13 @@ defmodule QuizProjectWeb.PrioritiesLive.Index do
   end
 
   @impl true
-  def handle_event("archive_item", %{"id" => id}, socket) do
+  def handle_event("delete_item", %{"id" => id}, socket) do
     user = socket.assigns.current_user
 
     case Priorities.get_item(id, user) do
       {:ok, item} ->
-        {:ok, _} = Priorities.archive_item(item, user)
-        {:noreply, socket |> put_flash(:info, "Item arquivado.") |> load_data()}
+        {:ok, _} = Priorities.delete_item(item, user)
+        {:noreply, socket |> put_flash(:info, "Item excluído definitivamente.") |> load_data()}
 
       _ ->
         {:noreply, put_flash(socket, :error, "Item não encontrado.")}
@@ -171,10 +171,22 @@ defmodule QuizProjectWeb.PrioritiesLive.Index do
 
       attrs =
         case item_type do
-          :book -> Map.put(base, :study_material_id, blank_to_nil(params["study_material_id"]))
-          :quiz_goal -> Map.put(base, :quiz_id, blank_to_nil(params["quiz_id"]))
-          :course -> Map.put(base, :course_total_steps, parse_int(params["course_total_steps"]))
-          _ -> base
+          :book ->
+            Map.put(base, :study_material_id, blank_to_nil(params["study_material_id"]))
+
+          :quiz_goal ->
+            Map.put(base, :quiz_id, blank_to_nil(params["quiz_id"]))
+
+          :course ->
+            Map.merge(base, %{
+              course_total_steps: parse_int(params["course_total_steps"]),
+              course_access_link: blank_to_nil(params["course_access_link"]),
+              course_access_login: blank_to_nil(params["course_access_login"]),
+              course_access_password: blank_to_nil(params["course_access_password"])
+            })
+
+          _ ->
+            base
         end
 
       {:ok, attrs}
@@ -202,18 +214,12 @@ defmodule QuizProjectWeb.PrioritiesLive.Index do
     end
   end
 
-  defp item_type_options do
-    Enum.map(~w(manual book quiz_goal course habit checklist)a, fn type ->
-      {Components.item_type_label(type), Atom.to_string(type)}
-    end)
-  end
-
   defp quiz_name(%{versions: [latest | _]}), do: latest.name || "Quiz sem nome"
   defp quiz_name(_quiz), do: "Quiz sem nome"
 
   @impl true
   def render(assigns) do
-    assigns = assign(assigns, :item_type_options, item_type_options())
+    assigns = assign(assigns, :item_type_options, Components.item_type_options())
 
     ~H"""
     <Layouts.app flash={@flash} current_user={@current_user} active_nav={:priorities}>
@@ -347,10 +353,16 @@ defmodule QuizProjectWeb.PrioritiesLive.Index do
                     :if={@item_form_type == "course"}
                     type="number"
                     name="course_total_steps"
-                    label="Total de etapas"
+                    label="Total de etapas (opcional)"
                     min="1"
                     value=""
                   />
+
+                  <div :if={@item_form_type == "course"} class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    <.input type="text" name="course_access_link" label="Link de acesso" value="" />
+                    <.input type="text" name="course_access_login" label="Login" value="" />
+                    <.input type="text" name="course_access_password" label="Senha" value="" />
+                  </div>
 
                   <div class="flex justify-end gap-2">
                     <button
@@ -389,13 +401,14 @@ defmodule QuizProjectWeb.PrioritiesLive.Index do
                       <Components.item_card item={item} />
                       <div class="flex items-center justify-end px-1">
                         <button
-                          phx-click="archive_item"
+                          id={"delete-item-#{item.id}"}
+                          phx-click="delete_item"
                           phx-value-id={item.id}
-                          data-confirm="Arquivar este item? O progresso fica guardado, mas ele some da lista."
-                          class="qreader-tool text-error/70"
-                          title="Arquivar"
+                          data-confirm="Excluir este item definitivamente? Essa ação não pode ser desfeita."
+                          class="qreader-tool text-error/70 hover:text-error"
+                          title="Excluir"
                         >
-                          <.icon name="hero-archive-box" class="size-3.5" />
+                          <.icon name="hero-trash" class="size-3.5" />
                         </button>
                       </div>
                     </div>

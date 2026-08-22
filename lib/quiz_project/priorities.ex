@@ -195,6 +195,32 @@ defmodule QuizProject.Priorities do
     end
   end
 
+  @doc "Exclui o item definitivamente (não é reversível como arquivar/desarquivar)."
+  def delete_item(item, actor) do
+    with :ok <- authorize_owner(item, actor) do
+      Ash.destroy(item, authorize?: false, return_destroyed?: true)
+    end
+  end
+
+  @doc """
+  Troca o `item_type` de um item já existente. Reaproveita
+  `validate_cross_reference/2` (a mesma checagem usada na criação) pra
+  garantir que `study_material_id`/`quiz_id`, quando presentes no novo tipo,
+  continuam pertencendo ao usuário certo.
+
+  Campos do tipo anterior (ex: `habit_current_streak` ao sair de `:habit`)
+  não são zerados — ficam no registro, mas `progress_for_item/1` despacha só
+  pelo `item_type` atual e os ignora, então não há efeito colateral.
+  """
+  def change_item_type(item, attrs, actor) do
+    with :ok <- authorize_owner(item, actor),
+         :ok <- validate_cross_reference(attrs, actor) do
+      item
+      |> Ash.Changeset.for_update(:change_type, attrs, authorize?: false)
+      |> Ash.update()
+    end
+  end
+
   def reposition_item(item, position, actor) do
     with :ok <- authorize_owner(item, actor) do
       item
@@ -216,6 +242,14 @@ defmodule QuizProject.Priorities do
     with :ok <- authorize_owner(item, actor) do
       item
       |> Ash.Changeset.for_update(:set_course_progress, attrs, authorize?: false)
+      |> Ash.update()
+    end
+  end
+
+  def set_course_access(item, attrs, actor) do
+    with :ok <- authorize_owner(item, actor) do
+      item
+      |> Ash.Changeset.for_update(:set_course_access, attrs, authorize?: false)
       |> Ash.update()
     end
   end

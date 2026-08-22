@@ -476,9 +476,9 @@ defmodule QuizProject.AdaptiveStudy.Books do
   end
 
   # Grava a demarcação de cada nó folha sobre os blocos que a IA apontou.
-  # `chapter.material_id` é o material do LIVRO — é nele que os blocos e o
-  # índice de `demarcate/4` vivem — e não o `material_id` do material de texto
-  # gerado para a curadoria, que só existe para carregar o mapa mental.
+  # Escopada por capítulo (não pelo material do livro inteiro): `node_id` só
+  # é único dentro do capítulo que a IA processou — dois capítulos do mesmo
+  # livro podem reusar o mesmo `node_id`, e `demarcate/4` precisa distingui-los.
   defp demarcate_leaves(chapter, material) do
     valid_positions = chapter.id |> list_blocks() |> MapSet.new(& &1.position)
 
@@ -501,7 +501,7 @@ defmodule QuizProject.AdaptiveStudy.Books do
     end
 
     if positions != [] do
-      demarcate(chapter.material_id, node["id"], positions)
+      demarcate(chapter, node["id"], positions)
     end
   end
 
@@ -687,24 +687,28 @@ defmodule QuizProject.AdaptiveStudy.Books do
   Grava a cobertura de um nó do mapa mental sobre um intervalo de blocos.
 
   `positions` são posições absolutas no livro, que é o que a IA devolve ao
-  processar um capítulo. A demarcação anterior daquele nó é substituída.
+  processar um capítulo. A demarcação anterior daquele nó É SUBSTITUÍDA, mas
+  escopada ao capítulo — `node_id` só precisa ser único dentro do capítulo que
+  a IA processou, nunca no livro inteiro.
   """
-  def demarcate(material_id, node_id, positions, opts \\ []) when is_list(positions) do
+  def demarcate(%Chapter{id: chapter_id, material_id: material_id}, node_id, positions, opts \\ [])
+      when is_list(positions) do
     confidence = Keyword.get(opts, :confidence, Decimal.new("1.0"))
 
     NodeBlock
-    |> Ash.Query.filter(material_id == ^material_id and node_id == ^node_id)
+    |> Ash.Query.filter(chapter_id == ^chapter_id and node_id == ^node_id)
     |> Ash.bulk_destroy!(:destroy, %{}, authorize?: false, strategy: [:stream])
 
     blocks =
       Block
-      |> Ash.Query.filter(material_id == ^material_id and position in ^positions)
+      |> Ash.Query.filter(chapter_id == ^chapter_id and position in ^positions)
       |> Ash.read!(authorize?: false)
 
     blocks
     |> Enum.map(
       &%{
         material_id: material_id,
+        chapter_id: chapter_id,
         node_id: node_id,
         block_id: &1.id,
         confidence: confidence
@@ -736,11 +740,11 @@ defmodule QuizProject.AdaptiveStudy.Books do
     |> Enum.group_by(& &1.block_id, & &1.node_id)
   end
 
-  @doc "Blocos que um nó cobre, na ordem do livro."
-  def blocks_for_node(material_id, node_id) do
+  @doc "Blocos que um nó de um capítulo cobre, na ordem do livro."
+  def blocks_for_node(chapter_id, node_id) do
     ids =
       NodeBlock
-      |> Ash.Query.filter(material_id == ^material_id and node_id == ^node_id)
+      |> Ash.Query.filter(chapter_id == ^chapter_id and node_id == ^node_id)
       |> Ash.read!(authorize?: false)
       |> Enum.map(& &1.block_id)
 
