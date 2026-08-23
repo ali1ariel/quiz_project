@@ -697,6 +697,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Curate do
         :if={@show_reconstruction_modal?}
         text={@reconstructed_text}
         stats={@stats}
+        book_material_id={@book_material_id}
       />
     </Layouts.app>
     """
@@ -1268,7 +1269,7 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Curate do
         <p :if={@node_text == ""} class="text-xs italic opacity-50">
           Este nó não carrega trecho de texto — serve apenas para agrupar subnós.
         </p>
-        <.markdown :if={@node_text != ""} content={@node_text} />
+        <.markdown :if={@node_text != ""} content={@node_text} material_id={@book_material_id} />
       </div>
     </div>
     """
@@ -1504,7 +1505,12 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Curate do
           <p :if={@text == ""} class="text-xs italic opacity-60">
             Nenhum conteúdo ativo para reconstruir.
           </p>
-          <.markdown :if={@text != ""} content={@text} class="mx-auto" />
+          <.markdown
+            :if={@text != ""}
+            content={@text}
+            class="mx-auto"
+            material_id={@book_material_id}
+          />
         </div>
 
         <div class="modal-action items-center justify-between">
