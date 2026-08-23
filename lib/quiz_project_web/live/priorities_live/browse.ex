@@ -54,6 +54,15 @@ defmodule QuizProjectWeb.PrioritiesLive.Browse do
     {:noreply, put_flash(socket, kind, message)}
   end
 
+  @impl true
+  def handle_info({:priorities_item_deleted, _id}, socket) do
+    {:noreply,
+     socket
+     |> put_flash(:info, "Item excluído definitivamente.")
+     |> assign(modal_item_id: nil)
+     |> load_items()}
+  end
+
   defp load_items(socket) do
     user = socket.assigns.current_user
     f = socket.assigns.filters

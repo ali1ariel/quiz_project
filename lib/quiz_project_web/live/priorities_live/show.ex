@@ -32,6 +32,14 @@ defmodule QuizProjectWeb.PrioritiesLive.Show do
   end
 
   @impl true
+  def handle_info({:priorities_item_deleted, _id}, socket) do
+    {:noreply,
+     socket
+     |> put_flash(:info, "Item excluído definitivamente.")
+     |> push_navigate(to: ~p"/priorities")}
+  end
+
+  @impl true
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_user={@current_user} active_nav={:priorities}>

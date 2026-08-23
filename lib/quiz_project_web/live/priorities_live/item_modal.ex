@@ -53,6 +53,21 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
   end
 
   @impl true
+  def handle_event("delete_item", _params, socket) do
+    item = socket.assigns.item
+    user = socket.assigns.current_user
+
+    case Priorities.delete_item(item, user) do
+      {:ok, _} ->
+        send(self(), {:priorities_item_deleted, item.id})
+        {:noreply, socket}
+
+      _ ->
+        {:noreply, notify_flash(socket, :error, "Não foi possível excluir.")}
+    end
+  end
+
+  @impl true
   def handle_event("toggle_archive", _params, socket) do
     item = socket.assigns.item
     user = socket.assigns.current_user
@@ -506,20 +521,31 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
           {Components.item_type_label(@item.item_type)} · {@item.category.name}
         </p>
       </div>
-      <button
-        id="toggle-archive-btn"
-        phx-click="toggle_archive"
-        phx-target={@myself}
-        class="btn btn-soft btn-sm rounded-full"
-        data-confirm={
-          if @item.archived_at,
-            do: nil,
-            else: "Arquivar este item? O progresso fica guardado, mas ele some da lista principal."
-        }
-      >
-        <.icon name="hero-archive-box" class="size-3.5" />
-        {if @item.archived_at, do: "Reativar", else: "Arquivar"}
-      </button>
+      <div class="flex items-center gap-2">
+        <button
+          id="toggle-archive-btn"
+          phx-click="toggle_archive"
+          phx-target={@myself}
+          class="btn btn-soft btn-sm rounded-full"
+          data-confirm={
+            if @item.archived_at,
+              do: nil,
+              else: "Arquivar este item? O progresso fica guardado, mas ele some da lista principal."
+          }
+        >
+          <.icon name="hero-archive-box" class="size-3.5" />
+          {if @item.archived_at, do: "Reativar", else: "Arquivar"}
+        </button>
+        <button
+          id="delete-item-btn"
+          phx-click="delete_item"
+          phx-target={@myself}
+          class="btn btn-soft btn-sm rounded-full text-error"
+          data-confirm="Excluir este item definitivamente? Essa ação não pode ser desfeita."
+        >
+          Excluir
+        </button>
+      </div>
     </div>
 
     <section class="card qcard space-y-3 border border-base-300 bg-base-100 p-5">

@@ -90,20 +90,6 @@ defmodule QuizProjectWeb.PrioritiesLive.Index do
   end
 
   @impl true
-  def handle_event("delete_item", %{"id" => id}, socket) do
-    user = socket.assigns.current_user
-
-    case Priorities.get_item(id, user) do
-      {:ok, item} ->
-        {:ok, _} = Priorities.delete_item(item, user)
-        {:noreply, socket |> put_flash(:info, "Item excluído definitivamente.") |> load_data()}
-
-      _ ->
-        {:noreply, put_flash(socket, :error, "Item não encontrado.")}
-    end
-  end
-
-  @impl true
   def handle_event("reorder_items", %{"zone_id" => category_id, "ordered_ids" => ids}, socket) do
     reorder(
       Priorities.list_primary_items(category_id),
@@ -124,6 +110,15 @@ defmodule QuizProjectWeb.PrioritiesLive.Index do
   @impl true
   def handle_info({:priorities_flash, kind, message}, socket) do
     {:noreply, put_flash(socket, kind, message)}
+  end
+
+  @impl true
+  def handle_info({:priorities_item_deleted, _id}, socket) do
+    {:noreply,
+     socket
+     |> put_flash(:info, "Item excluído definitivamente.")
+     |> assign(modal_item_id: nil)
+     |> load_data()}
   end
 
   # Recebe a ordem final dos ids que o drag-and-drop já refletiu na tela, e só
@@ -397,21 +392,7 @@ defmodule QuizProjectWeb.PrioritiesLive.Index do
                     drag_id={item.id}
                     drag_group={"category-items-#{section.category.id}"}
                   >
-                    <div class="space-y-1">
-                      <Components.item_card item={item} />
-                      <div class="flex items-center justify-end px-1">
-                        <button
-                          id={"delete-item-#{item.id}"}
-                          phx-click="delete_item"
-                          phx-value-id={item.id}
-                          data-confirm="Excluir este item definitivamente? Essa ação não pode ser desfeita."
-                          class="qreader-tool text-error/70 hover:text-error"
-                          title="Excluir"
-                        >
-                          <.icon name="hero-trash" class="size-3.5" />
-                        </button>
-                      </div>
-                    </div>
+                    <Components.item_card item={item} />
                   </Components.draggable>
                 </Components.drop_zone>
 
