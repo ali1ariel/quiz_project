@@ -1,6 +1,8 @@
 name: "Deploy to AWS"
 
 on:
+  # Só deploya no push para master e sob demanda. O gatilho pull_request foi
+  # removido de propósito: PRs contra master deployariam código não-mergeado.
   push:
     branches: ["master"]
   workflow_dispatch:
@@ -16,6 +18,16 @@ jobs:
     environment: production
 
     steps:
+      # Falha cedo e com mensagem clara se o secret do bucket não estiver
+      # configurado (senão o erro só aparece lá no fim, como um "Invalid bucket
+      # name" do aws s3 cp).
+      - name: Check required secrets
+        run: |
+          if [ -z "${{ secrets.AWS_CODEDEPLOY_BUCKET }}" ]; then
+            echo "::error::Secret AWS_CODEDEPLOY_BUCKET não está configurado. Defina-o com o nome do bucket S3 que hospeda os bundles do CodeDeploy."
+            exit 1
+          fi
+
       - name: Checkout Repository
         uses: actions/checkout@v4
 
@@ -25,16 +37,37 @@ jobs:
           elixir-version: "1.18.2"
           otp-version: "27.3.4"
 
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+          build-essential \
+          git \
+          make \
+          gcc \
+          g++ \
+          erlang-dev \
+          erlang-src
+
       - name: Install Dependencies
         run: |
           mix local.hex --force
           mix local.rebar --force
-          mix deps.get
+          mix deps.get --only prod
 
       - name: Compile (warnings as errors)
         env:
           MIX_ENV: prod
         run: mix compile --warnings-as-errors
+
+      - name: Create Production Release
+        env:
+          MIX_ENV: prod
+          SECRET_KEY_BASE: ${{ secrets.SECRET_KEY_BASE }}
+        run: |
+          mix assets.setup
+          mix assets.deploy
+          mix release --overwrite
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -57,9 +90,24 @@ jobs:
             --deployment-style deploymentType=IN_PLACE,deploymentOption=WITHOUT_TRAFFIC_CONTROL \
             --ec2-tag-filters Key=Environment,Type=KEY_AND_VALUE,Value=Production || true
 
+      # Empacota a RELEASE JÁ COMPILADA (não o fonte). O bundle vai pro S3 e o
+      # CodeDeploy o baixa via --s3-location — a instância nunca mais recompila.
+      - name: Create Deployment Bundle
+        run: |
+          mkdir -p bundle/release
+          cp -a _build/prod/rel/quiz_project/. bundle/release/
+          cp -a scripts bundle/scripts
+          cp appspec.yml bundle/appspec.yml
+          (cd bundle && zip -r ../bundle.zip . >/dev/null)
+
+      - name: Upload Bundle to S3
+        run: |
+          aws s3 cp bundle.zip \
+            "s3://${{ secrets.AWS_CODEDEPLOY_BUCKET }}/quiz_project/${{ github.sha }}.zip"
+
       - name: Create CodeDeploy Deployment
         run: |
           aws deploy create-deployment \
             --application-name quiz_project \
             --deployment-group-name quiz_project-production \
-            --github-location repository=${{ github.repository }},commitId=${{ github.sha }}
+            --s3-location bucket=${{ secrets.AWS_CODEDEPLOY_BUCKET }},key=quiz_project/${{ github.sha }}.zip,bundleType=zip
