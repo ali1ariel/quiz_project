@@ -3,7 +3,6 @@ set -e
 source /opt/quiz_project/scripts/check_db.sh
 
 APP_DIR="/opt/quiz_project"
-BIN="$APP_DIR/_build/prod/rel/quiz_project/bin/quiz_project"
 PORT=4005
 PHX_HOST="quizzes.alissonmachado.dev"
 BOOK_IMAGES_DIR="/var/lib/quiz_project/book_images"
@@ -34,17 +33,30 @@ AI_PROVIDER=$(get_param_optional "/quiz_project/prod/ai_provider")
 # deploy, não a cada 5 minutos.
 AI_AUTHORIZATION_EMAILS=$(get_param_optional "/quiz_project/prod/ai_authorized_emails")
 
+# --- Promove a release prebuildada do staging para um diretório versionado ---
+# A versão no ar (current/) segue intocada até a troca do symlink lá embaixo.
+RELEASE_ID="$(date +%Y%m%d%H%M%S)"
+RELEASE_DIR="$APP_DIR/releases/$RELEASE_ID"
+NEW_BIN="$RELEASE_DIR/bin/quiz_project"
+
+echo "Promoting staged release to $RELEASE_DIR ..."
+mkdir -p "$APP_DIR/releases"
+mv "$APP_DIR/staging" "$RELEASE_DIR"
+mkdir -p "$RELEASE_DIR/tmp"
+chown -R ubuntu:ubuntu "$RELEASE_DIR"
+chmod -R 755 "$RELEASE_DIR"
+
+if [ ! -x "$NEW_BIN" ]; then
+  echo "FATAL: promoted release binary not found at $NEW_BIN"
+  exit 1
+fi
+
 # Journald só persiste entre reboots se este diretório existir — sem ele, um
 # OOM kill que derruba a máquina (não só o processo) leva o log junto com o
 # corpo do crime.
 echo "Ensuring persistent journald storage..."
 sudo mkdir -p /var/log/journal
 sudo systemd-tmpfiles --create --prefix /var/log/journal >/dev/null 2>&1 || true
-
-echo "Setting up directory permissions..."
-sudo mkdir -p "$APP_DIR/_build/prod/rel/quiz_project/tmp"
-sudo chown -R ubuntu:ubuntu "$APP_DIR/_build/prod/rel/quiz_project/tmp"
-sudo chmod -R 755 "$APP_DIR/_build/prod/rel/quiz_project/tmp"
 
 # Único estado em disco da app (ver QuizProject.Application.ensure_book_images_dir!/0):
 # precisa existir e pertencer a ubuntu *antes* do boot, já que o processo sobe
@@ -53,7 +65,8 @@ sudo mkdir -p "$BOOK_IMAGES_DIR"
 sudo chown -R ubuntu:ubuntu "$BOOK_IMAGES_DIR"
 sudo chmod -R 755 "$BOOK_IMAGES_DIR"
 
-echo "Creating systemd service file..."
+# --- systemd aponta para o symlink estável current/ (não para releases/<id>) ---
+echo "Writing systemd unit..."
 sudo tee /etc/systemd/system/quiz_project.service >/dev/null <<EOL
 [Unit]
 Description=Quiz Project Service
@@ -87,8 +100,8 @@ Environment="AI_AUTHORIZATION_EMAILS=${AI_AUTHORIZATION_EMAILS}"
 Environment="ERL_CRASH_DUMP=${APP_DIR}/erl_crash.dump"
 Environment="ERL_CRASH_DUMP_SECONDS=10"
 
-ExecStart=${BIN} start
-ExecStop=${BIN} stop
+ExecStart=${APP_DIR}/current/bin/quiz_project start
+ExecStop=${APP_DIR}/current/bin/quiz_project stop
 Restart=always
 RestartSec=5
 
@@ -96,29 +109,39 @@ RestartSec=5
 WantedBy=multi-user.target
 EOL
 
-echo "Setting proper permissions..."
 sudo chmod 644 /etc/systemd/system/quiz_project.service
-
-echo "Reloading systemd daemon..."
 sudo systemctl daemon-reload
 
 echo "Waiting for database to be ready..."
 sleep 4
 
 if ! check_database_connection "$DB_URL"; then
-  echo "Cannot proceed with deployment - database is not accessible"
+  echo "Cannot proceed - database is not accessible (a versão no ar segue intacta)"
   exit 1
 fi
 
-echo "Running migrations..."
-DATABASE_URL="${DB_URL}" SECRET_KEY_BASE="${KEY_BASE}" "$BIN" eval "QuizProject.Release.migrate"
+# --- Migra com a release NOVA, ANTES de girar o symlink ---
+# Se a migração falhar, current/ ainda aponta para a versão antiga (que segue
+# rodando) e o deploy é marcado como falho sem downtime.
+echo "Running migrations with the new release..."
+DATABASE_URL="${DB_URL}" SECRET_KEY_BASE="${KEY_BASE}" "$NEW_BIN" eval "QuizProject.Release.migrate"
 
-echo "Enabling and starting quiz_project service..."
+# --- Troca atômica: gira o symlink e faz um único restart ---
+# A janela de indisponibilidade fica limitada ao restart do BEAM (~poucos seg).
+echo "Switching current -> $RELEASE_DIR"
+ln -sfn "$RELEASE_DIR" "$APP_DIR/current"
+chown -h ubuntu:ubuntu "$APP_DIR/current"
+
 sudo systemctl enable quiz_project
 sudo systemctl restart quiz_project
 
 echo "Waiting for service to start..."
 sleep 5
+sudo systemctl status quiz_project --no-pager || true
 
-echo "Checking service status..."
-sudo systemctl status quiz_project --no-pager
+# --- Limpa releases antigas, mantendo as 3 mais recentes ---
+echo "Pruning old releases (keeping the 3 newest)..."
+cd "$APP_DIR/releases"
+ls -1dt */ 2>/dev/null | tail -n +4 | xargs -r rm -rf
+
+echo "start_application completed"

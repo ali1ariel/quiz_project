@@ -3,6 +3,8 @@ defmodule QuizProjectWeb.Router do
 
   import QuizProjectWeb.UserAuth
 
+  get "/health", QuizProjectWeb.HealthController, :index
+
   pipeline :browser do
     plug :accepts, ["html"]
     plug :fetch_session

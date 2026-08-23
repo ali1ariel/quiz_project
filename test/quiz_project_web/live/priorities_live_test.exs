@@ -82,9 +82,10 @@ defmodule QuizProjectWeb.PrioritiesLiveTest do
 
       assert html =~ "Descartável"
 
-      html = render_click(view, "delete_item", %{"id" => item.id})
+      render_click(view, "open_item", %{"id" => item.id})
+      view |> element("#delete-item-btn") |> render_click()
 
-      refute html =~ "Descartável"
+      refute render(view) =~ "Descartável"
       assert {:error, _} = Priorities.get_item(item.id, user)
     end
 
