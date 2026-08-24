@@ -146,6 +146,22 @@ defmodule QuizProjectWeb.UserAuth do
     {:cont, socket}
   end
 
+  # Badge global de capturas soltas (atividades sem prioridade), visível em
+  # toda página autenticada. Ao contrário de `:notify_attempts`, não precisa
+  # de PubSub nem `attach_hook`: Priorities não empurra eventos ao vivo em
+  # lugar nenhum hoje, então recalcular no `mount` (uma vez por navegação) é
+  # suficiente pro mesmo padrão que o resto do domínio já segue.
+  def on_mount(:notify_loose_captures, _params, _session, socket) do
+    count =
+      if user = socket.assigns[:current_user] do
+        QuizProject.Priorities.count_loose_captures(user)
+      else
+        0
+      end
+
+    {:cont, Phoenix.Component.assign(socket, :loose_captures_count, count)}
+  end
+
   defp handle_attempt_notification({:attempt_finished, _info}, socket) do
     {:cont, reload_notifications(socket)}
   end

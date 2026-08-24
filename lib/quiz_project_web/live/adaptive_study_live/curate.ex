@@ -560,7 +560,13 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Curate do
 
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_user={@current_user} active_nav={:adaptive_study} wide={true}>
+    <Layouts.app
+      flash={@flash}
+      current_user={@current_user}
+      loose_captures_count={@loose_captures_count}
+      active_nav={:adaptive_study}
+      wide={true}
+    >
       <%!-- A partir de `md` a curadoria vira uma área de trabalho de altura de
            tela: a página em si não rola, o cabeçalho e a barra ficam parados e
            as duas colunas rolam cada uma por dentro. É o que evita ter de rolar

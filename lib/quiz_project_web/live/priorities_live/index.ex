@@ -217,7 +217,12 @@ defmodule QuizProjectWeb.PrioritiesLive.Index do
     assigns = assign(assigns, :item_type_options, Components.item_type_options())
 
     ~H"""
-    <Layouts.app flash={@flash} current_user={@current_user} active_nav={:priorities}>
+    <Layouts.app
+      flash={@flash}
+      current_user={@current_user}
+      loose_captures_count={@loose_captures_count}
+      active_nav={:priorities}
+    >
       <div class="space-y-6">
         <div class="flex flex-wrap items-end justify-between gap-3 border-b border-base-300 pb-4">
           <div>
@@ -253,7 +258,12 @@ defmodule QuizProjectWeb.PrioritiesLive.Index do
               required
             />
           </div>
-          <button type="submit" class="btn btn-primary rounded-full px-6">Criar</button>
+          <div class="fieldset mb-2">
+            <label>
+              <span class="label mb-1 invisible">Criar</span>
+              <button type="submit" class="btn btn-primary rounded-full px-6">Criar</button>
+            </label>
+          </div>
         </form>
 
         <%= if @categories == [] do %>

@@ -33,6 +33,11 @@ defmodule QuizProject.PrioritiesTest do
     book
   end
 
+  defp manual_item(user, category, title) do
+    {:ok, item} = Priorities.create_item(user, category, %{item_type: :manual, title: title})
+    item
+  end
+
   # Quiz publicado com uma questão V/F, resposta correta = verdadeiro.
   defp published_tf_quiz(owner) do
     {:ok, version} = Quizzes.create_draft_quiz(owner)
@@ -71,6 +76,49 @@ defmodule QuizProject.PrioritiesTest do
       assert c1.position == 0
       assert c2.position == 1
       assert Enum.map(Priorities.list_categories(user), & &1.name) == ["Livros", "Hábitos"]
+    end
+  end
+
+  describe "item \"Geral\" da categoria" do
+    test "toda categoria nasce com um item Geral oculto", %{user: user} do
+      cat = category(user, "Livros")
+
+      geral = Priorities.general_item_for_category(cat)
+
+      assert geral.category_id == cat.id
+      assert geral.general == true
+      assert geral.title == "Livros - Geral"
+    end
+
+    test "general_item_for_category é idempotente", %{user: user} do
+      cat = category(user)
+
+      a = Priorities.general_item_for_category(cat)
+      b = Priorities.general_item_for_category(cat)
+
+      assert a.id == b.id
+    end
+
+    test "cria o item Geral sob demanda pra categoria que ainda não tinha um", %{user: user} do
+      cat = category(user)
+      geral = Priorities.general_item_for_category(cat)
+      {:ok, _} = Priorities.delete_item(geral, user)
+
+      recriado = Priorities.general_item_for_category(cat)
+
+      assert recriado.id != geral.id
+      assert recriado.general == true
+    end
+
+    test "nunca aparece nas listagens normais de item", %{user: user} do
+      cat = category(user, "Livros")
+      geral = Priorities.general_item_for_category(cat)
+      _visivel = manual_item(user, cat, "Item normal")
+
+      refute geral.id in Enum.map(Priorities.list_items_by_category(cat.id), & &1.id)
+      refute geral.id in Enum.map(Priorities.list_primary_items(cat.id), & &1.id)
+      refute geral.id in Enum.map(Priorities.list_untiered_items(user), & &1.id)
+      refute geral.id in Enum.map(Priorities.filter_items(user), & &1.id)
     end
   end
 

@@ -12,11 +12,14 @@ defmodule QuizProject.Priorities do
 
   alias QuizProject.AdaptiveStudy
   alias QuizProject.Attempts
+  alias QuizProject.Priorities.Activity
+  alias QuizProject.Priorities.ActivityTask
   alias QuizProject.Priorities.Category
   alias QuizProject.Priorities.FieldDefinition
   alias QuizProject.Priorities.FieldValue
   alias QuizProject.Priorities.Item
   alias QuizProject.Priorities.ItemCategory
+  alias QuizProject.Priorities.ItemLink
   alias QuizProject.Priorities.ItemTag
   alias QuizProject.Priorities.ItemTask
   alias QuizProject.Priorities.Tag
@@ -30,6 +33,9 @@ defmodule QuizProject.Priorities do
     resource ItemCategory
     resource FieldDefinition
     resource FieldValue
+    resource Activity
+    resource ActivityTask
+    resource ItemLink
   end
 
   # Autorização
@@ -49,16 +55,21 @@ defmodule QuizProject.Priorities do
     |> Ash.read!(authorize?: false)
   end
 
+  @doc "Cria a categoria e o item \"Geral\" que a acompanha (ver `general_item_for_category/1`)."
   def create_category(%{id: user_id}, attrs) do
     position = next_category_position(user_id)
 
-    Category
-    |> Ash.Changeset.for_create(
-      :create,
-      Map.merge(attrs, %{user_id: user_id, position: position}),
-      authorize?: false
-    )
-    |> Ash.create()
+    with {:ok, category} <-
+           Category
+           |> Ash.Changeset.for_create(
+             :create,
+             Map.merge(attrs, %{user_id: user_id, position: position}),
+             authorize?: false
+           )
+           |> Ash.create() do
+      create_general_item(category)
+      {:ok, category}
+    end
   end
 
   def reposition_category(category, position, actor) do
@@ -69,13 +80,21 @@ defmodule QuizProject.Priorities do
     end
   end
 
+  def get_category(id, %{id: user_id}) do
+    case Ash.get(Category, id, authorize?: false) do
+      {:ok, %Category{user_id: ^user_id} = category} -> {:ok, category}
+      {:ok, _} -> {:error, :unauthorized}
+      error -> error
+    end
+  end
+
   # Itens
 
-  @doc "Itens ativos (não arquivados) de uma categoria, pela ordem — inclui os que a têm como secundária."
+  @doc "Itens ativos (não arquivados) de uma categoria, pela ordem — inclui os que a têm como secundária. Nunca inclui o item \"Geral\"."
   def list_items_by_category(category_id) do
     Item
     |> Ash.Query.filter(
-      is_nil(archived_at) and
+      general == false and is_nil(archived_at) and
         (category_id == ^category_id or exists(secondary_categories, id == ^category_id))
     )
     |> Ash.Query.sort(position: :asc)
@@ -86,7 +105,7 @@ defmodule QuizProject.Priorities do
   @doc "Itens ativos cuja categoria primária (não secundária) é `category_id`, na ordem — base da reordenação por botões."
   def list_primary_items(category_id) do
     Item
-    |> Ash.Query.filter(category_id == ^category_id and is_nil(archived_at))
+    |> Ash.Query.filter(category_id == ^category_id and is_nil(archived_at) and general == false)
     |> Ash.Query.sort(position: :asc)
     |> Ash.read!(authorize?: false)
   end
@@ -429,7 +448,9 @@ defmodule QuizProject.Priorities do
   def list_tiered_items(%{id: user_id}) do
     items =
       Item
-      |> Ash.Query.filter(user_id == ^user_id and is_nil(archived_at) and not is_nil(tier))
+      |> Ash.Query.filter(
+        user_id == ^user_id and is_nil(archived_at) and not is_nil(tier) and general == false
+      )
       |> Ash.Query.load([:tags, :category])
       |> Ash.read!(authorize?: false)
       |> Enum.group_by(& &1.tier)
@@ -437,18 +458,20 @@ defmodule QuizProject.Priorities do
     Enum.map(@tier_order, &{&1, Map.get(items, &1, [])})
   end
 
-  @doc "Itens ativos sem tier definido — candidatos a entrar no bloco de prioridades misturadas."
+  @doc "Itens ativos sem tier definido — candidatos a entrar no bloco de prioridades misturadas. Nunca inclui o item \"Geral\"."
   def list_untiered_items(%{id: user_id}) do
     Item
-    |> Ash.Query.filter(user_id == ^user_id and is_nil(archived_at) and is_nil(tier))
+    |> Ash.Query.filter(
+      user_id == ^user_id and is_nil(archived_at) and is_nil(tier) and general == false
+    )
     |> Ash.Query.sort(inserted_at: :desc)
     |> Ash.Query.load([:tags, :category])
     |> Ash.read!(authorize?: false)
   end
 
-  @doc "Filtro flat por categoria (primária ou secundária), tag, tipo e arquivamento."
+  @doc "Filtro flat por categoria (primária ou secundária), tag, tipo e arquivamento. Nunca inclui o item \"Geral\"."
   def filter_items(%{id: user_id}, opts \\ []) do
-    query = Ash.Query.filter(Item, user_id == ^user_id)
+    query = Ash.Query.filter(Item, user_id == ^user_id and general == false)
 
     query =
       case Keyword.get(opts, :archived, false) do
@@ -548,6 +571,320 @@ defmodule QuizProject.Priorities do
     {:percent, percent}
   end
 
+  # Atividades
+
+  def list_activities_for_item(item_id, %{id: user_id}) do
+    Activity
+    |> Ash.Query.filter(item_id == ^item_id and user_id == ^user_id)
+    |> Ash.Query.sort(position: :asc)
+    |> Ash.read!(authorize?: false)
+  end
+
+  @doc "Capturas soltas (sem item) ainda pendentes, mais antiga primeiro — a que mais precisa de atenção."
+  def list_loose_captures(%{id: user_id}) do
+    Activity
+    |> Ash.Query.filter(user_id == ^user_id and is_nil(item_id) and status == :pendente)
+    |> Ash.Query.sort(logical_date: :asc, position: :asc)
+    |> Ash.read!(authorize?: false)
+  end
+
+  def count_loose_captures(%{id: user_id}) do
+    Activity
+    |> Ash.Query.filter(user_id == ^user_id and is_nil(item_id) and status == :pendente)
+    |> Ash.Query.select([:id])
+    |> Ash.read!(authorize?: false)
+    |> length()
+  end
+
+  @doc "Atividades presas a um item, com `logical_date` de hoje — base das raias da Tela do dia."
+  def list_today_activities_by_item(%{id: user_id}) do
+    Activity
+    |> Ash.Query.filter(
+      user_id == ^user_id and not is_nil(item_id) and logical_date == ^Date.utc_today()
+    )
+    |> Ash.Query.sort(position: :asc)
+    |> Ash.Query.load([:item])
+    |> Ash.read!(authorize?: false)
+  end
+
+  @doc "Raias da Tela do dia: uma entrada por item com atividade hoje, atividades já separadas por `flow`."
+  def list_today_lanes(actor) do
+    actor
+    |> list_today_activities_by_item()
+    # Agrupa pelo id, não pelo struct `%Item{}` em si — instâncias carregadas
+    # em `load/1` separadamente podem carregar metadados internos do Ash
+    # distintos mesmo representando a mesma linha, o que quebraria `==`.
+    |> Enum.group_by(& &1.item.id)
+    |> Enum.map(fn {_item_id, [%{item: item} | _] = activities} ->
+      %{item: item, activities: Enum.group_by(activities, & &1.flow)}
+    end)
+    |> Enum.sort_by(& &1.item.title)
+  end
+
+  def get_activity(id, %{id: user_id}) do
+    case Ash.get(Activity, id, authorize?: false) do
+      {:ok, %Activity{user_id: ^user_id} = activity} -> {:ok, activity}
+      {:ok, _} -> {:error, :unauthorized}
+      error -> error
+    end
+  end
+
+  @doc """
+  Cria uma atividade presa a um item (checa dono do item) ou uma captura
+  solta quando `attrs` não tem `item_id`.
+  """
+  def create_activity(%{id: user_id} = actor, attrs) do
+    with :ok <- validate_item_ownership(attrs, actor) do
+      attrs =
+        attrs
+        |> Map.put_new_lazy(:logical_date, &Date.utc_today/0)
+        |> Map.put(:user_id, user_id)
+
+      position = next_activity_position(user_id, Map.get(attrs, :item_id), :todo)
+
+      Activity
+      |> Ash.Changeset.for_create(:create, Map.put(attrs, :position, position), authorize?: false)
+      |> Ash.create()
+    end
+  end
+
+  defp validate_item_ownership(%{item_id: item_id}, actor) when not is_nil(item_id) do
+    case get_item(item_id, actor) do
+      {:ok, _item} -> :ok
+      _ -> {:error, :unauthorized}
+    end
+  end
+
+  defp validate_item_ownership(_attrs, _actor), do: :ok
+
+  def update_activity(activity, attrs, actor) do
+    with :ok <- authorize_owner(activity, actor) do
+      activity |> Ash.Changeset.for_update(:update, attrs, authorize?: false) |> Ash.update()
+    end
+  end
+
+  def reposition_activity(activity, position, actor) do
+    with :ok <- authorize_owner(activity, actor) do
+      activity
+      |> Ash.Changeset.for_update(:reposition, %{position: position}, authorize?: false)
+      |> Ash.update()
+    end
+  end
+
+  @doc "Triagem: associa uma captura solta a uma prioridade existente."
+  def assign_activity_to_item(activity, item, actor) do
+    with :ok <- authorize_owner(activity, actor),
+         :ok <- authorize_owner(item, actor) do
+      activity
+      |> Ash.Changeset.for_update(:assign_item, %{item_id: item.id}, authorize?: false)
+      |> Ash.update()
+    end
+  end
+
+  def start_activity(activity, actor) do
+    with :ok <- authorize_owner(activity, actor) do
+      activity |> Ash.Changeset.for_update(:start, %{}, authorize?: false) |> Ash.update()
+    end
+  end
+
+  def back_to_todo_activity(activity, actor) do
+    with :ok <- authorize_owner(activity, actor) do
+      activity |> Ash.Changeset.for_update(:back_to_todo, %{}, authorize?: false) |> Ash.update()
+    end
+  end
+
+  def complete_activity(activity, actor) do
+    with :ok <- authorize_owner(activity, actor) do
+      activity |> Ash.Changeset.for_update(:complete, %{}, authorize?: false) |> Ash.update()
+    end
+  end
+
+  def mark_activity_not_done(activity, actor) do
+    with :ok <- authorize_owner(activity, actor) do
+      activity |> Ash.Changeset.for_update(:mark_not_done, %{}, authorize?: false) |> Ash.update()
+    end
+  end
+
+  def discard_activity(activity, actor) do
+    with :ok <- authorize_owner(activity, actor) do
+      activity |> Ash.Changeset.for_update(:discard, %{}, authorize?: false) |> Ash.update()
+    end
+  end
+
+  # Checklist de atividade
+
+  def list_activity_tasks(activity_id) do
+    ActivityTask
+    |> Ash.Query.filter(activity_id == ^activity_id)
+    |> Ash.Query.sort(position: :asc)
+    |> Ash.read!(authorize?: false)
+  end
+
+  def create_activity_task(activity, title, actor) do
+    with :ok <- authorize_owner(activity, actor) do
+      position = next_activity_task_position(activity.id)
+
+      ActivityTask
+      |> Ash.Changeset.for_create(
+        :create,
+        %{activity_id: activity.id, title: title, position: position},
+        authorize?: false
+      )
+      |> Ash.create()
+    end
+  end
+
+  def toggle_activity_task(task, activity, actor) do
+    with :ok <- authorize_owner(activity, actor) do
+      task
+      |> Ash.Changeset.for_update(:update, %{done: !task.done}, authorize?: false)
+      |> Ash.update()
+    end
+  end
+
+  def delete_activity_task(task, activity, actor) do
+    with :ok <- authorize_owner(activity, actor) do
+      Ash.destroy(task, authorize?: false, return_destroyed?: true)
+    end
+  end
+
+  @doc """
+  Sugestões de prioridade pra resolver uma captura solta (triagem em um
+  toque): itens cujo título contém o da atividade (case-insensitive); sem
+  match, cai pros mais recentes. Nunca sugere o item "Geral" de uma
+  categoria — esse caminho é o botão de categoria, à parte.
+  """
+  def suggest_items_for_activity(%Activity{title: title, user_id: user_id}, limit \\ 4) do
+    needle = title |> String.downcase() |> String.trim()
+
+    items =
+      Item
+      |> Ash.Query.filter(user_id == ^user_id and is_nil(archived_at) and general == false)
+      |> Ash.Query.sort(inserted_at: :desc)
+      |> Ash.read!(authorize?: false)
+
+    matches =
+      if needle == "" do
+        []
+      else
+        Enum.filter(items, &String.contains?(String.downcase(&1.title), needle))
+      end
+
+    case matches do
+      [] -> Enum.take(items, limit)
+      matches -> Enum.take(matches, limit)
+    end
+  end
+
+  @doc """
+  Item "Geral" oculto da categoria, usado pra prender uma atividade solta
+  numa categoria sem precisar virar uma prioridade de verdade — nunca
+  aparece nas telas de Prioridades (ver filtros `general == false` em
+  `list_items_by_category/1` e afins). Categorias criadas antes desta
+  função ainda não têm um: criado na primeira vez que for pedido.
+  """
+  def general_item_for_category(%Category{} = category) do
+    Item
+    |> Ash.Query.filter(category_id == ^category.id and general == true)
+    |> Ash.read_one!(authorize?: false)
+    |> case do
+      nil -> create_general_item(category)
+      item -> item
+    end
+  end
+
+  defp create_general_item(category) do
+    position = next_item_position(category.id)
+
+    {:ok, item} =
+      Item
+      |> Ash.Changeset.for_create(
+        :create,
+        %{
+          user_id: category.user_id,
+          category_id: category.id,
+          item_type: :manual,
+          title: "#{category.name} - Geral",
+          general: true,
+          position: position
+        },
+        authorize?: false
+      )
+      |> Ash.create()
+
+    item
+  end
+
+  # Vínculos entre itens
+
+  @link_direct_labels %{
+    parte_de: "é parte de",
+    contribui_para: "contribui para",
+    relacionado_a: "relacionado a"
+  }
+
+  @link_inverse_labels %{
+    parte_de: "contém",
+    contribui_para: "recebe contribuição de",
+    relacionado_a: "relacionado a"
+  }
+
+  def create_item_link(item, related_item, link_type, actor) do
+    with :ok <- authorize_owner(item, actor),
+         :ok <- authorize_owner(related_item, actor) do
+      ItemLink
+      |> Ash.Changeset.for_create(
+        :create,
+        %{item_id: item.id, related_item_id: related_item.id, link_type: link_type},
+        authorize?: false
+      )
+      |> Ash.create()
+    end
+  end
+
+  def delete_item_link(link, item, actor) do
+    with :ok <- authorize_owner(item, actor) do
+      Ash.destroy(link, authorize?: false, return_destroyed?: true)
+    end
+  end
+
+  @doc "Vínculos de um item, unindo as duas direções — quem ele aponta e quem aponta pra ele — num formato uniforme."
+  def list_item_links(%Item{id: item_id} = item, actor) do
+    with :ok <- authorize_owner(item, actor) do
+      out_links =
+        ItemLink
+        |> Ash.Query.filter(item_id == ^item_id)
+        |> Ash.Query.load([:related_item])
+        |> Ash.read!(authorize?: false)
+        |> Enum.map(
+          &%{
+            link: &1,
+            item: &1.related_item,
+            link_type: &1.link_type,
+            direction: :out,
+            label: Map.fetch!(@link_direct_labels, &1.link_type)
+          }
+        )
+
+      in_links =
+        ItemLink
+        |> Ash.Query.filter(related_item_id == ^item_id)
+        |> Ash.Query.load([:item])
+        |> Ash.read!(authorize?: false)
+        |> Enum.map(
+          &%{
+            link: &1,
+            item: &1.item,
+            link_type: &1.link_type,
+            direction: :in,
+            label: Map.fetch!(@link_inverse_labels, &1.link_type)
+          }
+        )
+
+      {:ok, out_links ++ in_links}
+    end
+  end
+
   # Posicionamento
 
   defp next_position_for(query) do
@@ -573,7 +910,23 @@ defmodule QuizProject.Priorities do
     ItemTask |> Ash.Query.filter(item_id == ^item_id) |> next_position_for()
   end
 
+  defp next_activity_task_position(activity_id) do
+    ActivityTask |> Ash.Query.filter(activity_id == ^activity_id) |> next_position_for()
+  end
+
   defp next_field_definition_position(user_id) do
     FieldDefinition |> Ash.Query.filter(user_id == ^user_id) |> next_position_for()
+  end
+
+  defp next_activity_position(user_id, nil, flow) do
+    Activity
+    |> Ash.Query.filter(user_id == ^user_id and is_nil(item_id) and flow == ^flow)
+    |> next_position_for()
+  end
+
+  defp next_activity_position(user_id, item_id, flow) do
+    Activity
+    |> Ash.Query.filter(user_id == ^user_id and item_id == ^item_id and flow == ^flow)
+    |> next_position_for()
   end
 end

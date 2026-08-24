@@ -83,7 +83,12 @@ defmodule QuizProjectWeb.ContentsLive.Upload do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_user={@current_user} active_nav={:contents}>
+    <Layouts.app
+      flash={@flash}
+      current_user={@current_user}
+      loose_captures_count={@loose_captures_count}
+      active_nav={:contents}
+    >
       <div class="mx-auto max-w-2xl space-y-6">
         <div class="border-b border-base-300 pb-4">
           <.link

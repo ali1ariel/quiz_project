@@ -1,0 +1,220 @@
+defmodule QuizProjectWeb.ActivityModal do
+  @moduledoc """
+  Detalhe de uma atividade do Kanban: título, descrição opcional e checklist
+  de subitens — o que não cabe no card compacto da Tela do dia.
+
+  Fechar (✕, backdrop, Escape) não tem `phx-target`: sobe pro LiveView pai de
+  propósito, que é quem decide parar de renderizar este componente — mesmo
+  padrão do `PrioritiesLive.ItemModal`.
+  """
+  use QuizProjectWeb, :live_component
+
+  alias QuizProject.Priorities
+
+  @impl true
+  def update(assigns, socket) do
+    {:ok, socket |> assign(assigns) |> load_activity(assigns.activity_id)}
+  end
+
+  @impl true
+  def handle_event("update_activity", %{"title" => title, "notes" => notes}, socket) do
+    user = socket.assigns.current_user
+    title = String.trim(title)
+
+    if title == "" do
+      {:noreply, notify_flash(socket, :error, "O título não pode ficar em branco.")}
+    else
+      case Priorities.update_activity(
+             socket.assigns.activity,
+             %{title: title, notes: notes},
+             user
+           ) do
+        {:ok, _} ->
+          {:noreply,
+           socket |> notify_flash(:info, "Salvo.") |> load_activity(socket.assigns.activity.id)}
+
+        _ ->
+          {:noreply, notify_flash(socket, :error, "Não foi possível salvar.")}
+      end
+    end
+  end
+
+  @impl true
+  def handle_event("create_task", %{"title" => title}, socket) do
+    title = String.trim(title)
+
+    if title == "" do
+      {:noreply, socket}
+    else
+      {:ok, _} =
+        Priorities.create_activity_task(
+          socket.assigns.activity,
+          title,
+          socket.assigns.current_user
+        )
+
+      {:noreply, load_activity(socket, socket.assigns.activity.id)}
+    end
+  end
+
+  @impl true
+  def handle_event("toggle_task", %{"id" => id}, socket) do
+    task = Enum.find(socket.assigns.tasks, &(&1.id == id))
+
+    if task do
+      {:ok, _} =
+        Priorities.toggle_activity_task(
+          task,
+          socket.assigns.activity,
+          socket.assigns.current_user
+        )
+    end
+
+    {:noreply, load_activity(socket, socket.assigns.activity.id)}
+  end
+
+  @impl true
+  def handle_event("delete_task", %{"id" => id}, socket) do
+    task = Enum.find(socket.assigns.tasks, &(&1.id == id))
+
+    if task do
+      {:ok, _} =
+        Priorities.delete_activity_task(
+          task,
+          socket.assigns.activity,
+          socket.assigns.current_user
+        )
+    end
+
+    {:noreply, load_activity(socket, socket.assigns.activity.id)}
+  end
+
+  # `put_flash/3` num LiveComponent só grava no `assigns.flash` isolado do
+  # componente, que nunca é renderizado — quem mostra `@flash` é o
+  # `Layouts.app` do LiveView pai. Por isso o flash sai daqui como mensagem
+  # pro processo do LiveView, mesmo padrão do `PrioritiesLive.ItemModal`.
+  defp notify_flash(socket, kind, message) do
+    send(self(), {:kanban_flash, kind, message})
+    socket
+  end
+
+  defp load_activity(socket, id) do
+    user = socket.assigns.current_user
+    {:ok, activity} = Priorities.get_activity(id, user)
+
+    assign(socket, activity: activity, tasks: Priorities.list_activity_tasks(activity.id))
+  end
+
+  @impl true
+  def render(assigns) do
+    ~H"""
+    <div id={@id}>
+      <div class="modal modal-open" phx-window-keydown="close_activity_modal" phx-key="Escape">
+        <div class="modal-box relative max-w-lg space-y-6 rounded-3xl">
+          <button
+            type="button"
+            phx-click="close_activity_modal"
+            class="btn btn-sm btn-circle btn-ghost absolute right-4 top-4"
+            aria-label="Fechar"
+          >
+            ✕
+          </button>
+
+          <div class="pr-8">
+            <h1 class="text-xl font-bold tracking-tight">{@activity.title}</h1>
+          </div>
+
+          <form
+            id="update-activity-form"
+            phx-submit="update_activity"
+            phx-target={@myself}
+            class="space-y-3"
+          >
+            <.input type="text" name="title" label="Título" value={@activity.title} required />
+            <.input
+              type="textarea"
+              name="notes"
+              label="Descrição (opcional)"
+              value={@activity.notes}
+              rows="3"
+              placeholder="Mais contexto sobre essa atividade..."
+            />
+            <div class="flex justify-end">
+              <button type="submit" class="btn btn-primary btn-sm rounded-full px-5">Salvar</button>
+            </div>
+          </form>
+
+          <div class="space-y-3 border-t border-base-200 pt-4">
+            <h2 class="text-sm font-bold uppercase tracking-wide opacity-60">Checklist</h2>
+
+            <ul :if={@tasks != []} class="space-y-1">
+              <li :for={task <- @tasks} class="group flex items-center gap-2">
+                <button
+                  id={"toggle-activity-task-#{task.id}"}
+                  phx-click="toggle_task"
+                  phx-value-id={task.id}
+                  phx-target={@myself}
+                  class="flex flex-1 items-center gap-2 text-left text-sm"
+                >
+                  <.icon
+                    name={if task.done, do: "hero-check-circle-solid", else: "hero-circle"}
+                    class={["size-4 shrink-0", task.done && "text-primary"]}
+                  />
+                  <span class={task.done && "opacity-50 line-through"}>{task.title}</span>
+                </button>
+                <button
+                  id={"delete-activity-task-#{task.id}"}
+                  phx-click="delete_task"
+                  phx-value-id={task.id}
+                  phx-target={@myself}
+                  class="shrink-0 opacity-0 transition group-hover:opacity-50 hover:opacity-100!"
+                  aria-label="Excluir subitem"
+                  title="Excluir subitem"
+                >
+                  <.icon name="hero-x-mark" class="size-3.5" />
+                </button>
+              </li>
+            </ul>
+
+            <p :if={@tasks == []} class="text-xs opacity-60">Nenhum subitem ainda.</p>
+
+            <form
+              id="create-activity-task-form"
+              phx-submit="create_task"
+              phx-target={@myself}
+              class="flex items-end gap-2"
+            >
+              <div class="flex-1">
+                <.input
+                  type="text"
+                  name="title"
+                  label="Novo subitem"
+                  value=""
+                  placeholder="Ex: Separar os materiais"
+                />
+              </div>
+              <div class="fieldset mb-2">
+                <label>
+                  <span class="label mb-1 invisible">Adicionar</span>
+                  <button type="submit" class="btn btn-soft btn-sm rounded-full px-4">
+                    Adicionar
+                  </button>
+                </label>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          phx-click="close_activity_modal"
+          class="modal-backdrop"
+          aria-label="Fechar"
+        >
+          Fechar
+        </button>
+      </div>
+    </div>
+    """
+  end
+end

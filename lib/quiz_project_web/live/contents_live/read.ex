@@ -193,7 +193,10 @@ defmodule QuizProjectWeb.ContentsLive.Read do
       if open? do
         user = socket.assigns.current_user
         material = socket.assigns.material
-        assign(socket, material_highlights: Books.list_highlights_for_material(user.id, material.id))
+
+        assign(socket,
+          material_highlights: Books.list_highlights_for_material(user.id, material.id)
+        )
       else
         socket
       end
@@ -224,7 +227,13 @@ defmodule QuizProjectWeb.ContentsLive.Read do
 
   def handle_event(
         "create_highlight",
-        %{"block" => position, "start" => start, "end" => end_, "quote" => quote, "color" => color},
+        %{
+          "block" => position,
+          "start" => start,
+          "end" => end_,
+          "quote" => quote,
+          "color" => color
+        },
         socket
       ) do
     user = socket.assigns.current_user
@@ -298,8 +307,11 @@ defmodule QuizProjectWeb.ContentsLive.Read do
 
   def handle_event("pick_note_color", %{"color" => color}, socket) do
     case socket.assigns.note_editor do
-      nil -> {:noreply, socket}
-      editor -> {:noreply, assign(socket, note_editor: %{editor | color: highlight_color(socket, color)})}
+      nil ->
+        {:noreply, socket}
+
+      editor ->
+        {:noreply, assign(socket, note_editor: %{editor | color: highlight_color(socket, color)})}
     end
   end
 
@@ -560,7 +572,10 @@ defmodule QuizProjectWeb.ContentsLive.Read do
     if socket.assigns.notes_open? do
       user = socket.assigns.current_user
       material = socket.assigns.material
-      assign(socket, material_highlights: Books.list_highlights_for_material(user.id, material.id))
+
+      assign(socket,
+        material_highlights: Books.list_highlights_for_material(user.id, material.id)
+      )
     else
       socket
     end
@@ -615,7 +630,13 @@ defmodule QuizProjectWeb.ContentsLive.Read do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_user={@current_user} active_nav={:contents} wide={true}>
+    <Layouts.app
+      flash={@flash}
+      current_user={@current_user}
+      loose_captures_count={@loose_captures_count}
+      active_nav={:contents}
+      wide={true}
+    >
       <%= if @chapters == [] do %>
         <.empty material={@material} progress={@ingest_progress} />
       <% else %>
@@ -1511,8 +1532,7 @@ defmodule QuizProjectWeb.ContentsLive.Read do
           ]}
           aria-label={"Cor #{color}"}
           aria-pressed={@editor.color == color}
-        >
-        </button>
+        ></button>
       </div>
 
       <form :if={@editor} id="note-form" phx-submit="save_note_editor" class="px-5 pt-4">

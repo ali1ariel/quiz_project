@@ -48,7 +48,8 @@ defmodule QuizProject.Priorities.Item do
         :course_access_link,
         :course_access_login,
         :course_access_password,
-        :manual_percent
+        :manual_percent,
+        :general
       ]
     end
 
@@ -205,6 +206,16 @@ defmodule QuizProject.Priorities.Item do
     attribute :position, :integer do
       allow_nil? false
       default 0
+    end
+
+    # Item "Geral" criado junto com a categoria, um por categoria, nunca
+    # exposto nas telas de Prioridades (Categorias/Ranking/Todos os itens) —
+    # existe só pra dar a uma atividade solta um lugar pra prender ("desta
+    # categoria", sem precisar virar uma prioridade de verdade). Ver
+    # `QuizProject.Priorities.general_item_for_category/1`.
+    attribute :general, :boolean do
+      allow_nil? false
+      default false
     end
 
     attribute :archived_at, :utc_datetime_usec
