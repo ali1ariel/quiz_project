@@ -528,7 +528,9 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
     ~H"""
     <div id={@id}>
       <div :if={@standalone} class="mx-auto max-w-3xl space-y-6">
-        <.content
+        <.item_header item={@item} myself={@myself} />
+        <.item_tabs myself={@myself} active_tab={@active_tab} activities={@activities} />
+        <.content_body
           myself={@myself}
           item={@item}
           progress={@progress}
@@ -554,33 +556,43 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
         phx-window-keydown="close_item_modal"
         phx-key="Escape"
       >
-        <div class="modal-box relative max-w-2xl space-y-6 rounded-3xl">
-          <button
-            type="button"
-            phx-click="close_item_modal"
-            class="btn btn-sm btn-circle btn-ghost absolute right-4 top-4"
-            aria-label="Fechar"
-          >
-            ✕
-          </button>
-          <.content
-            myself={@myself}
-            item={@item}
-            progress={@progress}
-            tasks={@tasks}
-            other_categories={@other_categories}
-            field_definitions={@field_definitions}
-            show_new_field_form?={@show_new_field_form?}
-            new_field_type={@new_field_type}
-            type_form_value={@type_form_value}
-            books={@books}
-            quizzes={@quizzes}
-            active_tab={@active_tab}
-            activities={@activities}
-            habit_config={@habit_config}
-            habit_streak={@habit_streak}
-            habit_frequency_form_value={@habit_frequency_form_value}
-          />
+        <div class="modal-box flex max-h-[85vh] max-w-2xl flex-col overflow-hidden rounded-3xl p-0">
+          <div class="shrink-0 space-y-3 border-b border-base-300 px-6 pb-4 pt-6">
+            <.item_header item={@item} myself={@myself}>
+              <:extra_actions>
+                <button
+                  type="button"
+                  phx-click="close_item_modal"
+                  class="btn btn-sm btn-circle btn-ghost"
+                  aria-label="Fechar"
+                >
+                  ✕
+                </button>
+              </:extra_actions>
+            </.item_header>
+            <.item_tabs myself={@myself} active_tab={@active_tab} activities={@activities} />
+          </div>
+
+          <div class="flex-1 space-y-6 overflow-y-auto p-6">
+            <.content_body
+              myself={@myself}
+              item={@item}
+              progress={@progress}
+              tasks={@tasks}
+              other_categories={@other_categories}
+              field_definitions={@field_definitions}
+              show_new_field_form?={@show_new_field_form?}
+              new_field_type={@new_field_type}
+              type_form_value={@type_form_value}
+              books={@books}
+              quizzes={@quizzes}
+              active_tab={@active_tab}
+              activities={@activities}
+              habit_config={@habit_config}
+              habit_streak={@habit_streak}
+              habit_frequency_form_value={@habit_frequency_form_value}
+            />
+          </div>
         </div>
 
         <button
@@ -596,26 +608,13 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
     """
   end
 
-  attr :myself, :any, required: true
   attr :item, :map, required: true
-  attr :progress, :any, required: true
-  attr :tasks, :list, required: true
-  attr :other_categories, :list, required: true
-  attr :field_definitions, :list, required: true
-  attr :show_new_field_form?, :boolean, required: true
-  attr :new_field_type, :string, required: true
-  attr :type_form_value, :string, default: nil
-  attr :books, :list, required: true
-  attr :quizzes, :list, required: true
-  attr :active_tab, :atom, required: true
-  attr :activities, :list, required: true
-  attr :habit_config, :map, default: nil
-  attr :habit_streak, :integer, default: nil
-  attr :habit_frequency_form_value, :string, default: nil
+  attr :myself, :any, required: true
+  slot :extra_actions
 
-  defp content(assigns) do
+  defp item_header(assigns) do
     ~H"""
-    <div class="flex flex-wrap items-center justify-between gap-3 pr-8">
+    <div class="flex flex-wrap items-center justify-between gap-3">
       <div>
         <h1 class="text-xl font-bold tracking-tight">{@item.title}</h1>
         <p class="text-sm opacity-70">
@@ -646,9 +645,18 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
         >
           Excluir
         </button>
+        {render_slot(@extra_actions)}
       </div>
     </div>
+    """
+  end
 
+  attr :myself, :any, required: true
+  attr :active_tab, :atom, required: true
+  attr :activities, :list, required: true
+
+  defp item_tabs(assigns) do
+    ~H"""
     <nav class="flex gap-2 text-sm font-semibold">
       <button
         type="button"
@@ -682,7 +690,28 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
         <span :if={@activities != []} class="ml-0.5 opacity-70">({length(@activities)})</span>
       </button>
     </nav>
+    """
+  end
 
+  attr :myself, :any, required: true
+  attr :item, :map, required: true
+  attr :progress, :any, required: true
+  attr :tasks, :list, required: true
+  attr :other_categories, :list, required: true
+  attr :field_definitions, :list, required: true
+  attr :show_new_field_form?, :boolean, required: true
+  attr :new_field_type, :string, required: true
+  attr :type_form_value, :string, default: nil
+  attr :books, :list, required: true
+  attr :quizzes, :list, required: true
+  attr :active_tab, :atom, required: true
+  attr :activities, :list, required: true
+  attr :habit_config, :map, default: nil
+  attr :habit_streak, :integer, default: nil
+  attr :habit_frequency_form_value, :string, default: nil
+
+  defp content_body(assigns) do
+    ~H"""
     <div :if={@active_tab == :details} class="space-y-6">
       <section class="card qcard space-y-3 border border-base-300 bg-base-100 p-5">
         <h2 class="text-sm font-bold uppercase tracking-wide opacity-60">Progresso</h2>
@@ -1207,33 +1236,32 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
           options={[{"Diário", "daily"}, {"Dias da semana", "weekly"}, {"Dias do mês", "monthly"}]}
         />
 
-        <.input
-          :if={@frequency_value == "weekly"}
-          type="select"
-          name="weekdays[]"
-          label="Quais dias"
-          multiple
-          value={Enum.map(@habit_config.weekdays, &to_string/1)}
-          options={[
-            {"Segunda", "1"},
-            {"Terça", "2"},
-            {"Quarta", "3"},
-            {"Quinta", "4"},
-            {"Sexta", "5"},
-            {"Sábado", "6"},
-            {"Domingo", "7"}
-          ]}
-        />
+        <div :if={@frequency_value == "weekly"} class="fieldset mb-2">
+          <span class="label mb-1">Quais dias</span>
+          <.day_toggle_group
+            name="weekdays[]"
+            selected={Enum.map(@habit_config.weekdays, &to_string/1)}
+            options={[
+              {"Segunda", "1"},
+              {"Terça", "2"},
+              {"Quarta", "3"},
+              {"Quinta", "4"},
+              {"Sexta", "5"},
+              {"Sábado", "6"},
+              {"Domingo", "7"}
+            ]}
+          />
+        </div>
 
-        <.input
-          :if={@frequency_value == "monthly"}
-          type="select"
-          name="month_days[]"
-          label="Quais dias do mês"
-          multiple
-          value={Enum.map(@habit_config.month_days, &to_string/1)}
-          options={Enum.map(1..31, &{to_string(&1), to_string(&1)})}
-        />
+        <div :if={@frequency_value == "monthly"} class="fieldset mb-2">
+          <span class="label mb-1">Quais dias do mês</span>
+          <.day_toggle_group
+            name="month_days[]"
+            selected={Enum.map(@habit_config.month_days, &to_string/1)}
+            options={Enum.map(1..31, &{to_string(&1), to_string(&1)})}
+            class="grid grid-cols-6 gap-1.5 sm:grid-cols-7"
+          />
+        </div>
 
         <div class="flex justify-end">
           <button type="submit" class="btn btn-soft btn-sm rounded-full px-5">
@@ -1369,6 +1397,37 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
         </label>
       </div>
     </form>
+    """
+  end
+
+  # Substitui um `<select multiple>` nativo: com 7 (dias da semana) ou 31
+  # (dias do mês) opções, o listbox nativo não respeita a altura do `.select`
+  # do daisyUI e acaba maior que o próprio modal. Chips clicáveis (checkbox
+  # escondido + label estilizada) ficam do tamanho do conteúdo, sem esse
+  # problema, e continuam funcionando como formulário normal — o
+  # `name="...[]"` de cada opção marcada chega em `params` do mesmo jeito.
+  attr :name, :string, required: true
+  attr :options, :list, required: true
+  attr :selected, :list, required: true
+  attr :class, :any, default: "flex flex-wrap gap-2"
+
+  defp day_toggle_group(assigns) do
+    ~H"""
+    <div class={@class}>
+      <label
+        :for={{label, value} <- @options}
+        class="cursor-pointer select-none rounded-full border border-base-300 bg-base-100 px-3 py-1.5 text-center text-sm font-semibold opacity-70 transition hover:opacity-100 has-checked:border-primary has-checked:bg-primary has-checked:text-primary-content has-checked:opacity-100"
+      >
+        <input
+          type="checkbox"
+          name={@name}
+          value={value}
+          checked={to_string(value) in @selected}
+          class="hidden"
+        />
+        {label}
+      </label>
+    </div>
     """
   end
 

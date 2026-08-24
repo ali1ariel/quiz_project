@@ -110,98 +110,101 @@ defmodule QuizProjectWeb.ActivityModal do
     ~H"""
     <div id={@id}>
       <div class="modal modal-open" phx-window-keydown="close_activity_modal" phx-key="Escape">
-        <div class="modal-box relative max-w-lg space-y-6 rounded-3xl">
-          <button
-            type="button"
-            phx-click="close_activity_modal"
-            class="btn btn-sm btn-circle btn-ghost absolute right-4 top-4"
-            aria-label="Fechar"
-          >
-            ✕
-          </button>
-
-          <div class="pr-8">
+        <div class="modal-box flex max-h-[85vh] max-w-lg flex-col overflow-hidden rounded-3xl p-0">
+          <div class="flex shrink-0 items-center justify-between gap-3 border-b border-base-300 px-6 pb-4 pt-6">
             <h1 class="text-xl font-bold tracking-tight">{@activity.title}</h1>
+            <button
+              type="button"
+              phx-click="close_activity_modal"
+              class="btn btn-sm btn-circle btn-ghost shrink-0"
+              aria-label="Fechar"
+            >
+              ✕
+            </button>
           </div>
 
-          <form
-            id="update-activity-form"
-            phx-submit="update_activity"
-            phx-target={@myself}
-            class="space-y-3"
-          >
-            <.input type="text" name="title" label="Título" value={@activity.title} required />
-            <.input
-              type="textarea"
-              name="notes"
-              label="Descrição (opcional)"
-              value={@activity.notes}
-              rows="3"
-              placeholder="Mais contexto sobre essa atividade..."
-            />
-            <div class="flex justify-end">
-              <button type="submit" class="btn btn-primary btn-sm rounded-full px-5">Salvar</button>
-            </div>
-          </form>
-
-          <div class="space-y-3 border-t border-base-200 pt-4">
-            <h2 class="text-sm font-bold uppercase tracking-wide opacity-60">Checklist</h2>
-
-            <ul :if={@tasks != []} class="space-y-1">
-              <li :for={task <- @tasks} class="group flex items-center gap-2">
-                <button
-                  id={"toggle-activity-task-#{task.id}"}
-                  phx-click="toggle_task"
-                  phx-value-id={task.id}
-                  phx-target={@myself}
-                  class="flex flex-1 items-center gap-2 text-left text-sm"
-                >
-                  <.icon
-                    name={if task.done, do: "hero-check-circle-solid", else: "hero-circle"}
-                    class={["size-4 shrink-0", task.done && "text-primary"]}
-                  />
-                  <span class={task.done && "opacity-50 line-through"}>{task.title}</span>
-                </button>
-                <button
-                  id={"delete-activity-task-#{task.id}"}
-                  phx-click="delete_task"
-                  phx-value-id={task.id}
-                  phx-target={@myself}
-                  class="shrink-0 opacity-0 transition group-hover:opacity-50 hover:opacity-100!"
-                  aria-label="Excluir subitem"
-                  title="Excluir subitem"
-                >
-                  <.icon name="hero-x-mark" class="size-3.5" />
-                </button>
-              </li>
-            </ul>
-
-            <p :if={@tasks == []} class="text-xs opacity-60">Nenhum subitem ainda.</p>
-
+          <div class="flex-1 space-y-6 overflow-y-auto p-6">
             <form
-              id="create-activity-task-form"
-              phx-submit="create_task"
+              id="update-activity-form"
+              phx-submit="update_activity"
               phx-target={@myself}
-              class="flex items-end gap-2"
+              class="space-y-3"
             >
-              <div class="flex-1">
-                <.input
-                  type="text"
-                  name="title"
-                  label="Novo subitem"
-                  value=""
-                  placeholder="Ex: Separar os materiais"
-                />
-              </div>
-              <div class="fieldset mb-2">
-                <label>
-                  <span class="label mb-1 invisible">Adicionar</span>
-                  <button type="submit" class="btn btn-soft btn-sm rounded-full px-4">
-                    Adicionar
-                  </button>
-                </label>
+              <.input type="text" name="title" label="Título" value={@activity.title} required />
+              <.input
+                type="textarea"
+                name="notes"
+                label="Descrição (opcional)"
+                value={@activity.notes}
+                rows="3"
+                placeholder="Mais contexto sobre essa atividade..."
+              />
+              <div class="flex justify-end">
+                <button type="submit" class="btn btn-primary btn-sm rounded-full px-5">
+                  Salvar
+                </button>
               </div>
             </form>
+
+            <div class="space-y-3 border-t border-base-200 pt-4">
+              <h2 class="text-sm font-bold uppercase tracking-wide opacity-60">Checklist</h2>
+
+              <ul :if={@tasks != []} class="space-y-1">
+                <li :for={task <- @tasks} class="group flex items-center gap-2">
+                  <button
+                    id={"toggle-activity-task-#{task.id}"}
+                    phx-click="toggle_task"
+                    phx-value-id={task.id}
+                    phx-target={@myself}
+                    class="flex flex-1 items-center gap-2 text-left text-sm"
+                  >
+                    <.icon
+                      name={if task.done, do: "hero-check-circle-solid", else: "hero-circle"}
+                      class={["size-4 shrink-0", task.done && "text-primary"]}
+                    />
+                    <span class={task.done && "opacity-50 line-through"}>{task.title}</span>
+                  </button>
+                  <button
+                    id={"delete-activity-task-#{task.id}"}
+                    phx-click="delete_task"
+                    phx-value-id={task.id}
+                    phx-target={@myself}
+                    class="shrink-0 opacity-0 transition group-hover:opacity-50 hover:opacity-100!"
+                    aria-label="Excluir subitem"
+                    title="Excluir subitem"
+                  >
+                    <.icon name="hero-x-mark" class="size-3.5" />
+                  </button>
+                </li>
+              </ul>
+
+              <p :if={@tasks == []} class="text-xs opacity-60">Nenhum subitem ainda.</p>
+
+              <form
+                id="create-activity-task-form"
+                phx-submit="create_task"
+                phx-target={@myself}
+                class="flex items-end gap-2"
+              >
+                <div class="flex-1">
+                  <.input
+                    type="text"
+                    name="title"
+                    label="Novo subitem"
+                    value=""
+                    placeholder="Ex: Separar os materiais"
+                  />
+                </div>
+                <div class="fieldset mb-2">
+                  <label>
+                    <span class="label mb-1 invisible">Adicionar</span>
+                    <button type="submit" class="btn btn-soft btn-sm rounded-full px-4">
+                      Adicionar
+                    </button>
+                  </label>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
 
