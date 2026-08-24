@@ -33,7 +33,8 @@ defmodule QuizProjectWeb.Layouts do
 
   attr :active_nav, :atom,
     default: nil,
-    doc: "destino principal ativo: :quizzes, :contents, :priorities, :adaptive_study ou :account"
+    doc:
+      "destino principal ativo: :quizzes, :contents, :priorities, :kanban, :adaptive_study ou :account"
 
   attr :attempt_started_at, :any,
     default: nil,
@@ -42,6 +43,10 @@ defmodule QuizProjectWeb.Layouts do
   attr :notifications, :list,
     default: [],
     doc: "notificações fixas de execuções em background (assign do hook :notify_attempts)"
+
+  attr :loose_captures_count, :integer,
+    default: 0,
+    doc: "capturas soltas sem definição (assign do hook :notify_loose_captures)"
 
   slot :inner_block, required: true
 
@@ -94,6 +99,17 @@ defmodule QuizProjectWeb.Layouts do
           active?={@active_nav == :priorities}
           title_active="Voltar para Prioridades"
           title_inactive="Categorias, itens e evolução pessoal"
+        />
+
+        <.nav_item
+          id="desktop-nav-kanban"
+          navigate={~p"/today"}
+          icon="hero-view-columns"
+          label="Kanban"
+          active?={@active_nav == :kanban}
+          title_active="Voltar para o Kanban"
+          title_inactive="Raias por prioridade, com o que é hoje"
+          badge={@loose_captures_count}
         />
 
         <.nav_item
@@ -256,6 +272,26 @@ defmodule QuizProjectWeb.Layouts do
                 </span>
               </.link>
               <.link
+                navigate={~p"/today"}
+                class="flex items-center gap-3 rounded-2xl border border-transparent px-3 py-2.5 transition hover:border-base-300 hover:bg-base-100"
+              >
+                <span class="relative grid size-9 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+                  <.icon name="hero-view-columns" class="size-4" />
+                  <span
+                    :if={@loose_captures_count > 0}
+                    class="absolute -right-1 -top-1 inline-flex min-w-4 items-center justify-center rounded-full bg-error px-1 text-[0.6rem] font-bold text-error-content"
+                  >
+                    {@loose_captures_count}
+                  </span>
+                </span>
+                <span class="min-w-0 text-left">
+                  <span class="block text-sm font-semibold">Kanban</span>
+                  <span class="block truncate text-[0.68rem] opacity-70">
+                    Raias por prioridade, hoje
+                  </span>
+                </span>
+              </.link>
+              <.link
                 navigate={~p"/settings"}
                 class="flex items-center gap-3 rounded-2xl border border-transparent px-3 py-2.5 transition hover:border-base-300 hover:bg-base-100"
               >
@@ -330,6 +366,7 @@ defmodule QuizProjectWeb.Layouts do
   attr :active?, :boolean, required: true
   attr :title_active, :string, required: true
   attr :title_inactive, :string, required: true
+  attr :badge, :integer, default: nil
 
   # Item da navegação principal. Continua `<.link>` ativo ou não — só a
   # aparência e o `title` mudam — porque a raiz de cada menu também precisa
@@ -350,6 +387,12 @@ defmodule QuizProjectWeb.Layouts do
       title={if @active?, do: @title_active, else: @title_inactive}
     >
       <.icon name={@icon} class="size-4" /> {@label}
+      <span
+        :if={@badge && @badge > 0}
+        class="ml-0.5 inline-flex min-w-4 items-center justify-center rounded-full bg-error px-1 text-[0.65rem] font-bold text-error-content"
+      >
+        {@badge}
+      </span>
     </.link>
     """
   end

@@ -42,7 +42,12 @@ defmodule QuizProjectWeb.PrioritiesLive.Show do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_user={@current_user} active_nav={:priorities}>
+    <Layouts.app
+      flash={@flash}
+      current_user={@current_user}
+      loose_captures_count={@loose_captures_count}
+      active_nav={:priorities}
+    >
       <div class="mx-auto max-w-3xl space-y-6">
         <.link
           navigate={~p"/priorities"}

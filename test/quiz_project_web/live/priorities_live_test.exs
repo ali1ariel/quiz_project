@@ -129,6 +129,37 @@ defmodule QuizProjectWeb.PrioritiesLiveTest do
       html = render_click(view, "close_item_modal", %{})
       refute html =~ "modal-open"
     end
+
+    test "aba Atividades cria e resolve uma atividade presa ao item", %{conn: conn, user: user} do
+      cat = category(user)
+      item = manual_item(user, cat, "Projeto")
+      {:ok, view, _html} = live(conn, ~p"/priorities")
+
+      render_click(view, "open_item", %{"id" => item.id})
+      html = view |> element("button[phx-value-tab=\"activities\"]") |> render_click()
+
+      assert html =~ "Nenhuma atividade ainda."
+
+      html =
+        view
+        |> element("#create-item-activity-form")
+        |> render_submit(%{"title" => "Ler capítulo 3"})
+
+      assert html =~ "Ler capítulo 3"
+      assert html =~ "Pendente"
+
+      [activity] = Priorities.list_activities_for_item(item.id, user)
+      assert activity.item_id == item.id
+
+      html =
+        view
+        |> element("button[phx-click=\"complete_item_activity\"]")
+        |> render_click()
+
+      assert html =~ "Concluída"
+      {:ok, updated} = Priorities.get_activity(activity.id, user)
+      assert updated.status == :concluida
+    end
   end
 
   describe "Show" do
@@ -257,10 +288,14 @@ defmodule QuizProjectWeb.PrioritiesLiveTest do
 
       html =
         view
-        |> form("#manual-steps-form", %{"manual_completed_steps" => "3", "manual_total_steps" => "4"})
+        |> form("#manual-steps-form", %{
+          "manual_completed_steps" => "3",
+          "manual_total_steps" => "4"
+        })
         |> render_submit()
 
       assert html =~ "75%"
+
       assert Priorities.progress_for_item(Priorities.get_item(item.id, user) |> elem(1)) ==
                {:percent, 75}
 
@@ -277,6 +312,7 @@ defmodule QuizProjectWeb.PrioritiesLiveTest do
         |> render_submit()
 
       assert html2 =~ "10%"
+
       assert Priorities.progress_for_item(Priorities.get_item(item.id, user) |> elem(1)) ==
                {:percent, 10}
     end

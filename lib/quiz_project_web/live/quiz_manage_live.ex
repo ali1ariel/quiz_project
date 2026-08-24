@@ -11,7 +11,13 @@ defmodule QuizProjectWeb.QuizManageLive do
 
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_user={@current_user} notifications={@notifications} wide>
+    <Layouts.app
+      flash={@flash}
+      current_user={@current_user}
+      notifications={@notifications}
+      loose_captures_count={@loose_captures_count}
+      wide
+    >
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 class="text-2xl font-bold">{@published.name}</h1>

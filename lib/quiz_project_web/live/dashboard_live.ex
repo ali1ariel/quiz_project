@@ -12,6 +12,7 @@ defmodule QuizProjectWeb.DashboardLive do
       flash={@flash}
       current_user={@current_user}
       notifications={@notifications}
+      loose_captures_count={@loose_captures_count}
       active_nav={:quizzes}
       wide
     >

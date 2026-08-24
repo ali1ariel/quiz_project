@@ -75,7 +75,12 @@ defmodule QuizProjectWeb.PrioritiesLive.Ranking do
     assigns = assign(assigns, :drag_group, @drag_group)
 
     ~H"""
-    <Layouts.app flash={@flash} current_user={@current_user} active_nav={:priorities}>
+    <Layouts.app
+      flash={@flash}
+      current_user={@current_user}
+      loose_captures_count={@loose_captures_count}
+      active_nav={:priorities}
+    >
       <div class="space-y-6">
         <div class="border-b border-base-300 pb-4">
           <h1 class="text-2xl font-bold tracking-tight">Prioridades misturadas</h1>

@@ -28,6 +28,7 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
       |> assign_new(:show_new_field_form?, fn -> false end)
       |> assign_new(:new_field_type, fn -> "text" end)
       |> assign_new(:type_form_value, fn -> nil end)
+      |> assign_new(:active_tab, fn -> :details end)
       |> assign_new(:books, fn -> AdaptiveStudy.list_books(assigns.current_user) end)
       |> assign_new(:quizzes, fn -> Quizzes.list_created(assigns.current_user) end)
       |> load_item(assigns.item_id)
@@ -345,6 +346,55 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
     end
   end
 
+  @impl true
+  def handle_event("switch_tab", %{"tab" => tab}, socket) do
+    {:noreply, assign(socket, active_tab: parse_tab(tab))}
+  end
+
+  @impl true
+  def handle_event("create_item_activity", %{"title" => title}, socket) do
+    title = String.trim(title)
+    user = socket.assigns.current_user
+
+    if title == "" do
+      {:noreply, socket}
+    else
+      case Priorities.create_activity(user, %{title: title, item_id: socket.assigns.item.id}) do
+        {:ok, _} ->
+          {:noreply,
+           socket |> notify_flash(:info, "Atividade criada.") |> load_item(socket.assigns.item.id)}
+
+        _ ->
+          {:noreply, notify_flash(socket, :error, "Não foi possível criar a atividade.")}
+      end
+    end
+  end
+
+  @impl true
+  def handle_event("complete_item_activity", %{"id" => id}, socket),
+    do: {:noreply, resolve_activity(socket, id, &Priorities.complete_activity/2)}
+
+  @impl true
+  def handle_event("mark_item_activity_not_done", %{"id" => id}, socket),
+    do: {:noreply, resolve_activity(socket, id, &Priorities.mark_activity_not_done/2)}
+
+  @impl true
+  def handle_event("discard_item_activity", %{"id" => id}, socket),
+    do: {:noreply, resolve_activity(socket, id, &Priorities.discard_activity/2)}
+
+  defp resolve_activity(socket, id, fun) do
+    activity = Enum.find(socket.assigns.activities, &(&1.id == id))
+
+    if activity do
+      {:ok, _} = fun.(activity, socket.assigns.current_user)
+    end
+
+    load_item(socket, socket.assigns.item.id)
+  end
+
+  defp parse_tab("activities"), do: :activities
+  defp parse_tab(_), do: :details
+
   # `put_flash/3` num LiveComponent só grava no `assigns.flash` isolado do
   # componente, que nunca é renderizado — quem mostra `@flash` é o
   # `Layouts.app` do LiveView pai. Por isso o flash sai daqui como mensagem
@@ -372,7 +422,8 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
       tasks: if(item.item_type == :checklist, do: Priorities.list_tasks(item.id), else: []),
       other_categories:
         Enum.reject(Priorities.list_categories(user), &(&1.id == item.category_id)),
-      field_definitions: Priorities.list_field_definitions(user)
+      field_definitions: Priorities.list_field_definitions(user),
+      activities: Priorities.list_activities_for_item(item.id, user)
     )
   end
 
@@ -454,6 +505,8 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
           type_form_value={@type_form_value}
           books={@books}
           quizzes={@quizzes}
+          active_tab={@active_tab}
+          activities={@activities}
         />
       </div>
 
@@ -484,6 +537,8 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
             type_form_value={@type_form_value}
             books={@books}
             quizzes={@quizzes}
+            active_tab={@active_tab}
+            activities={@activities}
           />
         </div>
 
@@ -511,6 +566,8 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
   attr :type_form_value, :string, default: nil
   attr :books, :list, required: true
   attr :quizzes, :list, required: true
+  attr :active_tab, :atom, required: true
+  attr :activities, :list, required: true
 
   defp content(assigns) do
     ~H"""
@@ -548,237 +605,373 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
       </div>
     </div>
 
-    <section class="card qcard space-y-3 border border-base-300 bg-base-100 p-5">
-      <h2 class="text-sm font-bold uppercase tracking-wide opacity-60">Progresso</h2>
-      <.type_editor item={@item} progress={@progress} tasks={@tasks} myself={@myself} />
-    </section>
-
-    <section class="card qcard space-y-3 border border-base-300 bg-base-100 p-5">
-      <h2 class="text-sm font-bold uppercase tracking-wide opacity-60">Detalhes</h2>
-      <form id="update-item-form" phx-submit="update_item" phx-target={@myself} class="space-y-3">
-        <.input type="text" name="title" label="Título" value={@item.title} required />
-        <.input type="textarea" name="notes" label="Notas" value={@item.notes} rows="3" />
-        <div class="flex justify-end">
-          <button type="submit" class="btn btn-primary btn-sm rounded-full px-5">Salvar</button>
-        </div>
-      </form>
-    </section>
-
-    <section class="card qcard space-y-3 border border-base-300 bg-base-100 p-5">
-      <h2 class="text-sm font-bold uppercase tracking-wide opacity-60">Tipo</h2>
-      <form
-        id="change-type-form"
-        phx-submit="change_type"
-        phx-change="type_form_change"
+    <nav class="flex gap-2 text-sm font-semibold">
+      <button
+        type="button"
+        phx-click="switch_tab"
+        phx-value-tab="details"
         phx-target={@myself}
-        class="space-y-3"
+        class={[
+          "rounded-full px-4 py-1.5 transition",
+          if(@active_tab == :details,
+            do: "bg-primary text-primary-content shadow-sm",
+            else: "bg-base-200 opacity-70 hover:opacity-100"
+          )
+        ]}
       >
-        <.input
-          type="select"
-          name="item_type"
-          label="Tipo"
-          value={@type_form_value || Atom.to_string(@item.item_type)}
-          options={Components.item_type_options()}
-        />
-
-        <.input
-          :if={(@type_form_value || Atom.to_string(@item.item_type)) == "book"}
-          type="select"
-          name="study_material_id"
-          label="Livro"
-          value=""
-          options={Enum.map(@books, &{&1.title, &1.id})}
-          prompt="Escolha um livro"
-        />
-
-        <.input
-          :if={(@type_form_value || Atom.to_string(@item.item_type)) == "quiz_goal"}
-          type="select"
-          name="quiz_id"
-          label="Quiz"
-          value=""
-          options={Enum.map(@quizzes, &{quiz_display_name(&1), &1.id})}
-          prompt="Escolha um quiz"
-        />
-
-        <.input
-          :if={(@type_form_value || Atom.to_string(@item.item_type)) == "course"}
-          type="number"
-          name="course_total_steps"
-          label="Total de etapas (opcional)"
-          min="1"
-          value=""
-        />
-
-        <div class="flex justify-end">
-          <button type="submit" class="btn btn-primary btn-sm rounded-full px-5">
-            Salvar tipo
-          </button>
-        </div>
-      </form>
-    </section>
-
-    <section class="card qcard space-y-3 border border-base-300 bg-base-100 p-5">
-      <h2 class="text-sm font-bold uppercase tracking-wide opacity-60">Tier</h2>
-      <p class="text-xs opacity-60">
-        Usado no bloco de prioridades misturadas — vários itens podem dividir o mesmo tier.
-      </p>
-      <form id="tier-form" phx-change="set_tier" phx-target={@myself} class="flex flex-wrap gap-4">
-        <label class="flex items-center gap-1.5 text-sm">
-          <input
-            type="radio"
-            name="tier"
-            value=""
-            class="radio radio-sm"
-            checked={is_nil(@item.tier)}
-          /> Sem tier
-        </label>
-        <label :for={t <- ~w(S A B C D)} class="flex items-center gap-1.5 text-sm font-semibold">
-          <input
-            type="radio"
-            name="tier"
-            value={t}
-            class="radio radio-sm"
-            checked={to_string(@item.tier) == t}
-          /> {t}
-        </label>
-      </form>
-    </section>
-
-    <section class="card qcard space-y-3 border border-base-300 bg-base-100 p-5">
-      <h2 class="text-sm font-bold uppercase tracking-wide opacity-60">Tags</h2>
-      <div class="flex flex-wrap items-center gap-2">
-        <span :for={tag <- @item.tags} class="flex items-center gap-1">
-          <Components.tag_chip tag={tag} />
-          <button
-            id={"remove-tag-#{tag.id}"}
-            phx-click="remove_tag"
-            phx-value-id={tag.id}
-            phx-target={@myself}
-            class="opacity-50 hover:opacity-100"
-            title="Remover tag"
-          >
-            <.icon name="hero-x-mark" class="size-3" />
-          </button>
-        </span>
-      </div>
-      <form id="add-tag-form" phx-submit="add_tag" phx-target={@myself} class="flex items-end gap-2">
-        <div class="flex-1">
-          <.input type="text" name="name" label="Nova tag" value="" placeholder="Ex: urgente" />
-        </div>
-        <button type="submit" class="btn btn-soft btn-sm rounded-full px-4">Adicionar</button>
-      </form>
-    </section>
-
-    <section class="card qcard space-y-3 border border-base-300 bg-base-100 p-5">
-      <h2 class="text-sm font-bold uppercase tracking-wide opacity-60">Categorias secundárias</h2>
-      <div class="flex flex-wrap items-center gap-2">
-        <span
-          :for={category <- @item.secondary_categories}
-          class="flex items-center gap-1 rounded-full bg-base-200 px-2.5 py-0.5 text-[0.68rem] font-semibold opacity-70"
-        >
-          {category.name}
-          <button
-            id={"remove-secondary-category-#{category.id}"}
-            phx-click="remove_secondary_category"
-            phx-value-id={category.id}
-            phx-target={@myself}
-            class="opacity-50 hover:opacity-100"
-            title="Remover categoria secundária"
-          >
-            <.icon name="hero-x-mark" class="size-3" />
-          </button>
-        </span>
-        <p :if={@item.secondary_categories == []} class="text-xs opacity-60">Nenhuma ainda.</p>
-      </div>
-      <form
-        :if={@other_categories != []}
-        id="add-secondary-category-form"
-        phx-submit="add_secondary_category"
+        Detalhes
+      </button>
+      <button
+        type="button"
+        phx-click="switch_tab"
+        phx-value-tab="activities"
         phx-target={@myself}
-        class="flex items-end gap-2"
+        class={[
+          "rounded-full px-4 py-1.5 transition",
+          if(@active_tab == :activities,
+            do: "bg-primary text-primary-content shadow-sm",
+            else: "bg-base-200 opacity-70 hover:opacity-100"
+          )
+        ]}
       >
-        <div class="flex-1">
-          <.input
-            type="select"
-            name="category_id"
-            label="Adicionar categoria"
-            value=""
-            options={Enum.map(@other_categories, &{&1.name, &1.id})}
-            prompt="Escolha uma categoria"
-          />
-        </div>
-        <button type="submit" class="btn btn-soft btn-sm rounded-full px-4">Adicionar</button>
-      </form>
-    </section>
+        Atividades
+        <span :if={@activities != []} class="ml-0.5 opacity-70">({length(@activities)})</span>
+      </button>
+    </nav>
 
-    <section class="card qcard space-y-3 border border-base-300 bg-base-100 p-5">
-      <div class="flex items-center justify-between">
-        <h2 class="text-sm font-bold uppercase tracking-wide opacity-60">Campos customizados</h2>
-        <button
-          id="toggle-new-field-form-btn"
-          phx-click="toggle_new_field_form"
+    <div :if={@active_tab == :details} class="space-y-6">
+      <section class="card qcard space-y-3 border border-base-300 bg-base-100 p-5">
+        <h2 class="text-sm font-bold uppercase tracking-wide opacity-60">Progresso</h2>
+        <.type_editor item={@item} progress={@progress} tasks={@tasks} myself={@myself} />
+      </section>
+
+      <section class="card qcard space-y-3 border border-base-300 bg-base-100 p-5">
+        <h2 class="text-sm font-bold uppercase tracking-wide opacity-60">Detalhes</h2>
+        <form id="update-item-form" phx-submit="update_item" phx-target={@myself} class="space-y-3">
+          <.input type="text" name="title" label="Título" value={@item.title} required />
+          <.input type="textarea" name="notes" label="Notas" value={@item.notes} rows="3" />
+          <div class="flex justify-end">
+            <button type="submit" class="btn btn-primary btn-sm rounded-full px-5">Salvar</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="card qcard space-y-3 border border-base-300 bg-base-100 p-5">
+        <h2 class="text-sm font-bold uppercase tracking-wide opacity-60">Tipo</h2>
+        <form
+          id="change-type-form"
+          phx-submit="change_type"
+          phx-change="type_form_change"
           phx-target={@myself}
-          class="btn btn-ghost btn-xs rounded-full"
+          class="space-y-3"
         >
-          <.icon name="hero-plus" class="size-3" /> Novo campo
-        </button>
-      </div>
-
-      <form
-        :if={@show_new_field_form?}
-        id="new-field-form"
-        phx-submit="create_field_definition"
-        phx-change="field_form_change"
-        phx-target={@myself}
-        class="space-y-3 rounded-2xl border border-base-300 p-3"
-      >
-        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <.input type="text" name="name" label="Nome do campo" value="" required />
           <.input
             type="select"
-            name="field_type"
+            name="item_type"
             label="Tipo"
-            value={@new_field_type}
-            options={[{"Texto", "text"}, {"Seleção", "select"}, {"Número", "number"}]}
+            value={@type_form_value || Atom.to_string(@item.item_type)}
+            options={Components.item_type_options()}
           />
-        </div>
-        <.input
-          :if={@new_field_type == "select"}
-          type="text"
-          name="select_options"
-          label="Opções (separadas por vírgula)"
-          value=""
-          placeholder="Ex: baixa, média, alta"
-        />
-        <div class="flex justify-end">
-          <button type="submit" class="btn btn-primary btn-sm rounded-full px-5">Criar campo</button>
-        </div>
-      </form>
 
-      <p :if={@field_definitions == []} class="text-xs opacity-60">
-        Nenhum campo customizado criado ainda.
-      </p>
-
-      <form
-        :for={definition <- @field_definitions}
-        id={"set-field-value-#{definition.id}"}
-        phx-submit="set_field_value"
-        phx-target={@myself}
-        class="flex items-end gap-2"
-      >
-        <input type="hidden" name="field_definition_id" value={definition.id} />
-        <div class="flex-1">
-          <.field_value_input
-            definition={definition}
-            current={field_current_value(field_value_for(@item, definition), definition)}
+          <.input
+            :if={(@type_form_value || Atom.to_string(@item.item_type)) == "book"}
+            type="select"
+            name="study_material_id"
+            label="Livro"
+            value=""
+            options={Enum.map(@books, &{&1.title, &1.id})}
+            prompt="Escolha um livro"
           />
+
+          <.input
+            :if={(@type_form_value || Atom.to_string(@item.item_type)) == "quiz_goal"}
+            type="select"
+            name="quiz_id"
+            label="Quiz"
+            value=""
+            options={Enum.map(@quizzes, &{quiz_display_name(&1), &1.id})}
+            prompt="Escolha um quiz"
+          />
+
+          <.input
+            :if={(@type_form_value || Atom.to_string(@item.item_type)) == "course"}
+            type="number"
+            name="course_total_steps"
+            label="Total de etapas (opcional)"
+            min="1"
+            value=""
+          />
+
+          <div class="flex justify-end">
+            <button type="submit" class="btn btn-primary btn-sm rounded-full px-5">
+              Salvar tipo
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <section class="card qcard space-y-3 border border-base-300 bg-base-100 p-5">
+        <h2 class="text-sm font-bold uppercase tracking-wide opacity-60">Tier</h2>
+        <p class="text-xs opacity-60">
+          Usado no bloco de prioridades misturadas — vários itens podem dividir o mesmo tier.
+        </p>
+        <form id="tier-form" phx-change="set_tier" phx-target={@myself} class="flex flex-wrap gap-4">
+          <label class="flex items-center gap-1.5 text-sm">
+            <input
+              type="radio"
+              name="tier"
+              value=""
+              class="radio radio-sm"
+              checked={is_nil(@item.tier)}
+            /> Sem tier
+          </label>
+          <label :for={t <- ~w(S A B C D)} class="flex items-center gap-1.5 text-sm font-semibold">
+            <input
+              type="radio"
+              name="tier"
+              value={t}
+              class="radio radio-sm"
+              checked={to_string(@item.tier) == t}
+            /> {t}
+          </label>
+        </form>
+      </section>
+
+      <section class="card qcard space-y-3 border border-base-300 bg-base-100 p-5">
+        <h2 class="text-sm font-bold uppercase tracking-wide opacity-60">Tags</h2>
+        <div class="flex flex-wrap items-center gap-2">
+          <span :for={tag <- @item.tags} class="flex items-center gap-1">
+            <Components.tag_chip tag={tag} />
+            <button
+              id={"remove-tag-#{tag.id}"}
+              phx-click="remove_tag"
+              phx-value-id={tag.id}
+              phx-target={@myself}
+              class="opacity-50 hover:opacity-100"
+              title="Remover tag"
+            >
+              <.icon name="hero-x-mark" class="size-3" />
+            </button>
+          </span>
         </div>
-        <button type="submit" class="btn btn-soft btn-sm rounded-full px-4">Salvar</button>
-      </form>
-    </section>
+        <form id="add-tag-form" phx-submit="add_tag" phx-target={@myself} class="flex items-end gap-2">
+          <div class="flex-1">
+            <.input type="text" name="name" label="Nova tag" value="" placeholder="Ex: urgente" />
+          </div>
+          <div class="fieldset mb-2">
+            <label>
+              <span class="label mb-1 invisible">Adicionar</span>
+              <button type="submit" class="btn btn-soft btn-sm rounded-full px-4">Adicionar</button>
+            </label>
+          </div>
+        </form>
+      </section>
+
+      <section class="card qcard space-y-3 border border-base-300 bg-base-100 p-5">
+        <h2 class="text-sm font-bold uppercase tracking-wide opacity-60">Categorias secundárias</h2>
+        <div class="flex flex-wrap items-center gap-2">
+          <span
+            :for={category <- @item.secondary_categories}
+            class="flex items-center gap-1 rounded-full bg-base-200 px-2.5 py-0.5 text-[0.68rem] font-semibold opacity-70"
+          >
+            {category.name}
+            <button
+              id={"remove-secondary-category-#{category.id}"}
+              phx-click="remove_secondary_category"
+              phx-value-id={category.id}
+              phx-target={@myself}
+              class="opacity-50 hover:opacity-100"
+              title="Remover categoria secundária"
+            >
+              <.icon name="hero-x-mark" class="size-3" />
+            </button>
+          </span>
+          <p :if={@item.secondary_categories == []} class="text-xs opacity-60">Nenhuma ainda.</p>
+        </div>
+        <form
+          :if={@other_categories != []}
+          id="add-secondary-category-form"
+          phx-submit="add_secondary_category"
+          phx-target={@myself}
+          class="flex items-end gap-2"
+        >
+          <div class="flex-1">
+            <.input
+              type="select"
+              name="category_id"
+              label="Adicionar categoria"
+              value=""
+              options={Enum.map(@other_categories, &{&1.name, &1.id})}
+              prompt="Escolha uma categoria"
+            />
+          </div>
+          <div class="fieldset mb-2">
+            <label>
+              <span class="label mb-1 invisible">Adicionar</span>
+              <button type="submit" class="btn btn-soft btn-sm rounded-full px-4">Adicionar</button>
+            </label>
+          </div>
+        </form>
+      </section>
+
+      <section class="card qcard space-y-3 border border-base-300 bg-base-100 p-5">
+        <div class="flex items-center justify-between">
+          <h2 class="text-sm font-bold uppercase tracking-wide opacity-60">Campos customizados</h2>
+          <button
+            id="toggle-new-field-form-btn"
+            phx-click="toggle_new_field_form"
+            phx-target={@myself}
+            class="btn btn-ghost btn-xs rounded-full"
+          >
+            <.icon name="hero-plus" class="size-3" /> Novo campo
+          </button>
+        </div>
+
+        <form
+          :if={@show_new_field_form?}
+          id="new-field-form"
+          phx-submit="create_field_definition"
+          phx-change="field_form_change"
+          phx-target={@myself}
+          class="space-y-3 rounded-2xl border border-base-300 p-3"
+        >
+          <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <.input type="text" name="name" label="Nome do campo" value="" required />
+            <.input
+              type="select"
+              name="field_type"
+              label="Tipo"
+              value={@new_field_type}
+              options={[{"Texto", "text"}, {"Seleção", "select"}, {"Número", "number"}]}
+            />
+          </div>
+          <.input
+            :if={@new_field_type == "select"}
+            type="text"
+            name="select_options"
+            label="Opções (separadas por vírgula)"
+            value=""
+            placeholder="Ex: baixa, média, alta"
+          />
+          <div class="flex justify-end">
+            <button type="submit" class="btn btn-primary btn-sm rounded-full px-5">Criar campo</button>
+          </div>
+        </form>
+
+        <p :if={@field_definitions == []} class="text-xs opacity-60">
+          Nenhum campo customizado criado ainda.
+        </p>
+
+        <form
+          :for={definition <- @field_definitions}
+          id={"set-field-value-#{definition.id}"}
+          phx-submit="set_field_value"
+          phx-target={@myself}
+          class="flex items-end gap-2"
+        >
+          <input type="hidden" name="field_definition_id" value={definition.id} />
+          <div class="flex-1">
+            <.field_value_input
+              definition={definition}
+              current={field_current_value(field_value_for(@item, definition), definition)}
+            />
+          </div>
+          <div class="fieldset mb-2">
+            <label>
+              <span class="label mb-1 invisible">Salvar</span>
+              <button type="submit" class="btn btn-soft btn-sm rounded-full px-4">Salvar</button>
+            </label>
+          </div>
+        </form>
+      </section>
+    </div>
+
+    <div :if={@active_tab == :activities} class="space-y-4">
+      <section class="card qcard space-y-3 border border-base-300 bg-base-100 p-5">
+        <h2 class="text-sm font-bold uppercase tracking-wide opacity-60">Nova atividade</h2>
+        <form
+          id="create-item-activity-form"
+          phx-submit="create_item_activity"
+          phx-target={@myself}
+          class="flex items-end gap-2"
+        >
+          <div class="flex-1">
+            <.input
+              type="text"
+              name="title"
+              label="Título"
+              value=""
+              placeholder="Ex: Ler capítulo 3"
+            />
+          </div>
+          <div class="fieldset mb-2">
+            <label>
+              <span class="label mb-1 invisible">Adicionar</span>
+              <button type="submit" class="btn btn-primary btn-sm rounded-full px-4">
+                Adicionar
+              </button>
+            </label>
+          </div>
+        </form>
+      </section>
+
+      <section class="card qcard space-y-3 border border-base-300 bg-base-100 p-5">
+        <h2 class="text-sm font-bold uppercase tracking-wide opacity-60">Todas</h2>
+        <p :if={@activities == []} class="text-xs opacity-60">Nenhuma atividade ainda.</p>
+        <ul :if={@activities != []} class="space-y-2">
+          <li
+            :for={activity <- @activities}
+            class="flex items-center justify-between gap-2 rounded-2xl border border-base-200 p-2.5"
+          >
+            <div class="min-w-0">
+              <p class="truncate text-sm font-semibold">{activity.title}</p>
+              <p class="text-xs opacity-60">
+                {activity_status_label(activity.status)} · {Calendar.strftime(
+                  activity.logical_date,
+                  "%d/%m/%Y"
+                )}
+              </p>
+            </div>
+            <div :if={activity.status == :pendente} class="flex shrink-0 items-center gap-1">
+              <button
+                phx-click="complete_item_activity"
+                phx-value-id={activity.id}
+                phx-target={@myself}
+                class="btn btn-ghost btn-xs"
+                title="Concluir"
+              >
+                <.icon name="hero-check" class="size-4 text-success" />
+              </button>
+              <button
+                phx-click="mark_item_activity_not_done"
+                phx-value-id={activity.id}
+                phx-target={@myself}
+                class="btn btn-ghost btn-xs"
+                title="Não cumprida"
+              >
+                <.icon name="hero-x-mark" class="size-4 text-warning" />
+              </button>
+              <button
+                phx-click="discard_item_activity"
+                phx-value-id={activity.id}
+                phx-target={@myself}
+                class="btn btn-ghost btn-xs"
+                title="Descartar"
+              >
+                <.icon name="hero-trash" class="size-4 opacity-50" />
+              </button>
+            </div>
+          </li>
+        </ul>
+      </section>
+    </div>
     """
   end
+
+  defp activity_status_label(:pendente), do: "Pendente"
+  defp activity_status_label(:concluida), do: "Concluída"
+  defp activity_status_label(:nao_cumprida), do: "Não cumprida"
+  defp activity_status_label(:descartada), do: "Descartada"
 
   attr :item, :map, required: true
   attr :progress, :any, required: true
@@ -850,7 +1043,12 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
           min="1"
         />
       </div>
-      <button type="submit" class="btn btn-primary btn-sm rounded-full px-5">Salvar</button>
+      <div class="fieldset mb-2">
+        <label>
+          <span class="label mb-1 invisible">Salvar</span>
+          <button type="submit" class="btn btn-primary btn-sm rounded-full px-5">Salvar</button>
+        </label>
+      </div>
     </form>
 
     <form
@@ -946,7 +1144,12 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
           placeholder="Ex: Ler capítulo 3"
         />
       </div>
-      <button type="submit" class="btn btn-soft btn-sm rounded-full px-4">Adicionar</button>
+      <div class="fieldset mb-2">
+        <label>
+          <span class="label mb-1 invisible">Adicionar</span>
+          <button type="submit" class="btn btn-soft btn-sm rounded-full px-4">Adicionar</button>
+        </label>
+      </div>
     </form>
     """
   end

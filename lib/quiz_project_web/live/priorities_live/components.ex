@@ -326,7 +326,10 @@ defmodule QuizProjectWeb.PrioritiesLive.Components do
 
   @doc "Opções `{label, value}` de tipo de item pro `<select>`, na ordem em que aparecem no form."
   def item_type_options do
-    Enum.map(~w(manual book quiz_goal course habit checklist)a, &{item_type_label(&1), Atom.to_string(&1)})
+    Enum.map(
+      ~w(manual book quiz_goal course habit checklist)a,
+      &{item_type_label(&1), Atom.to_string(&1)}
+    )
   end
 
   @doc "Sub-navegação entre as 3 telas de Prioridades, usada no topo de cada uma."
@@ -359,4 +362,70 @@ defmodule QuizProjectWeb.PrioritiesLive.Components do
 
   defp tab_class(true), do: "bg-primary text-primary-content shadow-sm"
   defp tab_class(false), do: "bg-base-200 opacity-70 hover:opacity-100"
+
+  # Idade a partir da qual uma atividade solta acende alerta na Tela do dia —
+  # âmbar cedo, vermelho só depois de ficar parada por mais tempo, pra não
+  # virar papel de parede desde o primeiro dia.
+  @warning_after_days 3
+  @urgent_after_days 7
+
+  @doc "Nível de alerta pela idade de `logical_date`, usado nas capturas soltas da Tela do dia."
+  def age_alert(logical_date) do
+    case Date.diff(Date.utc_today(), logical_date) do
+      days when days >= @urgent_after_days -> :urgent
+      days when days >= @warning_after_days -> :warning
+      _ -> :ok
+    end
+  end
+
+  defp age_label(logical_date) do
+    days = Date.diff(Date.utc_today(), logical_date)
+    "#{days} #{if days == 1, do: "dia", else: "dias"}"
+  end
+
+  @doc """
+  Cartão de atividade da Tela do dia. `show_age?` liga o badge de alerta por
+  idade (só faz sentido pra capturas soltas — atividades presas a uma raia
+  sempre são de hoje). `actions` é opcional: cartões já resolvidos (`feito`)
+  não recebem nenhuma.
+  """
+  attr :activity, :map, required: true
+  attr :show_age?, :boolean, default: false
+  slot :actions
+
+  def activity_card(assigns) do
+    ~H"""
+    <div
+      id={"activity-card-#{@activity.id}"}
+      class="card qcard flex flex-col gap-2 border border-base-300 bg-base-100 p-3"
+    >
+      <div class="flex items-start justify-between gap-2">
+        <button
+          type="button"
+          phx-click="open_activity"
+          phx-value-id={@activity.id}
+          class="line-clamp-2 text-left text-sm font-semibold leading-snug hover:underline"
+        >
+          {@activity.title}
+        </button>
+        <span
+          :if={@show_age? && age_alert(@activity.logical_date) != :ok}
+          class={[
+            "shrink-0 rounded-full px-2 py-0.5 text-[0.65rem] font-bold",
+            age_alert(@activity.logical_date) == :urgent &&
+              "bg-error text-error-content",
+            age_alert(@activity.logical_date) == :warning &&
+              "bg-warning text-warning-content"
+          ]}
+        >
+          {age_label(@activity.logical_date)}
+        </span>
+      </div>
+
+      <div :if={@actions != []} class="flex flex-wrap items-center gap-2 pt-1">
+        {render_slot(@actions)}
+      </div>
+    </div>
+    """
+  end
 end

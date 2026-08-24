@@ -47,7 +47,13 @@ defmodule QuizProjectWeb.AdaptiveStudyLive.Index do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_user={@current_user} active_nav={:adaptive_study} wide={true}>
+    <Layouts.app
+      flash={@flash}
+      current_user={@current_user}
+      loose_captures_count={@loose_captures_count}
+      active_nav={:adaptive_study}
+      wide={true}
+    >
       <div class="space-y-6">
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-base-300 pb-5">
           <div>

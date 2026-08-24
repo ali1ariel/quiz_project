@@ -55,7 +55,12 @@ defmodule QuizProjectWeb.ContentsLive.Index do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_user={@current_user} active_nav={:contents}>
+    <Layouts.app
+      flash={@flash}
+      current_user={@current_user}
+      loose_captures_count={@loose_captures_count}
+      active_nav={:contents}
+    >
       <div class="space-y-6">
         <div class="flex flex-wrap items-end justify-between gap-3 border-b border-base-300 pb-4">
           <div>
