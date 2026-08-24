@@ -295,7 +295,6 @@ defmodule QuizProjectWeb.KanbanLive do
                   :for={activity <- activities_in(lane, :todo)}
                   id={"activity-drag-#{activity.id}"}
                   drag_id={activity.id}
-                  drag_group={"today-lane-#{lane.item.id}"}
                 >
                   <Components.activity_card activity={activity}>
                     <:actions>
@@ -326,7 +325,6 @@ defmodule QuizProjectWeb.KanbanLive do
                   :for={activity <- activities_in(lane, :fazendo)}
                   id={"activity-drag-#{activity.id}"}
                   drag_id={activity.id}
-                  drag_group={"today-lane-#{lane.item.id}"}
                 >
                   <Components.activity_card activity={activity}>
                     <:actions>

@@ -76,16 +76,23 @@ defmodule QuizProjectWeb.PrioritiesLive.Components do
       |> assign(:border_style, "border-left: 4px solid var(--color-#{color_token});")
 
     ~H"""
-    <a
-      href={~p"/priorities/#{@item.id}"}
+    <div
       id={"item-card-#{@item.id}"}
-      data-item-id={@item.id}
-      phx-hook=".OpenItem"
       style={@border_style}
       class="card qcard flex flex-col gap-2 border border-base-300 bg-base-100 p-4 transition hover:shadow-md"
     >
       <div class="flex items-start justify-between gap-2">
-        <h3 class="line-clamp-2 text-sm font-bold leading-snug">{@item.title}</h3>
+        <h3 class="line-clamp-2 text-sm font-bold leading-snug">
+          <a
+            href={~p"/priorities/#{@item.id}"}
+            id={"item-card-link-#{@item.id}"}
+            data-item-id={@item.id}
+            phx-hook=".OpenItem"
+            class="hover:underline"
+          >
+            {@item.title}
+          </a>
+        </h3>
         <span class="shrink-0 rounded-full bg-base-200 px-2 py-0.5 text-[0.65rem] font-semibold opacity-60">
           {item_type_label(@item.item_type)}
         </span>
@@ -102,7 +109,7 @@ defmodule QuizProjectWeb.PrioritiesLive.Components do
       <div class="mt-auto pt-1">
         <.progress_summary progress={@progress} />
       </div>
-    </a>
+    </div>
 
     <script :type={Phoenix.LiveView.ColocatedHook} name=".OpenItem">
       export default {
@@ -151,88 +158,71 @@ defmodule QuizProjectWeb.PrioritiesLive.Components do
   end
 
   @doc """
-  Torna seu conteúdo arrastável, mas só a partir do "handle" — o resto do
-  card continua clicável normalmente. `drag_group` é o que decide para onde o
-  item pode ir: só cai numa `drop_zone/1` com o mesmo `drag_group` (ver ali).
-
-  Truque do handle: o elemento nasce com `draggable=false`; só vira `true` no
-  `mousedown`/`touchstart` do handle, e volta a `false` no `dragend`. Sem
-  isso, o HTML5 nativo tornaria o card inteiro arrastável a partir de
-  qualquer ponto, brigando com os links e botões que já existem dentro dele.
+  Torna seu conteúdo arrastável. Por padrão (`handle={false}`), o card
+  inteiro vira a área de arrastar — exceto links, botões e campos de
+  formulário lá dentro, que o SortableJS ignora como início de drag (ver
+  `filter` em `drop_zone/1`), então continuam clicáveis normalmente (ex:
+  clicar no título do card pra ver os detalhes do item). Passe
+  `handle={true}` pra restringir o arrastar a um "grip" explícito — usado
+  quando o conteúdo tem uma área interativa grande demais pra distinguir
+  clique de arrastar só por elemento (ex: uma categoria inteira, com
+  formulário e lista de itens dentro).
   """
   attr :id, :string, required: true
   attr :drag_id, :string, required: true
-  attr :drag_group, :string, required: true
+  attr :handle, :boolean, default: false
   slot :inner_block, required: true
 
   def draggable(assigns) do
     ~H"""
     <div
       id={@id}
-      data-draggable-item
       data-drag-id={@drag_id}
-      data-drag-group={@drag_group}
-      phx-hook=".DragItem"
-      class="group/drag relative"
+      class={[
+        "relative",
+        @handle && "group/drag",
+        !@handle &&
+          "cursor-grab touch-none select-none [-webkit-touch-callout:none] active:cursor-grabbing"
+      ]}
     >
       <button
+        :if={@handle}
         type="button"
         data-drag-handle
-        class="absolute -left-2 -top-2 z-10 grid size-6 cursor-grab place-items-center rounded-full border border-base-300 bg-base-100 opacity-0 shadow-sm transition group-hover/drag:opacity-100 active:cursor-grabbing"
+        class="absolute -left-2 -top-2 z-10 grid size-6 cursor-grab touch-none select-none [-webkit-touch-callout:none] place-items-center rounded-full border border-base-300 bg-base-100 opacity-0 shadow-sm transition group-hover/drag:opacity-100 active:cursor-grabbing"
         title="Arrastar para reordenar"
       >
         <.icon name="hero-bars-2" class="size-3.5 opacity-60" />
       </button>
       {render_slot(@inner_block)}
     </div>
-
-    <script :type={Phoenix.LiveView.ColocatedHook} name=".DragItem">
-      export default {
-        mounted() {
-          this.el.draggable = false
-
-          const handle = this.el.querySelector("[data-drag-handle]")
-
-          if (handle) {
-            const arm = () => { this.el.draggable = true }
-            handle.addEventListener("mousedown", arm)
-            handle.addEventListener("touchstart", arm, {passive: true})
-          }
-
-          this.el.addEventListener("dragstart", (e) => {
-            e.dataTransfer.effectAllowed = "move"
-            e.dataTransfer.setData("text/plain", this.el.dataset.dragId)
-            this.el.dataset.dragging = "true"
-            this.el.classList.add("opacity-40")
-          })
-
-          this.el.addEventListener("dragend", () => {
-            this.el.draggable = false
-            delete this.el.dataset.dragging
-            this.el.classList.remove("opacity-40")
-          })
-        }
-      }
-    </script>
     """
   end
 
   @doc """
-  Área que aceita soltar itens de um `draggable/1` com o mesmo `drag_group` —
-  grupos diferentes não se aceitam, o que é o que impede, por exemplo, um
-  item ser arrastado para a categoria errada (cada categoria tem seu próprio
-  grupo, único).
+  Área que aceita soltar itens de um `draggable/1`, via SortableJS
+  (`assets/vendor/sortable.js`, exposto como `window.Sortable` em `app.js`).
+  Só troca item com outra `drop_zone/1` do mesmo `drag_group` — grupos
+  diferentes não se aceitam, o que é o que impede, por exemplo, um item ser
+  arrastado para a categoria errada (cada categoria tem seu próprio grupo,
+  único).
 
   `mode="reorder"` reordena dentro da própria zona e envia a lista completa,
   na nova ordem, para `event` como `%{"zone_id" => value, "ordered_ids" => [...]}`.
-  `mode="move"` (usado no board de tiers) não reordena — só manda pra onde o
-  item foi solto, como `%{"id" => item_id, "value" => value}`.
+  `mode="move"` (usado no board de tiers e na Tela do dia) não reordena — só
+  manda pra onde o item foi solto, como `%{"id" => item_id, "value" => value}`.
+
+  `handle={true}` precisa bater com o mesmo atributo nos `draggable/1` de
+  dentro (ver ali) — é o que decide se o Sortable só inicia o arrastar pelo
+  grip (`handle:`) ou pelo card inteiro, ignorando links/botões/campos
+  (`filter:`).
   """
   attr :id, :string, required: true
   attr :drag_group, :string, required: true
   attr :mode, :string, values: ~w(reorder move), default: "reorder"
   attr :event, :string, required: true
   attr :value, :string, default: nil
+  attr :handle, :boolean, default: false
   attr :class, :any, default: nil
   slot :inner_block, required: true
 
@@ -240,76 +230,72 @@ defmodule QuizProjectWeb.PrioritiesLive.Components do
     ~H"""
     <div
       id={@id}
-      data-drop-zone
       data-drag-group={@drag_group}
       data-drop-mode={@mode}
       data-drop-event={@event}
       data-drop-value={@value}
-      phx-hook=".DropZone"
+      data-drag-handle-mode={to_string(@handle)}
+      phx-hook=".SortableZone"
       class={@class}
     >
       {render_slot(@inner_block)}
     </div>
 
-    <script :type={Phoenix.LiveView.ColocatedHook} name=".DropZone">
+    <script :type={Phoenix.LiveView.ColocatedHook} name=".SortableZone">
       export default {
         mounted() {
-          this.el.addEventListener("dragover", (e) => {
-            const dragging = this.dragging()
-            if (!dragging || dragging.dataset.dragGroup !== this.el.dataset.dragGroup) return
+          const el = this.el
+          const useHandle = el.dataset.dragHandleMode === "true"
 
-            e.preventDefault()
+          // Segurar o dedo pra arrastar é, pro navegador, o mesmo gesto de
+          // abrir o menu de contexto (equivalente touch do botão direito).
+          // `touch-action`/`-webkit-touch-callout` (ver classes do card em
+          // `draggable/1`) já resolvem a maioria dos casos, mas alguns
+          // navegadores Android ainda disparam `contextmenu` depois de um
+          // "long press" mesmo assim — isso é o reforço final.
+          el.addEventListener("contextmenu", (e) => e.preventDefault())
 
-            if (this.el.dataset.dropMode !== "reorder") return
+          this.sortable = new window.Sortable(el, {
+            ...(useHandle
+              ? {handle: "[data-drag-handle]"}
+              : {filter: "a, button, input, textarea, select, label", preventOnFilter: false}),
+            group: el.dataset.dragGroup,
+            dataIdAttr: "data-drag-id",
+            animation: 150,
+            ghostClass: "opacity-40",
+            // Sem isso, o Sortable usa a API nativa de drag-and-drop do
+            // HTML5 pra mouse (só a parte touch é JS puro) — exatamente a
+            // API frágil que motivou trocar pro Sortable. `forceFallback`
+            // faz todo input (mouse, touch, caneta) passar pela
+            // implementação própria dele, sem depender do navegador
+            // reconhecer o gesto de arrastar.
+            forceFallback: true,
+            fallbackTolerance: 3,
+            onEnd: (evt) => {
+              const from = evt.from
+              const to = evt.to
 
-            const after = this.afterElement(e.clientY)
-            if (after == null) {
-              this.el.appendChild(dragging)
-            } else if (after !== dragging) {
-              this.el.insertBefore(dragging, after)
-            }
-          })
+              if (from === to && evt.oldIndex === evt.newIndex) return
 
-          this.el.addEventListener("drop", (e) => {
-            const dragging = this.dragging()
-            if (!dragging || dragging.dataset.dragGroup !== this.el.dataset.dragGroup) return
+              if (to.dataset.dropMode === "move") {
+                this.pushEvent(to.dataset.dropEvent, {
+                  id: evt.item.dataset.dragId,
+                  value: to.dataset.dropValue || ""
+                })
+              } else {
+                const ids = Array.from(to.children).map((child) => child.dataset.dragId)
 
-            e.preventDefault()
-
-            if (this.el.dataset.dropMode === "move") {
-              this.pushEvent(this.el.dataset.dropEvent, {
-                id: dragging.dataset.dragId,
-                value: this.el.dataset.dropValue || ""
-              })
-            } else {
-              const ids = Array.from(this.el.querySelectorAll("[data-draggable-item]"))
-                .map((el) => el.dataset.dragId)
-
-              this.pushEvent(this.el.dataset.dropEvent, {
-                zone_id: this.el.dataset.dropValue || "",
-                ordered_ids: ids
-              })
+                this.pushEvent(to.dataset.dropEvent, {
+                  zone_id: to.dataset.dropValue || "",
+                  ordered_ids: ids
+                })
+              }
             }
           })
         },
 
-        dragging() {
-          return document.querySelector('[data-draggable-item][data-dragging="true"]')
-        },
-
-        afterElement(y) {
-          const items = [...this.el.querySelectorAll('[data-draggable-item]:not([data-dragging="true"])')]
-
-          return items.reduce((closest, child) => {
-            const box = child.getBoundingClientRect()
-            const offset = y - box.top - box.height / 2
-
-            if (offset < 0 && offset > closest.offset) {
-              return {offset, element: child}
-            } else {
-              return closest
-            }
-          }, {offset: -Infinity, element: null}).element
+        destroyed() {
+          this.sortable?.destroy()
         }
       }
     </script>

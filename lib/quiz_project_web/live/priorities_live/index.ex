@@ -279,13 +279,14 @@ defmodule QuizProjectWeb.PrioritiesLive.Index do
             id="categories-drop-zone"
             drag_group="categories-list"
             event="reorder_categories"
+            handle={true}
             class="space-y-8"
           >
             <Components.draggable
               :for={section <- @sections}
               id={"category-#{section.category.id}"}
               drag_id={section.category.id}
-              drag_group="categories-list"
+              handle={true}
             >
               <div class="space-y-3">
                 <div class="flex items-center justify-between gap-3">
@@ -400,7 +401,6 @@ defmodule QuizProjectWeb.PrioritiesLive.Index do
                     :for={item <- section.primary_items}
                     id={"item-row-#{item.id}"}
                     drag_id={item.id}
-                    drag_group={"category-items-#{section.category.id}"}
                   >
                     <Components.item_card item={item} />
                   </Components.draggable>

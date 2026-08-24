@@ -116,7 +116,6 @@ defmodule QuizProjectWeb.PrioritiesLive.Ranking do
               :for={item <- items}
               id={"ranked-item-#{item.id}"}
               drag_id={item.id}
-              drag_group={@drag_group}
             >
               <Components.item_card item={item} show_category={true} />
             </Components.draggable>
@@ -141,7 +140,6 @@ defmodule QuizProjectWeb.PrioritiesLive.Ranking do
               :for={item <- @untiered}
               id={"ranked-item-#{item.id}"}
               drag_id={item.id}
-              drag_group={@drag_group}
             >
               <Components.item_card item={item} show_category={true} />
             </Components.draggable>
