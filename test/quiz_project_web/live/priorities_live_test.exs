@@ -186,20 +186,36 @@ defmodule QuizProjectWeb.PrioritiesLiveTest do
       assert html =~ "50%"
     end
 
-    test "hábito: marcar hoje incrementa e persiste depois de recarregar", %{
+    test "hábito: marcar feito hoje incrementa a sequência e persiste depois de recarregar", %{
       conn: conn,
       user: user
     } do
       cat = category(user)
       {:ok, item} = Priorities.create_item(user, cat, %{item_type: :habit, title: "Meditar"})
 
-      {:ok, view, _html} = live(conn, ~p"/priorities/#{item.id}")
+      {:ok, view, html} = live(conn, ~p"/priorities/#{item.id}")
+      assert html =~ "0 dias seguidos"
 
-      html = view |> element("#check-in-habit-btn") |> render_click()
+      html = view |> element("#complete-habit-today-btn") |> render_click()
       assert html =~ "1 dia seguido"
 
       {:ok, _view2, html2} = live(conn, ~p"/priorities/#{item.id}")
       assert html2 =~ "1 dia seguido"
+    end
+
+    test "hábito: trocar frequência pra dias da semana persiste", %{conn: conn, user: user} do
+      cat = category(user)
+      {:ok, item} = Priorities.create_item(user, cat, %{item_type: :habit, title: "Meditar"})
+
+      {:ok, view, _html} = live(conn, ~p"/priorities/#{item.id}")
+
+      view
+      |> element("#habit-frequency-form")
+      |> render_submit(%{"frequency" => "weekly", "weekdays" => ["1", "3", "5"]})
+
+      config = Priorities.habit_config_for_item(item)
+      assert config.frequency == :weekly
+      assert config.weekdays == [1, 3, 5]
     end
 
     test "tags: adicionar e remover", %{conn: conn, user: user} do

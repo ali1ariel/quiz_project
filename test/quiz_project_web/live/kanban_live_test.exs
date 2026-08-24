@@ -299,6 +299,38 @@ defmodule QuizProjectWeb.KanbanLiveTest do
     end
   end
 
+  describe "hábitos" do
+    test "hábito diário aparece como raia ao abrir /today (instância criada sob demanda)", %{
+      conn: conn,
+      user: user
+    } do
+      cat = category(user)
+      {:ok, item} = Priorities.create_item(user, cat, %{item_type: :habit, title: "Meditar"})
+
+      {:ok, _view, html} = live(conn, ~p"/today")
+
+      assert html =~ "Meditar"
+      [activity] = Priorities.list_activities_for_item(item.id, user)
+      assert activity.logical_date == Date.utc_today()
+    end
+
+    test "hábito semanal fora do dia devido não aparece como raia", %{conn: conn, user: user} do
+      cat = category(user)
+      {:ok, item} = Priorities.create_item(user, cat, %{item_type: :habit, title: "Academia"})
+
+      hoje_semana = Date.day_of_week(Date.utc_today())
+      outro_dia = if hoje_semana == 1, do: 2, else: 1
+
+      {:ok, _} =
+        Priorities.set_habit_frequency(item, %{frequency: :weekly, weekdays: [outro_dia]}, user)
+
+      {:ok, _view, html} = live(conn, ~p"/today")
+
+      refute html =~ "Academia"
+      assert Priorities.list_activities_for_item(item.id, user) == []
+    end
+  end
+
   describe "badge global" do
     test "contagem de capturas soltas aparece na navbar em outra tela", %{conn: conn, user: user} do
       loose_activity(user, "Solta 1")

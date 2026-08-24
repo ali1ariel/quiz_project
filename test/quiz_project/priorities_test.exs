@@ -462,65 +462,108 @@ defmodule QuizProject.PrioritiesTest do
     end
   end
 
-  describe "check_in_habit/2" do
-    test "primeira marcação começa a sequência em 1", %{user: user} do
+  describe "hábitos" do
+    test "criar item :habit já cria HabitConfig :daily", %{user: user} do
       cat = category(user)
       {:ok, item} = Priorities.create_item(user, cat, %{item_type: :habit, title: "Hábito"})
 
-      {:ok, item} = Priorities.check_in_habit(item, user)
+      config = Priorities.habit_config_for_item(item)
 
-      assert item.habit_current_streak == 1
-      assert item.habit_last_checked_on == Date.utc_today()
+      assert config.frequency == :daily
+      assert config.item_id == item.id
     end
 
-    test "marcar duas vezes no mesmo dia não muda a sequência", %{user: user} do
+    test "set_habit_frequency muda pra semanal e persiste", %{user: user} do
       cat = category(user)
       {:ok, item} = Priorities.create_item(user, cat, %{item_type: :habit, title: "Hábito"})
 
-      {:ok, item} = Priorities.check_in_habit(item, user)
-      {:ok, item} = Priorities.check_in_habit(item, user)
+      {:ok, _} =
+        Priorities.set_habit_frequency(item, %{frequency: :weekly, weekdays: [1, 3, 5]}, user)
 
-      assert item.habit_current_streak == 1
+      config = Priorities.habit_config_for_item(item)
+      assert config.frequency == :weekly
+      assert config.weekdays == [1, 3, 5]
     end
 
-    test "marcar no dia seguinte incrementa a sequência", %{user: user} do
+    test "ensure_today_habit_instance cria a instância de hoje quando devido, sem duplicar", %{
+      user: user
+    } do
       cat = category(user)
       {:ok, item} = Priorities.create_item(user, cat, %{item_type: :habit, title: "Hábito"})
 
-      ontem = Date.add(Date.utc_today(), -1)
+      :ok = Priorities.ensure_today_habit_instance(item, user)
+      :ok = Priorities.ensure_today_habit_instance(item, user)
 
-      item =
-        item
-        |> Ash.Changeset.for_update(
-          :update,
-          %{},
-          authorize?: false
-        )
-        |> Ash.Changeset.force_change_attribute(:habit_current_streak, 5)
-        |> Ash.Changeset.force_change_attribute(:habit_last_checked_on, ontem)
-        |> Ash.update!()
-
-      {:ok, item} = Priorities.check_in_habit(item, user)
-
-      assert item.habit_current_streak == 6
+      activities = Priorities.list_activities_for_item(item.id, user)
+      assert [%{logical_date: date, status: :pendente}] = activities
+      assert date == Date.utc_today()
     end
 
-    test "marcar depois de um intervalo maior reseta a sequência", %{user: user} do
+    test "não cria instância quando o dia não é devido (semanal fora do dia)", %{user: user} do
       cat = category(user)
       {:ok, item} = Priorities.create_item(user, cat, %{item_type: :habit, title: "Hábito"})
 
-      ha_tres_dias = Date.add(Date.utc_today(), -3)
+      hoje_semana = Date.day_of_week(Date.utc_today())
+      outro_dia = if hoje_semana == 1, do: 2, else: 1
 
-      item =
-        item
-        |> Ash.Changeset.for_update(:update, %{}, authorize?: false)
-        |> Ash.Changeset.force_change_attribute(:habit_current_streak, 5)
-        |> Ash.Changeset.force_change_attribute(:habit_last_checked_on, ha_tres_dias)
-        |> Ash.update!()
+      {:ok, _} =
+        Priorities.set_habit_frequency(item, %{frequency: :weekly, weekdays: [outro_dia]}, user)
 
-      {:ok, item} = Priorities.check_in_habit(item, user)
+      :ok = Priorities.ensure_today_habit_instance(item, user)
 
-      assert item.habit_current_streak == 1
+      assert Priorities.list_activities_for_item(item.id, user) == []
+    end
+
+    test "instância vencida ainda pendente vira não cumprida ao garantir a de hoje", %{
+      user: user
+    } do
+      cat = category(user)
+      {:ok, item} = Priorities.create_item(user, cat, %{item_type: :habit, title: "Hábito"})
+
+      {:ok, vencida} =
+        Priorities.create_activity(user, %{
+          title: "Hábito",
+          item_id: item.id,
+          logical_date: Date.add(Date.utc_today(), -1)
+        })
+
+      :ok = Priorities.ensure_today_habit_instance(item, user)
+
+      {:ok, atualizada} = Priorities.get_activity(vencida.id, user)
+      assert atualizada.status == :nao_cumprida
+    end
+
+    test "habit_streak conta dias devidos consecutivos concluídos", %{user: user} do
+      cat = category(user)
+      {:ok, item} = Priorities.create_item(user, cat, %{item_type: :habit, title: "Hábito"})
+
+      hoje = Date.utc_today()
+      ontem = Date.add(hoje, -1)
+      anteontem = Date.add(hoje, -2)
+
+      for date <- [hoje, ontem, anteontem] do
+        {:ok, activity} =
+          Priorities.create_activity(user, %{title: "H", item_id: item.id, logical_date: date})
+
+        {:ok, _} = Priorities.complete_activity(activity, user)
+      end
+
+      assert Priorities.habit_streak(item.id) == 3
+    end
+
+    test "habit_streak quebra num dia devido sem instância concluída", %{user: user} do
+      cat = category(user)
+      {:ok, item} = Priorities.create_item(user, cat, %{item_type: :habit, title: "Hábito"})
+
+      hoje = Date.utc_today()
+
+      {:ok, activity} =
+        Priorities.create_activity(user, %{title: "H", item_id: item.id, logical_date: hoje})
+
+      {:ok, _} = Priorities.complete_activity(activity, user)
+
+      # ontem não tem nenhuma atividade — quebra a sequência antes de contar
+      assert Priorities.habit_streak(item.id) == 1
     end
   end
 

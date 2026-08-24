@@ -17,6 +17,7 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
 
   alias QuizProject.AdaptiveStudy
   alias QuizProject.Priorities
+  alias QuizProject.Priorities.HabitRecurrence
   alias QuizProject.Quizzes
   alias QuizProjectWeb.PrioritiesLive.Components
 
@@ -29,6 +30,7 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
       |> assign_new(:new_field_type, fn -> "text" end)
       |> assign_new(:type_form_value, fn -> nil end)
       |> assign_new(:active_tab, fn -> :details end)
+      |> assign_new(:habit_frequency_form_value, fn -> nil end)
       |> assign_new(:books, fn -> AdaptiveStudy.list_books(assigns.current_user) end)
       |> assign_new(:quizzes, fn -> Quizzes.list_created(assigns.current_user) end)
       |> load_item(assigns.item_id)
@@ -189,13 +191,25 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
   end
 
   @impl true
-  def handle_event("check_in_habit", _params, socket) do
-    case Priorities.check_in_habit(socket.assigns.item, socket.assigns.current_user) do
+  def handle_event("habit_frequency_form_change", %{"frequency" => freq}, socket) do
+    {:noreply, assign(socket, habit_frequency_form_value: freq)}
+  end
+
+  @impl true
+  def handle_event("set_habit_frequency", params, socket) do
+    user = socket.assigns.current_user
+    attrs = build_habit_frequency_attrs(params)
+
+    case Priorities.set_habit_frequency(socket.assigns.item, attrs, user) do
       {:ok, _} ->
-        {:noreply, socket |> notify_flash(:info, "Marcado!") |> load_item(socket.assigns.item.id)}
+        {:noreply,
+         socket
+         |> notify_flash(:info, "Frequência salva.")
+         |> assign(habit_frequency_form_value: nil)
+         |> load_item(socket.assigns.item.id)}
 
       _ ->
-        {:noreply, notify_flash(socket, :error, "Não foi possível marcar.")}
+        {:noreply, notify_flash(socket, :error, "Não foi possível salvar a frequência.")}
     end
   end
 
@@ -395,6 +409,21 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
   defp parse_tab("activities"), do: :activities
   defp parse_tab(_), do: :details
 
+  defp build_habit_frequency_attrs(%{"frequency" => "weekly"} = params) do
+    %{frequency: :weekly, weekdays: parse_int_list(params["weekdays"]), month_days: []}
+  end
+
+  defp build_habit_frequency_attrs(%{"frequency" => "monthly"} = params) do
+    %{frequency: :monthly, weekdays: [], month_days: parse_int_list(params["month_days"])}
+  end
+
+  defp build_habit_frequency_attrs(_params) do
+    %{frequency: :daily, weekdays: [], month_days: []}
+  end
+
+  defp parse_int_list(nil), do: []
+  defp parse_int_list(values) when is_list(values), do: Enum.map(values, &String.to_integer/1)
+
   # `put_flash/3` num LiveComponent só grava no `assigns.flash` isolado do
   # componente, que nunca é renderizado — quem mostra `@flash` é o
   # `Layouts.app` do LiveView pai. Por isso o flash sai daqui como mensagem
@@ -416,6 +445,10 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
     user = socket.assigns.current_user
     {:ok, item} = Priorities.get_item(id, user)
 
+    if item.item_type == :habit do
+      Priorities.ensure_today_habit_instance(item, user)
+    end
+
     assign(socket,
       item: item,
       progress: Priorities.progress_for_item(item),
@@ -423,7 +456,9 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
       other_categories:
         Enum.reject(Priorities.list_categories(user), &(&1.id == item.category_id)),
       field_definitions: Priorities.list_field_definitions(user),
-      activities: Priorities.list_activities_for_item(item.id, user)
+      activities: Priorities.list_activities_for_item(item.id, user),
+      habit_config: if(item.item_type == :habit, do: Priorities.habit_config_for_item(item)),
+      habit_streak: if(item.item_type == :habit, do: Priorities.habit_streak(item.id))
     )
   end
 
@@ -507,6 +542,9 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
           quizzes={@quizzes}
           active_tab={@active_tab}
           activities={@activities}
+          habit_config={@habit_config}
+          habit_streak={@habit_streak}
+          habit_frequency_form_value={@habit_frequency_form_value}
         />
       </div>
 
@@ -539,6 +577,9 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
             quizzes={@quizzes}
             active_tab={@active_tab}
             activities={@activities}
+            habit_config={@habit_config}
+            habit_streak={@habit_streak}
+            habit_frequency_form_value={@habit_frequency_form_value}
           />
         </div>
 
@@ -568,6 +609,9 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
   attr :quizzes, :list, required: true
   attr :active_tab, :atom, required: true
   attr :activities, :list, required: true
+  attr :habit_config, :map, default: nil
+  attr :habit_streak, :integer, default: nil
+  attr :habit_frequency_form_value, :string, default: nil
 
   defp content(assigns) do
     ~H"""
@@ -642,7 +686,16 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
     <div :if={@active_tab == :details} class="space-y-6">
       <section class="card qcard space-y-3 border border-base-300 bg-base-100 p-5">
         <h2 class="text-sm font-bold uppercase tracking-wide opacity-60">Progresso</h2>
-        <.type_editor item={@item} progress={@progress} tasks={@tasks} myself={@myself} />
+        <.type_editor
+          item={@item}
+          progress={@progress}
+          tasks={@tasks}
+          myself={@myself}
+          activities={@activities}
+          habit_config={@habit_config}
+          habit_streak={@habit_streak}
+          habit_frequency_form_value={@habit_frequency_form_value}
+        />
       </section>
 
       <section class="card qcard space-y-3 border border-base-300 bg-base-100 p-5">
@@ -977,6 +1030,10 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
   attr :progress, :any, required: true
   attr :tasks, :list, required: true
   attr :myself, :any, required: true
+  attr :activities, :list, default: []
+  attr :habit_config, :map, default: nil
+  attr :habit_streak, :integer, default: nil
+  attr :habit_frequency_form_value, :string, default: nil
 
   defp type_editor(%{item: %{item_type: :book}} = assigns) do
     ~H"""
@@ -1086,26 +1143,105 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
   end
 
   defp type_editor(%{item: %{item_type: :habit}} = assigns) do
+    today = Date.utc_today()
+
+    today_activity =
+      Enum.find(assigns.activities, &(&1.logical_date == today and &1.status == :pendente))
+
+    assigns =
+      assigns
+      |> assign(:today_activity, today_activity)
+      |> assign(:due_today?, HabitRecurrence.due_on?(assigns.habit_config, today))
+      |> assign(
+        :frequency_value,
+        assigns.habit_frequency_form_value || Atom.to_string(assigns.habit_config.frequency)
+      )
+
     ~H"""
-    <div class="flex items-center justify-between gap-3">
-      <p class="flex items-center gap-2 text-sm font-semibold text-primary">
-        <.icon name="hero-fire" class="size-5" />
-        {@item.habit_current_streak} {if @item.habit_current_streak == 1,
-          do: "dia seguido",
-          else: "dias seguidos"}
-      </p>
-      <button
-        id="check-in-habit-btn"
-        phx-click="check_in_habit"
+    <div class="space-y-4">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <p class="flex items-center gap-2 text-sm font-semibold text-primary">
+          <.icon name="hero-fire" class="size-5" />
+          {@habit_streak} {if @habit_streak == 1, do: "dia seguido", else: "dias seguidos"}
+        </p>
+
+        <div :if={@today_activity} class="flex items-center gap-1">
+          <button
+            id="complete-habit-today-btn"
+            phx-click="complete_item_activity"
+            phx-value-id={@today_activity.id}
+            phx-target={@myself}
+            class="btn btn-primary btn-sm rounded-full px-4"
+          >
+            <.icon name="hero-check" class="size-4" /> Feito hoje
+          </button>
+          <button
+            id="not-done-habit-today-btn"
+            phx-click="mark_item_activity_not_done"
+            phx-value-id={@today_activity.id}
+            phx-target={@myself}
+            class="btn btn-soft btn-sm rounded-full"
+            title="Não cumprido hoje"
+          >
+            <.icon name="hero-x-mark" class="size-4" />
+          </button>
+        </div>
+
+        <p :if={!@today_activity && !@due_today?} class="text-xs opacity-60">
+          Não é dia devido hoje
+        </p>
+      </div>
+
+      <form
+        id="habit-frequency-form"
+        phx-submit="set_habit_frequency"
+        phx-change="habit_frequency_form_change"
         phx-target={@myself}
-        class="btn btn-primary btn-sm rounded-full px-5"
+        class="space-y-3 border-t border-base-200 pt-3"
       >
-        Marcar hoje
-      </button>
+        <.input
+          type="select"
+          name="frequency"
+          label="Frequência"
+          value={@frequency_value}
+          options={[{"Diário", "daily"}, {"Dias da semana", "weekly"}, {"Dias do mês", "monthly"}]}
+        />
+
+        <.input
+          :if={@frequency_value == "weekly"}
+          type="select"
+          name="weekdays[]"
+          label="Quais dias"
+          multiple
+          value={Enum.map(@habit_config.weekdays, &to_string/1)}
+          options={[
+            {"Segunda", "1"},
+            {"Terça", "2"},
+            {"Quarta", "3"},
+            {"Quinta", "4"},
+            {"Sexta", "5"},
+            {"Sábado", "6"},
+            {"Domingo", "7"}
+          ]}
+        />
+
+        <.input
+          :if={@frequency_value == "monthly"}
+          type="select"
+          name="month_days[]"
+          label="Quais dias do mês"
+          multiple
+          value={Enum.map(@habit_config.month_days, &to_string/1)}
+          options={Enum.map(1..31, &{to_string(&1), to_string(&1)})}
+        />
+
+        <div class="flex justify-end">
+          <button type="submit" class="btn btn-soft btn-sm rounded-full px-5">
+            Salvar frequência
+          </button>
+        </div>
+      </form>
     </div>
-    <p :if={@item.habit_last_checked_on} class="text-xs opacity-60">
-      Última marcação: {Calendar.strftime(@item.habit_last_checked_on, "%d/%m/%Y")}
-    </p>
     """
   end
 

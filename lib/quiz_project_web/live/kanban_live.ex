@@ -19,6 +19,14 @@ defmodule QuizProjectWeb.KanbanLive do
 
   @impl true
   def mount(_params, _session, socket) do
+    # Geração preguiçosa das instâncias de hábito devidas hoje — só na
+    # conexão via socket, não no render estático inicial (que roda duas
+    # vezes por carregamento), mesmo cuidado que `UserAuth.on_mount(:notify_attempts)`
+    # já toma pra evitar trabalho em dobro.
+    if connected?(socket) do
+      Priorities.ensure_today_habit_instances(socket.assigns.current_user)
+    end
+
     {:ok, socket |> assign(page_title: "Hoje", modal_activity_id: nil) |> load_data()}
   end
 

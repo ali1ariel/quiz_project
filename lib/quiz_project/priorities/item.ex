@@ -111,12 +111,6 @@ defmodule QuizProject.Priorities.Item do
       accept [:manual_progress_mode, :manual_percent]
     end
 
-    update :check_in_habit do
-      accept []
-      require_atomic? false
-      change QuizProject.Priorities.Changes.CheckInHabit
-    end
-
     update :add_tag do
       accept []
       require_atomic? false
@@ -240,9 +234,9 @@ defmodule QuizProject.Priorities.Item do
     attribute :course_access_link, :string
     attribute :course_access_login, :string
     attribute :course_access_password, :string
-    # :habit
-    attribute :habit_current_streak, :integer, default: 0
-    attribute :habit_last_checked_on, :date
+    # :habit — sem colunas próprias; configuração de recorrência e
+    # sequência vivem em `HabitConfig`/`Activity` (ver
+    # `QuizProject.Priorities.habit_config_for_item/1` e `habit_streak/1`).
     # :manual
     attribute :manual_percent, :integer do
       default 0

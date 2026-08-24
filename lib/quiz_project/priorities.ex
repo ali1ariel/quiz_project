@@ -17,6 +17,8 @@ defmodule QuizProject.Priorities do
   alias QuizProject.Priorities.Category
   alias QuizProject.Priorities.FieldDefinition
   alias QuizProject.Priorities.FieldValue
+  alias QuizProject.Priorities.HabitConfig
+  alias QuizProject.Priorities.HabitRecurrence
   alias QuizProject.Priorities.Item
   alias QuizProject.Priorities.ItemCategory
   alias QuizProject.Priorities.ItemLink
@@ -36,6 +38,7 @@ defmodule QuizProject.Priorities do
     resource Activity
     resource ActivityTask
     resource ItemLink
+    resource HabitConfig
   end
 
   # Autorização
@@ -146,8 +149,18 @@ defmodule QuizProject.Priorities do
         authorize?: false
       )
       |> Ash.create()
+      |> maybe_create_habit_config()
     end
   end
+
+  # Todo hábito nasce com configuração `:daily` — pré-marcada, o usuário
+  # troca depois pela aba de Prioridades se quiser semanal/mensal.
+  defp maybe_create_habit_config({:ok, %Item{item_type: :habit} = item} = result) do
+    create_habit_config(item, %{})
+    result
+  end
+
+  defp maybe_create_habit_config(result), do: result
 
   # Título em branco num item de livro não vira "" na tela — usa o título do
   # próprio livro, como o upload em Conteúdos já faz.
@@ -296,12 +309,6 @@ defmodule QuizProject.Priorities do
       item
       |> Ash.Changeset.for_update(:set_manual_mode, attrs, authorize?: false)
       |> Ash.update()
-    end
-  end
-
-  def check_in_habit(item, actor) do
-    with :ok <- authorize_owner(item, actor) do
-      item |> Ash.Changeset.for_update(:check_in_habit, %{}, authorize?: false) |> Ash.update()
     end
   end
 
@@ -544,8 +551,8 @@ defmodule QuizProject.Priorities do
     {:percent, percent}
   end
 
-  def progress_for_item(%Item{item_type: :habit, habit_current_streak: streak}) do
-    {:streak, streak}
+  def progress_for_item(%Item{item_type: :habit} = item) do
+    {:streak, habit_streak(item.id)}
   end
 
   def progress_for_item(%Item{item_type: :checklist} = item) do
@@ -813,6 +820,103 @@ defmodule QuizProject.Priorities do
       |> Ash.create()
 
     item
+  end
+
+  # Hábitos
+
+  @doc "HabitConfig do item, criando `:daily` por padrão se ainda não existir (hábito de antes desta feature)."
+  def habit_config_for_item(%Item{} = item) do
+    case get_habit_config(item.id) do
+      nil -> create_habit_config(item, %{})
+      config -> config
+    end
+  end
+
+  def get_habit_config(item_id) do
+    HabitConfig
+    |> Ash.Query.filter(item_id == ^item_id)
+    |> Ash.read_one!(authorize?: false)
+  end
+
+  defp create_habit_config(item, attrs) do
+    {:ok, config} =
+      HabitConfig
+      |> Ash.Changeset.for_create(:create, Map.put(attrs, :item_id, item.id), authorize?: false)
+      |> Ash.create()
+
+    config
+  end
+
+  def set_habit_frequency(item, attrs, actor) do
+    with :ok <- authorize_owner(item, actor) do
+      item
+      |> habit_config_for_item()
+      |> Ash.Changeset.for_update(:update, attrs, authorize?: false)
+      |> Ash.update()
+    end
+  end
+
+  @doc """
+  Garante a instância de hoje de um hábito devido, e resolve como não
+  cumprida qualquer instância vencida (dia passado, ainda pendente) do
+  mesmo item — cada dia devido gera sua própria instância independente; o
+  que não foi feito ontem não trava o que é devido hoje.
+  """
+  def ensure_today_habit_instance(%Item{item_type: :habit} = item, actor) do
+    with :ok <- authorize_owner(item, actor) do
+      close_overdue_habit_instances(item, actor)
+
+      today = Date.utc_today()
+      config = habit_config_for_item(item)
+
+      if HabitRecurrence.due_on?(config, today) and not habit_instance_exists?(item.id, today) do
+        create_activity(actor, %{title: item.title, item_id: item.id, logical_date: today})
+      end
+
+      :ok
+    end
+  end
+
+  def ensure_today_habit_instance(_item, _actor), do: :ok
+
+  @doc "Aplica `ensure_today_habit_instance/2` a todo item `:habit` ativo do usuário — chamado no mount da Tela do dia."
+  def ensure_today_habit_instances(%{id: user_id} = actor) do
+    Item
+    |> Ash.Query.filter(user_id == ^user_id and item_type == :habit and is_nil(archived_at))
+    |> Ash.read!(authorize?: false)
+    |> Enum.each(&ensure_today_habit_instance(&1, actor))
+  end
+
+  defp close_overdue_habit_instances(item, actor) do
+    today = Date.utc_today()
+
+    Activity
+    |> Ash.Query.filter(item_id == ^item.id and status == :pendente and logical_date < ^today)
+    |> Ash.read!(authorize?: false)
+    |> Enum.each(&mark_activity_not_done(&1, actor))
+  end
+
+  defp habit_instance_exists?(item_id, date) do
+    Activity
+    |> Ash.Query.filter(item_id == ^item_id and logical_date == ^date)
+    |> Ash.Query.select([:id])
+    |> Ash.read!(authorize?: false)
+    |> Enum.any?()
+  end
+
+  @doc "Sequência atual de um hábito, derivada do histórico de atividades — ver `HabitRecurrence.streak/4`."
+  def habit_streak(item_id) do
+    config =
+      get_habit_config(item_id) || %HabitConfig{frequency: :daily, weekdays: [], month_days: []}
+
+    statuses_by_date =
+      Activity
+      |> Ash.Query.filter(item_id == ^item_id)
+      |> Ash.Query.select([:logical_date, :status])
+      |> Ash.read!(authorize?: false)
+      |> Map.new(&{&1.logical_date, &1.status})
+
+    HabitRecurrence.streak(config, statuses_by_date, Date.utc_today())
   end
 
   # Vínculos entre itens
