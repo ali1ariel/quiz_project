@@ -1037,18 +1037,25 @@ header.navbar.qnav-hidden {
   filter: brightness(1.08);
 }
 
-/* Botões sem sombra, com microinteração definida por cada skin. */
+/* Botões sem sombra, com microinteração definida por cada skin.
+   `translateZ(0)` na base (sem efeito visual, é 0) mantém o botão numa
+   camada de composição de GPU estável o tempo todo, em vez do navegador
+   criá-la/destruí-la a cada hover/toque — no Chrome for Android (visto em
+   tablets, ex. Galaxy Tab), recriar a camada por causa só do `translateY`
+   do hover às vezes falha em re-rasterizar a máscara do canto arredondado,
+   deixando um triângulo do fundo quadrado da camada vazando pelo canto. */
 .btn:not(.btn-ghost):not(.btn-link) {
   border-width: var(--skin-border-w);
   box-shadow: none;
+  transform: translateZ(0);
   transition: transform 0.15s ease,
     background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease;
 }
 .btn:not(.btn-ghost):not(.btn-link):hover {
-  transform: translateY(var(--skin-lift));
+  transform: translateY(var(--skin-lift)) translateZ(0);
 }
 .btn:not(.btn-ghost):not(.btn-link):active {
-  transform: translateY(var(--skin-press));
+  transform: translateY(var(--skin-press)) translateZ(0);
 }
 .btn[disabled], .btn[disabled]:hover {
   transform: none;

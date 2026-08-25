@@ -378,7 +378,7 @@ defmodule QuizProjectWeb.Layouts do
       navigate={@navigate}
       aria-current={@active? && "page"}
       class={[
-        "inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold transition",
+        "inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold transition [transform:translateZ(0)]",
         if(@active?,
           do: "bg-primary text-primary-content shadow-sm",
           else: "opacity-65 hover:bg-base-200 hover:opacity-100"
@@ -546,7 +546,7 @@ defmodule QuizProjectWeb.Layouts do
   """
   def theme_toggle(assigns) do
     ~H"""
-    <div class="card relative flex flex-row items-center border-2 border-base-300 bg-base-300 rounded-full">
+    <div class="card relative flex flex-row items-center overflow-hidden border-2 border-base-300 bg-base-300 rounded-full">
       <div class="absolute w-1/3 h-full rounded-full border-1 border-base-200 bg-base-100 brightness-200 left-0 [[data-theme=light]_&]:left-1/3 [[data-theme=dark]_&]:left-2/3 [[data-theme-source=system]_&]:!left-0 transition-[left]" />
 
       <button
