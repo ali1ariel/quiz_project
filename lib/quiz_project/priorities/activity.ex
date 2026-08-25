@@ -1,8 +1,9 @@
 defmodule QuizProject.Priorities.Activity do
   @moduledoc """
   Atividade: o que entra no kanban do dia. Pode nascer presa a um `Item`
-  (`item_id` presente) ou solta (`item_id` nulo — "captura solta", a peça
-  ainda não categorizada).
+  (`item_id` presente), ser uma instância de `Habit` (`habit_id` presente) ou
+  solta (nenhum dos dois — "captura solta", a peça ainda não categorizada).
+  `item_id` e `habit_id` nunca coexistem (ver `validations` abaixo).
 
   `status` e `flow` são dois eixos independentes de propósito: `status` é o
   desfecho (pendente/concluída/não cumprida/descartada), `flow` é a posição
@@ -21,6 +22,7 @@ defmodule QuizProject.Priorities.Activity do
     references do
       reference :user, on_delete: :delete, on_update: :update
       reference :item, on_delete: :nilify, on_update: :update
+      reference :habit, on_delete: :nilify, on_update: :update
     end
   end
 
@@ -28,7 +30,20 @@ defmodule QuizProject.Priorities.Activity do
     defaults [:read, :destroy]
 
     create :create do
-      accept [:user_id, :item_id, :title, :notes, :logical_date, :position]
+      accept [:user_id, :item_id, :habit_id, :title, :notes, :logical_date, :position]
+
+      validate fn changeset, _context ->
+        item_id = Ash.Changeset.get_attribute(changeset, :item_id)
+        habit_id = Ash.Changeset.get_attribute(changeset, :habit_id)
+
+        if item_id && habit_id do
+          {:error,
+           field: :habit_id,
+           message: "atividade não pode estar presa a um item e a um hábito ao mesmo tempo"}
+        else
+          :ok
+        end
+      end
     end
 
     update :update do
@@ -80,6 +95,16 @@ defmodule QuizProject.Priorities.Activity do
       change set_attribute(:status, :descartada)
       change set_attribute(:flow, :feito)
     end
+
+    update :reopen do
+      accept []
+
+      validate attribute_equals(:flow, :feito),
+        message: "só é possível reabrir uma atividade já resolvida"
+
+      change set_attribute(:status, :pendente)
+      change set_attribute(:flow, :todo)
+    end
   end
 
   attributes do
@@ -89,8 +114,11 @@ defmodule QuizProject.Priorities.Activity do
       allow_nil? false
     end
 
-    # Ausente = captura solta.
+    # Ausente (junto com habit_id) = captura solta.
     attribute :item_id, :uuid
+
+    # Presente = esta atividade é uma instância diária de um hábito.
+    attribute :habit_id, :uuid
 
     attribute :title, :string do
       allow_nil? false
@@ -133,6 +161,10 @@ defmodule QuizProject.Priorities.Activity do
     end
 
     belongs_to :item, QuizProject.Priorities.Item do
+      attribute_writable? true
+    end
+
+    belongs_to :habit, QuizProject.Priorities.Habit do
       attribute_writable? true
     end
   end

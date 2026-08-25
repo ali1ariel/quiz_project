@@ -96,18 +96,6 @@ defmodule QuizProject.Priorities.ActivityTest do
       assert updated.item_id == item.id
       assert Priorities.list_loose_captures(user) == []
     end
-
-    test "suggest_items_for_activity casa por texto, senão cai pros mais recentes", %{user: user} do
-      cat = category(user)
-      _antigo = manual_item(user, cat, "Item qualquer")
-      alvo = manual_item(user, cat, "Estudar Elixir")
-
-      {:ok, com_match} = Priorities.create_activity(user, %{title: "revisar Elixir hoje"})
-      {:ok, sem_match} = Priorities.create_activity(user, %{title: "zzz nada a ver zzz"})
-
-      assert alvo.id in Enum.map(Priorities.suggest_items_for_activity(com_match), & &1.id)
-      assert Priorities.suggest_items_for_activity(sem_match) != []
-    end
   end
 
   describe "transições de status/flow" do
@@ -162,6 +150,23 @@ defmodule QuizProject.Priorities.ActivityTest do
       assert done.flow == :feito
     end
 
+    test "reopen desfaz complete/mark_not_done/discard, voltando pra pendente/a fazer", %{
+      user: user
+    } do
+      {:ok, concluida} = Priorities.create_activity(user, %{title: "A"})
+      {:ok, concluida} = Priorities.complete_activity(concluida, user)
+      {:ok, reaberta} = Priorities.reopen_activity(concluida, user)
+
+      assert reaberta.status == :pendente
+      assert reaberta.flow == :todo
+    end
+
+    test "reopen rejeitado se a atividade ainda não foi resolvida", %{user: user} do
+      {:ok, activity} = Priorities.create_activity(user, %{title: "A"})
+
+      assert {:error, %Ash.Error.Invalid{}} = Priorities.reopen_activity(activity, user)
+    end
+
     test "start rejeitado se a atividade já foi resolvida", %{user: user} do
       {:ok, activity} = Priorities.create_activity(user, %{title: "A"})
       {:ok, done} = Priorities.complete_activity(activity, user)
@@ -193,7 +198,9 @@ defmodule QuizProject.Priorities.ActivityTest do
   end
 
   describe "tela do dia" do
-    test "list_today_lanes só traz atividades de hoje, agrupadas por item e flow", %{user: user} do
+    test "list_today_activities_by_flow só traz atividades de hoje, agrupadas por flow", %{
+      user: user
+    } do
       cat = category(user)
       item = manual_item(user, cat, "Estudar Elixir")
 
@@ -208,15 +215,23 @@ defmodule QuizProject.Priorities.ActivityTest do
 
       {:ok, hoje_fazendo} = Priorities.start_activity(hoje, user)
 
-      [lane] = Priorities.list_today_lanes(user)
-
-      assert lane.item.id == item.id
-      ids_todo = Enum.map(Map.get(lane.activities, :todo, []), & &1.id)
-      ids_fazendo = Enum.map(Map.get(lane.activities, :fazendo, []), & &1.id)
+      by_flow = Priorities.list_today_activities_by_flow(user)
+      ids_todo = Map.get(by_flow, :todo, []) |> Enum.map(& &1.id)
+      ids_fazendo = Map.get(by_flow, :fazendo, []) |> Enum.map(& &1.id)
 
       refute ontem.id in ids_todo
       refute ontem.id in ids_fazendo
       assert hoje_fazendo.id in ids_fazendo
+    end
+
+    test "list_today_activities carrega a categoria do item/hábito associado", %{user: user} do
+      cat = category(user, "Corpo")
+      item = manual_item(user, cat, "Academia")
+      {:ok, _} = Priorities.create_activity(user, %{title: "Hoje", item_id: item.id})
+
+      [activity] = Priorities.list_today_activities(user)
+
+      assert activity.item.category.name == "Corpo"
     end
   end
 

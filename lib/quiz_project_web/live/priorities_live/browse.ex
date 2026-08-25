@@ -9,7 +9,7 @@ defmodule QuizProjectWeb.PrioritiesLive.Browse do
   alias QuizProjectWeb.PrioritiesLive.Components
   alias QuizProjectWeb.PrioritiesLive.ItemModal
 
-  @item_types ~w(book quiz_goal course habit checklist manual)
+  @item_types ~w(book quiz_goal course checklist manual)
 
   @impl true
   def mount(_params, _session, socket) do
@@ -85,7 +85,7 @@ defmodule QuizProjectWeb.PrioritiesLive.Browse do
   defp parse_item_type(_value), do: nil
 
   defp item_type_options do
-    Enum.map(~w(book quiz_goal course habit checklist manual)a, fn type ->
+    Enum.map(~w(book quiz_goal course checklist manual)a, fn type ->
       {Components.item_type_label(type), Atom.to_string(type)}
     end)
   end

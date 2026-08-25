@@ -14,45 +14,51 @@
     },
     {
       "allow_nil?": false,
-      "default": "\"daily\"",
+      "default": "nil",
       "generated?": false,
       "precision": null,
       "primary_key?": false,
       "references": null,
       "scale": null,
       "size": null,
-      "source": "frequency",
+      "source": "date",
+      "type": "date"
+    },
+    {
+      "allow_nil?": false,
+      "default": "false",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "skipped",
+      "type": "boolean"
+    },
+    {
+      "allow_nil?": true,
+      "default": "nil",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "title",
       "type": "text"
     },
     {
-      "allow_nil?": false,
-      "default": "[]",
+      "allow_nil?": true,
+      "default": "nil",
       "generated?": false,
       "precision": null,
       "primary_key?": false,
       "references": null,
       "scale": null,
       "size": null,
-      "source": "weekdays",
-      "type": [
-        "array",
-        "bigint"
-      ]
-    },
-    {
-      "allow_nil?": false,
-      "default": "[]",
-      "generated?": false,
-      "precision": null,
-      "primary_key?": false,
-      "references": null,
-      "scale": null,
-      "size": null,
-      "source": "month_days",
-      "type": [
-        "array",
-        "bigint"
-      ]
+      "source": "notes",
+      "type": "text"
     },
     {
       "allow_nil?": false,
@@ -98,16 +104,16 @@
           "global": null,
           "strategy": null
         },
-        "name": "priority_habit_configs_item_id_fkey",
+        "name": "priority_habit_overrides_habit_id_fkey",
         "on_delete": "delete",
         "on_update": "update",
         "primary_key?": true,
         "schema": "public",
-        "table": "priority_items"
+        "table": "priority_habits"
       },
       "scale": null,
       "size": null,
-      "source": "item_id",
+      "source": "habit_id",
       "type": "uuid"
     }
   ],
@@ -117,19 +123,23 @@
   "custom_indexes": [],
   "custom_statements": [],
   "has_create_action": true,
-  "hash": "E7D85D1621EE0C33101C6EC8A3608B8A938F89CFEE6894798DC5101584BBD921",
+  "hash": "CE1B3E1B6869428B0117E67D2C7BC6CB8B19420F36F261A00913200237A208FF",
   "identities": [
     {
       "all_tenants?": false,
       "base_filter": null,
-      "index_name": "priority_habit_configs_item_id_index",
+      "index_name": "priority_habit_overrides_habit_date_index",
       "keys": [
         {
           "type": "atom",
-          "value": "item_id"
+          "value": "habit_id"
+        },
+        {
+          "type": "atom",
+          "value": "date"
         }
       ],
-      "name": "item_id",
+      "name": "habit_date",
       "nils_distinct?": true,
       "where": null
     }
@@ -141,5 +151,5 @@
   },
   "repo": "Elixir.QuizProject.Repo",
   "schema": null,
-  "table": "priority_habit_configs"
+  "table": "priority_habit_overrides"
 }

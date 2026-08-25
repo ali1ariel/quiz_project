@@ -188,7 +188,7 @@ defmodule QuizProjectWeb.PrioritiesLive.Index do
     end
   end
 
-  @item_types ~w(book quiz_goal course habit checklist manual)
+  @item_types ~w(book quiz_goal course checklist manual)
 
   defp parse_item_type(value) when value in @item_types,
     do: {:ok, String.to_existing_atom(value)}

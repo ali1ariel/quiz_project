@@ -1,7 +1,10 @@
 defmodule QuizProjectWeb.ActivityModal do
   @moduledoc """
   Detalhe de uma atividade do Kanban: título, descrição opcional e checklist
-  de subitens — o que não cabe no card compacto da Tela do dia.
+  de subitens — o que não cabe no card compacto da Tela do dia. Quando a
+  atividade é uma instância de hábito (`activity.habit_id` presente), ganha
+  também uma seção "Hábito" (streak, frequência, arquivar) — hábito não tem
+  mais tela própria (não é `Item`), então é aqui que ele é gerenciado.
 
   Fechar (✕, backdrop, Escape) não tem `phx-target`: sobe pro LiveView pai de
   propósito, que é quem decide parar de renderizar este componente — mesmo
@@ -10,10 +13,15 @@ defmodule QuizProjectWeb.ActivityModal do
   use QuizProjectWeb, :live_component
 
   alias QuizProject.Priorities
+  alias QuizProjectWeb.PrioritiesLive.Components
 
   @impl true
   def update(assigns, socket) do
-    {:ok, socket |> assign(assigns) |> load_activity(assigns.activity_id)}
+    {:ok,
+     socket
+     |> assign(assigns)
+     |> assign_new(:habit_frequency_form_value, fn -> nil end)
+     |> load_activity(assigns.activity_id)}
   end
 
   @impl true
@@ -89,6 +97,77 @@ defmodule QuizProjectWeb.ActivityModal do
     {:noreply, load_activity(socket, socket.assigns.activity.id)}
   end
 
+  @impl true
+  def handle_event("habit_frequency_form_change", %{"frequency" => freq}, socket) do
+    {:noreply, assign(socket, habit_frequency_form_value: freq)}
+  end
+
+  @impl true
+  def handle_event("set_habit_frequency", params, socket) do
+    user = socket.assigns.current_user
+    attrs = build_habit_frequency_attrs(params)
+
+    case Priorities.set_habit_frequency(socket.assigns.activity.habit, attrs, user) do
+      {:ok, _} ->
+        {:noreply,
+         socket
+         |> notify_flash(:info, "Frequência salva.")
+         |> assign(habit_frequency_form_value: nil)
+         |> load_activity(socket.assigns.activity.id)}
+
+      _ ->
+        {:noreply, notify_flash(socket, :error, "Não foi possível salvar a frequência.")}
+    end
+  end
+
+  @impl true
+  def handle_event("toggle_archive_habit", _params, socket) do
+    habit = socket.assigns.activity.habit
+    user = socket.assigns.current_user
+
+    result =
+      if habit.archived_at,
+        do: Priorities.unarchive_habit(habit, user),
+        else: Priorities.archive_habit(habit, user)
+
+    case result do
+      {:ok, _} -> {:noreply, load_activity(socket, socket.assigns.activity.id)}
+      _ -> {:noreply, notify_flash(socket, :error, "Não foi possível atualizar o hábito.")}
+    end
+  end
+
+  @impl true
+  def handle_event("delete_habit", _params, socket) do
+    habit = socket.assigns.activity.habit
+    user = socket.assigns.current_user
+
+    case Priorities.delete_habit(habit, user) do
+      {:ok, _} ->
+        {:noreply,
+         socket
+         |> notify_flash(:info, "Hábito excluído.")
+         |> load_activity(socket.assigns.activity.id)}
+
+      _ ->
+        {:noreply, notify_flash(socket, :error, "Não foi possível excluir o hábito.")}
+    end
+  end
+
+  defp build_habit_frequency_attrs(%{"frequency" => "weekly"} = params) do
+    %{frequency: :weekly, weekdays: parse_int_list(params["weekdays"]), month_days: []}
+  end
+
+  defp build_habit_frequency_attrs(%{"frequency" => "monthly"} = params) do
+    %{frequency: :monthly, weekdays: [], month_days: parse_int_list(params["month_days"])}
+  end
+
+  defp build_habit_frequency_attrs(_params) do
+    %{frequency: :daily, weekdays: [], month_days: []}
+  end
+
+  defp parse_int_list(nil), do: []
+  defp parse_int_list(values) when is_list(values), do: Enum.map(values, &String.to_integer/1)
+
   # `put_flash/3` num LiveComponent só grava no `assigns.flash` isolado do
   # componente, que nunca é renderizado — quem mostra `@flash` é o
   # `Layouts.app` do LiveView pai. Por isso o flash sai daqui como mensagem
@@ -102,7 +181,11 @@ defmodule QuizProjectWeb.ActivityModal do
     user = socket.assigns.current_user
     {:ok, activity} = Priorities.get_activity(id, user)
 
-    assign(socket, activity: activity, tasks: Priorities.list_activity_tasks(activity.id))
+    assign(socket,
+      activity: activity,
+      tasks: Priorities.list_activity_tasks(activity.id),
+      habit_streak: if(activity.habit_id, do: Priorities.habit_streak(activity.habit_id))
+    )
   end
 
   @impl true
@@ -145,6 +228,16 @@ defmodule QuizProjectWeb.ActivityModal do
                 </button>
               </div>
             </form>
+
+            <div :if={@activity.habit_id} class="border-t border-base-200 pt-4">
+              <Components.habit_section
+                habit={@activity.habit}
+                myself={@myself}
+                habit_streak={@habit_streak}
+                habit_frequency_form_value={@habit_frequency_form_value}
+                occurrence_date={Date.utc_today()}
+              />
+            </div>
 
             <div class="space-y-3 border-t border-base-200 pt-4">
               <h2 class="text-sm font-bold uppercase tracking-wide opacity-60">Checklist</h2>

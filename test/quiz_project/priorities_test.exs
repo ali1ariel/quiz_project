@@ -38,6 +38,48 @@ defmodule QuizProject.PrioritiesTest do
     item
   end
 
+  # Hábito é sempre extensão de uma prioridade — atalho pra testes que não
+  # se importam com qual prioridade, só que exista uma.
+  defp habit_item(user), do: manual_item(user, category(user), "Prioridade")
+
+  # `item_type: :habit` não existe mais na constraint de `Item` — nem a
+  # action `create` nem `Ash.Seed.seed!` aceitam construir um assim (o
+  # `one_of` é validado na estrutura, não só na action). O único jeito de
+  # simular uma linha legada de antes da Fase 4 (`Habit` virar resource
+  # próprio) é inserir direto via SQL, ignorando a camada Ash por completo —
+  # exatamente como uma linha desse tipo sobreviveria de verdade em produção.
+  defp legacy_habit_item(user, category, title \\ "Legado") do
+    id = Ecto.UUID.generate()
+
+    Ecto.Adapters.SQL.query!(
+      QuizProject.Repo,
+      """
+      INSERT INTO priority_items
+        (id, user_id, category_id, item_type, title, position, general,
+         manual_percent, manual_progress_mode, course_completed_steps, manual_completed_steps,
+         inserted_at, updated_at)
+      VALUES ($1, $2, $3, 'habit', $4, 0, false, 0, 'percent', 0, 0, now(), now())
+      """,
+      [
+        Ecto.UUID.dump!(id),
+        Ecto.UUID.dump!(user.id),
+        Ecto.UUID.dump!(category.id),
+        title
+      ]
+    )
+
+    id
+  end
+
+  defp item_row_count(id) do
+    import Ecto.Query
+
+    QuizProject.Repo.aggregate(
+      from(i in "priority_items", where: i.id == type(^id, :binary_id)),
+      :count
+    )
+  end
+
   # Quiz publicado com uma questão V/F, resposta correta = verdadeiro.
   defp published_tf_quiz(owner) do
     {:ok, version} = Quizzes.create_draft_quiz(owner)
@@ -148,9 +190,6 @@ defmodule QuizProject.PrioritiesTest do
                  title: "Curso",
                  course_total_steps: 10
                })
-
-      assert {:ok, %{item_type: :habit}} =
-               Priorities.create_item(user, cat, %{item_type: :habit, title: "Hábito"})
 
       assert {:ok, %{item_type: :checklist}} =
                Priorities.create_item(user, cat, %{item_type: :checklist, title: "Checklist"})
@@ -336,7 +375,7 @@ defmodule QuizProject.PrioritiesTest do
   describe "change_item_type/3" do
     test "troca o tipo mantendo o registro", %{user: user} do
       cat = category(user)
-      {:ok, item} = Priorities.create_item(user, cat, %{item_type: :habit, title: "Hábito"})
+      {:ok, item} = Priorities.create_item(user, cat, %{item_type: :manual, title: "Manual"})
 
       assert {:ok, atualizado} =
                Priorities.change_item_type(
@@ -463,79 +502,90 @@ defmodule QuizProject.PrioritiesTest do
   end
 
   describe "hábitos" do
-    test "criar item :habit já cria HabitConfig :daily", %{user: user} do
+    test "cria hábito :daily por padrão, sempre extensão de uma prioridade", %{user: user} do
       cat = category(user)
-      {:ok, item} = Priorities.create_item(user, cat, %{item_type: :habit, title: "Hábito"})
+      item = manual_item(user, cat, "Academia")
 
-      config = Priorities.habit_config_for_item(item)
+      {:ok, habit} = Priorities.create_habit(user, %{title: "Hábito", item_id: item.id})
+      assert habit.frequency == :daily
+      assert habit.item_id == item.id
 
-      assert config.frequency == :daily
-      assert config.item_id == item.id
+      assert {:error, _} = Priorities.create_habit(user, %{title: "Sem prioridade"})
+    end
+
+    test "rejeita item de outro usuário", %{user: user, other: other} do
+      item = manual_item(other, category(other), "Alheio")
+
+      assert {:error, :unauthorized} =
+               Priorities.create_habit(user, %{title: "Hábito", item_id: item.id})
     end
 
     test "set_habit_frequency muda pra semanal e persiste", %{user: user} do
-      cat = category(user)
-      {:ok, item} = Priorities.create_item(user, cat, %{item_type: :habit, title: "Hábito"})
+      {:ok, habit} =
+        Priorities.create_habit(user, %{title: "Hábito", item_id: habit_item(user).id})
 
       {:ok, _} =
-        Priorities.set_habit_frequency(item, %{frequency: :weekly, weekdays: [1, 3, 5]}, user)
+        Priorities.set_habit_frequency(habit, %{frequency: :weekly, weekdays: [1, 3, 5]}, user)
 
-      config = Priorities.habit_config_for_item(item)
-      assert config.frequency == :weekly
-      assert config.weekdays == [1, 3, 5]
+      {:ok, atualizado} = Priorities.get_habit(habit.id, user)
+      assert atualizado.frequency == :weekly
+      assert atualizado.weekdays == [1, 3, 5]
     end
 
     test "ensure_today_habit_instance cria a instância de hoje quando devido, sem duplicar", %{
       user: user
     } do
-      cat = category(user)
-      {:ok, item} = Priorities.create_item(user, cat, %{item_type: :habit, title: "Hábito"})
+      {:ok, habit} =
+        Priorities.create_habit(user, %{title: "Hábito", item_id: habit_item(user).id})
 
-      :ok = Priorities.ensure_today_habit_instance(item, user)
-      :ok = Priorities.ensure_today_habit_instance(item, user)
+      :ok = Priorities.ensure_today_habit_instance(habit, user)
+      :ok = Priorities.ensure_today_habit_instance(habit, user)
 
-      activities = Priorities.list_activities_for_item(item.id, user)
+      activities =
+        Priorities.list_today_activities(user) |> Enum.filter(&(&1.habit_id == habit.id))
+
       assert [%{logical_date: date, status: :pendente}] = activities
       assert date == Date.utc_today()
     end
 
     test "não cria instância quando o dia não é devido (semanal fora do dia)", %{user: user} do
-      cat = category(user)
-      {:ok, item} = Priorities.create_item(user, cat, %{item_type: :habit, title: "Hábito"})
+      {:ok, habit} =
+        Priorities.create_habit(user, %{title: "Hábito", item_id: habit_item(user).id})
 
       hoje_semana = Date.day_of_week(Date.utc_today())
       outro_dia = if hoje_semana == 1, do: 2, else: 1
 
-      {:ok, _} =
-        Priorities.set_habit_frequency(item, %{frequency: :weekly, weekdays: [outro_dia]}, user)
+      {:ok, habit} =
+        Priorities.set_habit_frequency(habit, %{frequency: :weekly, weekdays: [outro_dia]}, user)
 
-      :ok = Priorities.ensure_today_habit_instance(item, user)
+      :ok = Priorities.ensure_today_habit_instance(habit, user)
 
-      assert Priorities.list_activities_for_item(item.id, user) == []
+      assert Priorities.list_today_activities(user)
+             |> Enum.filter(&(&1.habit_id == habit.id)) == []
     end
 
     test "instância vencida ainda pendente vira não cumprida ao garantir a de hoje", %{
       user: user
     } do
-      cat = category(user)
-      {:ok, item} = Priorities.create_item(user, cat, %{item_type: :habit, title: "Hábito"})
+      {:ok, habit} =
+        Priorities.create_habit(user, %{title: "Hábito", item_id: habit_item(user).id})
 
       {:ok, vencida} =
         Priorities.create_activity(user, %{
           title: "Hábito",
-          item_id: item.id,
+          habit_id: habit.id,
           logical_date: Date.add(Date.utc_today(), -1)
         })
 
-      :ok = Priorities.ensure_today_habit_instance(item, user)
+      :ok = Priorities.ensure_today_habit_instance(habit, user)
 
       {:ok, atualizada} = Priorities.get_activity(vencida.id, user)
       assert atualizada.status == :nao_cumprida
     end
 
     test "habit_streak conta dias devidos consecutivos concluídos", %{user: user} do
-      cat = category(user)
-      {:ok, item} = Priorities.create_item(user, cat, %{item_type: :habit, title: "Hábito"})
+      {:ok, habit} =
+        Priorities.create_habit(user, %{title: "Hábito", item_id: habit_item(user).id})
 
       hoje = Date.utc_today()
       ontem = Date.add(hoje, -1)
@@ -543,27 +593,279 @@ defmodule QuizProject.PrioritiesTest do
 
       for date <- [hoje, ontem, anteontem] do
         {:ok, activity} =
-          Priorities.create_activity(user, %{title: "H", item_id: item.id, logical_date: date})
+          Priorities.create_activity(user, %{title: "H", habit_id: habit.id, logical_date: date})
 
         {:ok, _} = Priorities.complete_activity(activity, user)
       end
 
-      assert Priorities.habit_streak(item.id) == 3
+      assert Priorities.habit_streak(habit.id) == 3
     end
 
     test "habit_streak quebra num dia devido sem instância concluída", %{user: user} do
-      cat = category(user)
-      {:ok, item} = Priorities.create_item(user, cat, %{item_type: :habit, title: "Hábito"})
+      {:ok, habit} =
+        Priorities.create_habit(user, %{title: "Hábito", item_id: habit_item(user).id})
 
       hoje = Date.utc_today()
 
       {:ok, activity} =
-        Priorities.create_activity(user, %{title: "H", item_id: item.id, logical_date: hoje})
+        Priorities.create_activity(user, %{title: "H", habit_id: habit.id, logical_date: hoje})
 
       {:ok, _} = Priorities.complete_activity(activity, user)
 
       # ontem não tem nenhuma atividade — quebra a sequência antes de contar
-      assert Priorities.habit_streak(item.id) == 1
+      assert Priorities.habit_streak(habit.id) == 1
+    end
+
+    test "atividade não pode estar presa a item e a hábito ao mesmo tempo", %{user: user} do
+      cat = category(user)
+      {:ok, item} = Priorities.create_item(user, cat, %{item_type: :manual, title: "Item"})
+
+      {:ok, habit} =
+        Priorities.create_habit(user, %{title: "Hábito", item_id: habit_item(user).id})
+
+      assert {:error, _} =
+               Priorities.create_activity(user, %{
+                 title: "Inválida",
+                 item_id: item.id,
+                 habit_id: habit.id
+               })
+    end
+  end
+
+  describe "itens legados item_type: :habit (self-healing)" do
+    test "list_items_by_category remove o item legado e apaga a linha", %{user: user} do
+      cat = category(user)
+      manual_item(user, cat, "Fica")
+      legacy_id = legacy_habit_item(user, cat)
+
+      titles = Priorities.list_items_by_category(cat.id) |> Enum.map(& &1.title)
+      assert titles == ["Fica"]
+      assert item_row_count(legacy_id) == 0
+    end
+
+    test "get_item retorna not_found pro item legado e apaga a linha", %{user: user} do
+      cat = category(user)
+      legacy_id = legacy_habit_item(user, cat)
+
+      assert {:error, :not_found} = Priorities.get_item(legacy_id, user)
+      assert item_row_count(legacy_id) == 0
+    end
+
+    test "list_untiered_items e list_tiered_items também removem o item legado", %{user: user} do
+      cat = category(user)
+      legacy_habit_item(user, cat, "Legado sem tier")
+
+      assert Priorities.list_untiered_items(user) == []
+      assert Priorities.list_tiered_items(user) |> Enum.flat_map(&elem(&1, 1)) == []
+    end
+
+    test "filter_items também remove o item legado", %{user: user} do
+      cat = category(user)
+      legacy_habit_item(user, cat, "Legado filtro")
+
+      assert Priorities.filter_items(user) == []
+    end
+  end
+
+  describe "upcoming_habit_schedule/2" do
+    test "diário aparece todo dia, semanal só no dia certo, arquivado nunca aparece", %{
+      user: user
+    } do
+      item = habit_item(user)
+
+      {:ok, _diario} = Priorities.create_habit(user, %{title: "Diário", item_id: item.id})
+      {:ok, arquivado} = Priorities.create_habit(user, %{title: "Arquivado", item_id: item.id})
+      {:ok, _} = Priorities.archive_habit(arquivado, user)
+
+      tomorrow = Date.add(Date.utc_today(), 1)
+      tomorrow_weekday = Date.day_of_week(tomorrow)
+
+      {:ok, _semanal} =
+        Priorities.create_habit(user, %{
+          title: "Semanal",
+          item_id: item.id,
+          frequency: :weekly,
+          weekdays: [tomorrow_weekday]
+        })
+
+      schedule = Priorities.upcoming_habit_schedule(user, 7)
+
+      assert length(schedule) == 7
+      assert Enum.all?(schedule, &(&1.date != Date.utc_today()))
+      assert Enum.at(schedule, 0).date == tomorrow
+
+      titles_tomorrow = Enum.at(schedule, 0).habits |> Enum.map(& &1.title) |> Enum.sort()
+      assert titles_tomorrow == Enum.sort(["Diário", "Semanal"])
+
+      other_day =
+        Enum.find(
+          schedule,
+          &(&1.date != tomorrow and Date.day_of_week(&1.date) != tomorrow_weekday)
+        )
+
+      titles_other_day = Enum.map(other_day.habits, & &1.title)
+      assert "Diário" in titles_other_day
+      refute "Semanal" in titles_other_day
+
+      assert Enum.all?(schedule, fn day -> Enum.all?(day.habits, &(&1.title != "Arquivado")) end)
+    end
+  end
+
+  describe "exceção de hábito por data (HabitOverride)" do
+    test "sem exceção, habit_due_on?/2 e occurrence_title/2 seguem a regra normal", %{
+      user: user
+    } do
+      {:ok, habit} =
+        Priorities.create_habit(user, %{title: "Meditar", item_id: habit_item(user).id})
+
+      amanha = Date.add(Date.utc_today(), 1)
+
+      assert Priorities.habit_due_on?(habit, amanha)
+      assert Priorities.occurrence_title(habit, amanha) == "Meditar"
+    end
+
+    test "pular um dia tira ele de habit_due_on?/2 sem afetar outros dias", %{user: user} do
+      {:ok, habit} =
+        Priorities.create_habit(user, %{title: "Meditar", item_id: habit_item(user).id})
+
+      amanha = Date.add(Date.utc_today(), 1)
+      depois = Date.add(amanha, 1)
+
+      {:ok, _} = Priorities.set_habit_occurrence_override(habit, amanha, %{skipped: true}, user)
+
+      refute Priorities.habit_due_on?(habit, amanha)
+      assert Priorities.habit_due_on?(habit, depois)
+    end
+
+    test "título de exceção só vale pra aquele dia", %{user: user} do
+      {:ok, habit} =
+        Priorities.create_habit(user, %{title: "Academia", item_id: habit_item(user).id})
+
+      amanha = Date.add(Date.utc_today(), 1)
+      depois = Date.add(amanha, 1)
+
+      {:ok, _} =
+        Priorities.set_habit_occurrence_override(
+          habit,
+          amanha,
+          %{title: "Academia - perna"},
+          user
+        )
+
+      assert Priorities.occurrence_title(habit, amanha) == "Academia - perna"
+      assert Priorities.occurrence_title(habit, depois) == "Academia"
+    end
+
+    test "salvar exceção pra mesma data de novo atualiza em vez de duplicar", %{user: user} do
+      {:ok, habit} =
+        Priorities.create_habit(user, %{title: "Meditar", item_id: habit_item(user).id})
+
+      amanha = Date.add(Date.utc_today(), 1)
+
+      {:ok, _} = Priorities.set_habit_occurrence_override(habit, amanha, %{skipped: true}, user)
+      {:ok, _} = Priorities.set_habit_occurrence_override(habit, amanha, %{skipped: false}, user)
+
+      refute Priorities.get_habit_occurrence_override(habit.id, amanha).skipped
+    end
+
+    test "clear_habit_occurrence_override remove a exceção e é idempotente", %{user: user} do
+      {:ok, habit} =
+        Priorities.create_habit(user, %{title: "Meditar", item_id: habit_item(user).id})
+
+      amanha = Date.add(Date.utc_today(), 1)
+
+      {:ok, _} = Priorities.set_habit_occurrence_override(habit, amanha, %{skipped: true}, user)
+      :ok = Priorities.clear_habit_occurrence_override(habit, amanha, user)
+
+      assert Priorities.get_habit_occurrence_override(habit.id, amanha) == nil
+      assert Priorities.habit_due_on?(habit, amanha)
+
+      # chamar de novo sem exceção nenhuma não deve dar erro
+      assert :ok = Priorities.clear_habit_occurrence_override(habit, amanha, user)
+    end
+
+    test "ensure_today_habit_instance não cria atividade quando hoje está pulado", %{user: user} do
+      {:ok, habit} =
+        Priorities.create_habit(user, %{title: "Meditar", item_id: habit_item(user).id})
+
+      hoje = Date.utc_today()
+
+      {:ok, _} = Priorities.set_habit_occurrence_override(habit, hoje, %{skipped: true}, user)
+      :ok = Priorities.ensure_today_habit_instance(habit, user)
+
+      assert Priorities.list_today_activities(user)
+             |> Enum.filter(&(&1.habit_id == habit.id)) == []
+    end
+
+    test "ensure_today_habit_instance usa o título de exceção de hoje", %{user: user} do
+      {:ok, habit} =
+        Priorities.create_habit(user, %{title: "Academia", item_id: habit_item(user).id})
+
+      hoje = Date.utc_today()
+
+      {:ok, _} =
+        Priorities.set_habit_occurrence_override(habit, hoje, %{title: "Academia - perna"}, user)
+
+      :ok = Priorities.ensure_today_habit_instance(habit, user)
+
+      [activity] =
+        Priorities.list_today_activities(user) |> Enum.filter(&(&1.habit_id == habit.id))
+
+      assert activity.title == "Academia - perna"
+    end
+  end
+
+  describe "change_habit_frequency_from/4" do
+    test "encerra o hábito atual no dia anterior e cria um novo a partir da data, com a regra nova",
+         %{user: user} do
+      cat = category(user)
+      item = manual_item(user, cat, "Academia")
+
+      {:ok, habit} =
+        Priorities.create_habit(user, %{title: "Academia", item_id: item.id})
+
+      data_corte = Date.add(Date.utc_today(), 3)
+
+      {:ok, novo} =
+        Priorities.change_habit_frequency_from(
+          habit,
+          data_corte,
+          %{frequency: :weekly, weekdays: [1, 3, 5]},
+          user
+        )
+
+      {:ok, antigo_atualizado} = Priorities.get_habit(habit.id, user)
+      assert antigo_atualizado.ends_on == Date.add(data_corte, -1)
+      # a regra do hábito antigo não muda, só o limite
+      assert antigo_atualizado.frequency == :daily
+
+      assert novo.starts_on == data_corte
+      assert novo.frequency == :weekly
+      assert novo.weekdays == [1, 3, 5]
+      assert novo.title == "Academia"
+      assert novo.item_id == item.id
+      assert novo.id != habit.id
+    end
+
+    test "dias antes da data de corte continuam com a regra antiga na prévia", %{user: user} do
+      {:ok, habit} =
+        Priorities.create_habit(user, %{title: "Academia", item_id: habit_item(user).id})
+
+      data_corte = Date.add(Date.utc_today(), 3)
+
+      {:ok, _novo} =
+        Priorities.change_habit_frequency_from(
+          habit,
+          data_corte,
+          %{frequency: :monthly, month_days: [1]},
+          user
+        )
+
+      schedule = Priorities.upcoming_habit_schedule(user, 7)
+
+      dia_antes = Enum.find(schedule, &(&1.date == Date.add(data_corte, -1)))
+      titles_antes = Enum.map(dia_antes.habits, & &1.title)
+      assert "Academia" in titles_antes
     end
   end
 

@@ -159,6 +159,47 @@ defmodule QuizProjectWeb.PrioritiesLiveTest do
       assert html =~ "Concluída"
       {:ok, updated} = Priorities.get_activity(activity.id, user)
       assert updated.status == :concluida
+
+      html =
+        view
+        |> element("button[phx-click=\"reopen_item_activity\"]")
+        |> render_click()
+
+      assert html =~ "Pendente"
+      {:ok, reaberta} = Priorities.get_activity(activity.id, user)
+      assert reaberta.status == :pendente
+    end
+
+    test "aba Atividades com \"É um hábito?\" marcado cria um hábito à parte, não uma atividade presa ao item",
+         %{conn: conn, user: user} do
+      cat = category(user)
+      item = manual_item(user, cat, "Projeto")
+      {:ok, view, _html} = live(conn, ~p"/priorities")
+
+      render_click(view, "open_item", %{"id" => item.id})
+      view |> element("button[phx-value-tab=\"activities\"]") |> render_click()
+
+      # O campo de frequência só existe no DOM depois do phx-change revelar a
+      # seção de hábito (mesmo padrão do form de captura do Kanban).
+      view
+      |> form("#create-item-activity-form", %{"title" => "Correr", "is_habit" => "true"})
+      |> render_change()
+
+      html =
+        view
+        |> form("#create-item-activity-form", %{
+          "title" => "Correr",
+          "is_habit" => "true",
+          "frequency" => "daily"
+        })
+        |> render_submit()
+
+      assert html =~ "Nenhuma atividade ainda."
+
+      assert Priorities.list_activities_for_item(item.id, user) == []
+      assert [habit] = Priorities.list_today_activities(user) |> Enum.map(& &1.habit)
+      assert habit.title == "Correr"
+      assert habit.item_id == item.id
     end
   end
 
@@ -184,38 +225,6 @@ defmodule QuizProjectWeb.PrioritiesLiveTest do
       html = view |> element("#toggle-task-#{task.id}") |> render_click()
 
       assert html =~ "50%"
-    end
-
-    test "hábito: marcar feito hoje incrementa a sequência e persiste depois de recarregar", %{
-      conn: conn,
-      user: user
-    } do
-      cat = category(user)
-      {:ok, item} = Priorities.create_item(user, cat, %{item_type: :habit, title: "Meditar"})
-
-      {:ok, view, html} = live(conn, ~p"/priorities/#{item.id}")
-      assert html =~ "0 dias seguidos"
-
-      html = view |> element("#complete-habit-today-btn") |> render_click()
-      assert html =~ "1 dia seguido"
-
-      {:ok, _view2, html2} = live(conn, ~p"/priorities/#{item.id}")
-      assert html2 =~ "1 dia seguido"
-    end
-
-    test "hábito: trocar frequência pra dias da semana persiste", %{conn: conn, user: user} do
-      cat = category(user)
-      {:ok, item} = Priorities.create_item(user, cat, %{item_type: :habit, title: "Meditar"})
-
-      {:ok, view, _html} = live(conn, ~p"/priorities/#{item.id}")
-
-      view
-      |> element("#habit-frequency-form")
-      |> render_submit(%{"frequency" => "weekly", "weekdays" => ["1", "3", "5"]})
-
-      config = Priorities.habit_config_for_item(item)
-      assert config.frequency == :weekly
-      assert config.weekdays == [1, 3, 5]
     end
 
     test "tags: adicionar e remover", %{conn: conn, user: user} do
