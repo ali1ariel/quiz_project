@@ -24,6 +24,16 @@ import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
 import {hooks as colocatedHooks} from "phoenix-colocated/quiz_project"
 import topbar from "../vendor/topbar"
+import Sortable from "../vendor/sortable"
+
+// Exposto em `window` porque os hooks de drag-and-drop (`.SortableZone`, ver
+// `PrioritiesLive.Components.drop_zone/1`) são hooks colocados — vivem como
+// `<script>` dentro dos próprios arquivos `.ex` e são empacotados pelo
+// esbuild a partir de um diretório de build separado (`_build/.../phoenix-colocated`),
+// então não têm como importar `assets/vendor/sortable.js` por caminho
+// relativo. `window.Sortable` é o único jeito de compartilhar essa
+// dependência com eles sem duplicar o vendor por hook.
+window.Sortable = Sortable
 
 const colorScheme = window.matchMedia("(prefers-color-scheme: dark)")
 const availableSkins = ["sobrio", "aurora", "classico"]

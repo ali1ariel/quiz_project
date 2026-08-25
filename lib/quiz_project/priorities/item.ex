@@ -3,7 +3,7 @@ defmodule QuizProject.Priorities.Item do
   Item de Prioridades: uma coisa que o usuário quer trackear a evolução ao
   longo do tempo, dentro de uma categoria.
 
-  Os seis tipos compartilham identidade (título, categoria, posição,
+  Os cinco tipos compartilham identidade (título, categoria, posição,
   arquivamento) numa tabela só — como `AdaptiveStudy.StudyMaterial` já faz
   entre `:text` e `:epub` — e cada tipo usa só as colunas que lhe dizem
   respeito; as demais ficam `nil`. `:book` e `:quiz_goal` não duplicam
@@ -111,12 +111,6 @@ defmodule QuizProject.Priorities.Item do
       accept [:manual_progress_mode, :manual_percent]
     end
 
-    update :check_in_habit do
-      accept []
-      require_atomic? false
-      change QuizProject.Priorities.Changes.CheckInHabit
-    end
-
     update :add_tag do
       accept []
       require_atomic? false
@@ -191,7 +185,7 @@ defmodule QuizProject.Priorities.Item do
 
     attribute :item_type, :atom do
       allow_nil? false
-      constraints one_of: ~w(book quiz_goal course habit checklist manual)a
+      constraints one_of: ~w(book quiz_goal course checklist manual)a
     end
 
     attribute :title, :string do
@@ -240,9 +234,6 @@ defmodule QuizProject.Priorities.Item do
     attribute :course_access_link, :string
     attribute :course_access_login, :string
     attribute :course_access_password, :string
-    # :habit
-    attribute :habit_current_streak, :integer, default: 0
-    attribute :habit_last_checked_on, :date
     # :manual
     attribute :manual_percent, :integer do
       default 0

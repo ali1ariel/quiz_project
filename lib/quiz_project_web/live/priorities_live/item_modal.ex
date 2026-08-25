@@ -29,6 +29,9 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
       |> assign_new(:new_field_type, fn -> "text" end)
       |> assign_new(:type_form_value, fn -> nil end)
       |> assign_new(:active_tab, fn -> :details end)
+      |> assign_new(:new_activity_title, fn -> "" end)
+      |> assign_new(:new_activity_is_habit?, fn -> false end)
+      |> assign_new(:new_activity_frequency, fn -> "daily" end)
       |> assign_new(:books, fn -> AdaptiveStudy.list_books(assigns.current_user) end)
       |> assign_new(:quizzes, fn -> Quizzes.list_created(assigns.current_user) end)
       |> load_item(assigns.item_id)
@@ -189,17 +192,6 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
   end
 
   @impl true
-  def handle_event("check_in_habit", _params, socket) do
-    case Priorities.check_in_habit(socket.assigns.item, socket.assigns.current_user) do
-      {:ok, _} ->
-        {:noreply, socket |> notify_flash(:info, "Marcado!") |> load_item(socket.assigns.item.id)}
-
-      _ ->
-        {:noreply, notify_flash(socket, :error, "Não foi possível marcar.")}
-    end
-  end
-
-  @impl true
   def handle_event("set_tier", %{"tier" => value}, socket) do
     user = socket.assigns.current_user
 
@@ -352,21 +344,58 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
   end
 
   @impl true
-  def handle_event("create_item_activity", %{"title" => title}, socket) do
-    title = String.trim(title)
+  def handle_event("new_activity_form_change", params, socket) do
+    {:noreply,
+     assign(socket,
+       new_activity_title: Map.get(params, "title", ""),
+       new_activity_is_habit?: Map.get(params, "is_habit") == "true",
+       new_activity_frequency: Map.get(params, "frequency", "daily")
+     )}
+  end
+
+  @impl true
+  def handle_event("create_item_activity", params, socket) do
+    title = params |> Map.get("title", "") |> String.trim()
     user = socket.assigns.current_user
+    item = socket.assigns.item
 
-    if title == "" do
-      {:noreply, socket}
-    else
-      case Priorities.create_activity(user, %{title: title, item_id: socket.assigns.item.id}) do
-        {:ok, _} ->
-          {:noreply,
-           socket |> notify_flash(:info, "Atividade criada.") |> load_item(socket.assigns.item.id)}
+    cond do
+      title == "" ->
+        {:noreply, socket}
 
-        _ ->
-          {:noreply, notify_flash(socket, :error, "Não foi possível criar a atividade.")}
-      end
+      Map.get(params, "is_habit") == "true" ->
+        attrs = Map.merge(%{title: title, item_id: item.id}, build_habit_attrs(params))
+
+        case Priorities.create_habit(user, attrs) do
+          {:ok, habit} ->
+            Priorities.ensure_today_habit_instance(habit, user)
+
+            {:noreply,
+             socket
+             |> notify_flash(:info, "Hábito criado — acompanhe na Tela do Dia, não aqui.")
+             |> assign(
+               new_activity_title: "",
+               new_activity_is_habit?: false,
+               new_activity_frequency: "daily"
+             )
+             |> load_item(item.id)}
+
+          _ ->
+            {:noreply, notify_flash(socket, :error, "Não foi possível criar o hábito.")}
+        end
+
+      true ->
+        case Priorities.create_activity(user, %{title: title, item_id: item.id}) do
+          {:ok, _} ->
+            {:noreply,
+             socket
+             |> notify_flash(:info, "Atividade criada.")
+             |> assign(new_activity_title: "")
+             |> load_item(item.id)}
+
+          _ ->
+            {:noreply, notify_flash(socket, :error, "Não foi possível criar a atividade.")}
+        end
     end
   end
 
@@ -381,6 +410,10 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
   @impl true
   def handle_event("discard_item_activity", %{"id" => id}, socket),
     do: {:noreply, resolve_activity(socket, id, &Priorities.discard_activity/2)}
+
+  @impl true
+  def handle_event("reopen_item_activity", %{"id" => id}, socket),
+    do: {:noreply, resolve_activity(socket, id, &Priorities.reopen_activity/2)}
 
   defp resolve_activity(socket, id, fun) do
     activity = Enum.find(socket.assigns.activities, &(&1.id == id))
@@ -441,7 +474,22 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
   defp blank_to_nil(""), do: nil
   defp blank_to_nil(value), do: value
 
-  @item_types ~w(book quiz_goal course habit checklist manual)
+  defp build_habit_attrs(%{"frequency" => "weekly"} = params) do
+    %{frequency: :weekly, weekdays: parse_int_list(params["weekdays"]), month_days: []}
+  end
+
+  defp build_habit_attrs(%{"frequency" => "monthly"} = params) do
+    %{frequency: :monthly, weekdays: [], month_days: parse_int_list(params["month_days"])}
+  end
+
+  defp build_habit_attrs(_params) do
+    %{frequency: :daily, weekdays: [], month_days: []}
+  end
+
+  defp parse_int_list(nil), do: []
+  defp parse_int_list(values) when is_list(values), do: Enum.map(values, &String.to_integer/1)
+
+  @item_types ~w(book quiz_goal course checklist manual)
 
   defp parse_item_type(value) when value in @item_types,
     do: {:ok, String.to_existing_atom(value)}
@@ -493,7 +541,9 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
     ~H"""
     <div id={@id}>
       <div :if={@standalone} class="mx-auto max-w-3xl space-y-6">
-        <.content
+        <.item_header item={@item} myself={@myself} />
+        <.item_tabs myself={@myself} active_tab={@active_tab} activities={@activities} />
+        <.content_body
           myself={@myself}
           item={@item}
           progress={@progress}
@@ -507,6 +557,9 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
           quizzes={@quizzes}
           active_tab={@active_tab}
           activities={@activities}
+          new_activity_title={@new_activity_title}
+          new_activity_is_habit?={@new_activity_is_habit?}
+          new_activity_frequency={@new_activity_frequency}
         />
       </div>
 
@@ -516,30 +569,43 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
         phx-window-keydown="close_item_modal"
         phx-key="Escape"
       >
-        <div class="modal-box relative max-w-2xl space-y-6 rounded-3xl">
-          <button
-            type="button"
-            phx-click="close_item_modal"
-            class="btn btn-sm btn-circle btn-ghost absolute right-4 top-4"
-            aria-label="Fechar"
-          >
-            ✕
-          </button>
-          <.content
-            myself={@myself}
-            item={@item}
-            progress={@progress}
-            tasks={@tasks}
-            other_categories={@other_categories}
-            field_definitions={@field_definitions}
-            show_new_field_form?={@show_new_field_form?}
-            new_field_type={@new_field_type}
-            type_form_value={@type_form_value}
-            books={@books}
-            quizzes={@quizzes}
-            active_tab={@active_tab}
-            activities={@activities}
-          />
+        <div class="modal-box flex max-h-[85vh] max-w-2xl flex-col overflow-hidden rounded-3xl p-0">
+          <div class="shrink-0 space-y-3 border-b border-base-300 px-6 pb-4 pt-6">
+            <.item_header item={@item} myself={@myself}>
+              <:extra_actions>
+                <button
+                  type="button"
+                  phx-click="close_item_modal"
+                  class="btn btn-sm btn-circle btn-ghost"
+                  aria-label="Fechar"
+                >
+                  ✕
+                </button>
+              </:extra_actions>
+            </.item_header>
+            <.item_tabs myself={@myself} active_tab={@active_tab} activities={@activities} />
+          </div>
+
+          <div class="flex-1 space-y-6 overflow-y-auto p-6">
+            <.content_body
+              myself={@myself}
+              item={@item}
+              progress={@progress}
+              tasks={@tasks}
+              other_categories={@other_categories}
+              field_definitions={@field_definitions}
+              show_new_field_form?={@show_new_field_form?}
+              new_field_type={@new_field_type}
+              type_form_value={@type_form_value}
+              books={@books}
+              quizzes={@quizzes}
+              active_tab={@active_tab}
+              activities={@activities}
+              new_activity_title={@new_activity_title}
+              new_activity_is_habit?={@new_activity_is_habit?}
+              new_activity_frequency={@new_activity_frequency}
+            />
+          </div>
         </div>
 
         <button
@@ -555,23 +621,13 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
     """
   end
 
-  attr :myself, :any, required: true
   attr :item, :map, required: true
-  attr :progress, :any, required: true
-  attr :tasks, :list, required: true
-  attr :other_categories, :list, required: true
-  attr :field_definitions, :list, required: true
-  attr :show_new_field_form?, :boolean, required: true
-  attr :new_field_type, :string, required: true
-  attr :type_form_value, :string, default: nil
-  attr :books, :list, required: true
-  attr :quizzes, :list, required: true
-  attr :active_tab, :atom, required: true
-  attr :activities, :list, required: true
+  attr :myself, :any, required: true
+  slot :extra_actions
 
-  defp content(assigns) do
+  defp item_header(assigns) do
     ~H"""
-    <div class="flex flex-wrap items-center justify-between gap-3 pr-8">
+    <div class="flex flex-wrap items-center justify-between gap-3">
       <div>
         <h1 class="text-xl font-bold tracking-tight">{@item.title}</h1>
         <p class="text-sm opacity-70">
@@ -602,9 +658,18 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
         >
           Excluir
         </button>
+        {render_slot(@extra_actions)}
       </div>
     </div>
+    """
+  end
 
+  attr :myself, :any, required: true
+  attr :active_tab, :atom, required: true
+  attr :activities, :list, required: true
+
+  defp item_tabs(assigns) do
+    ~H"""
     <nav class="flex gap-2 text-sm font-semibold">
       <button
         type="button"
@@ -612,7 +677,7 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
         phx-value-tab="details"
         phx-target={@myself}
         class={[
-          "rounded-full px-4 py-1.5 transition",
+          "rounded-full px-4 py-1.5 transition [transform:translateZ(0)]",
           if(@active_tab == :details,
             do: "bg-primary text-primary-content shadow-sm",
             else: "bg-base-200 opacity-70 hover:opacity-100"
@@ -627,7 +692,7 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
         phx-value-tab="activities"
         phx-target={@myself}
         class={[
-          "rounded-full px-4 py-1.5 transition",
+          "rounded-full px-4 py-1.5 transition [transform:translateZ(0)]",
           if(@active_tab == :activities,
             do: "bg-primary text-primary-content shadow-sm",
             else: "bg-base-200 opacity-70 hover:opacity-100"
@@ -638,11 +703,38 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
         <span :if={@activities != []} class="ml-0.5 opacity-70">({length(@activities)})</span>
       </button>
     </nav>
+    """
+  end
 
+  attr :myself, :any, required: true
+  attr :item, :map, required: true
+  attr :progress, :any, required: true
+  attr :tasks, :list, required: true
+  attr :other_categories, :list, required: true
+  attr :field_definitions, :list, required: true
+  attr :show_new_field_form?, :boolean, required: true
+  attr :new_field_type, :string, required: true
+  attr :type_form_value, :string, default: nil
+  attr :books, :list, required: true
+  attr :quizzes, :list, required: true
+  attr :active_tab, :atom, required: true
+  attr :activities, :list, required: true
+  attr :new_activity_title, :string, required: true
+  attr :new_activity_is_habit?, :boolean, required: true
+  attr :new_activity_frequency, :string, required: true
+
+  defp content_body(assigns) do
+    ~H"""
     <div :if={@active_tab == :details} class="space-y-6">
       <section class="card qcard space-y-3 border border-base-300 bg-base-100 p-5">
         <h2 class="text-sm font-bold uppercase tracking-wide opacity-60">Progresso</h2>
-        <.type_editor item={@item} progress={@progress} tasks={@tasks} myself={@myself} />
+        <.type_editor
+          item={@item}
+          progress={@progress}
+          tasks={@tasks}
+          myself={@myself}
+          activities={@activities}
+        />
       </section>
 
       <section class="card qcard space-y-3 border border-base-300 bg-base-100 p-5">
@@ -889,28 +981,90 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
     <div :if={@active_tab == :activities} class="space-y-4">
       <section class="card qcard space-y-3 border border-base-300 bg-base-100 p-5">
         <h2 class="text-sm font-bold uppercase tracking-wide opacity-60">Nova atividade</h2>
+        <p class="text-xs opacity-60">
+          Marcar como hábito cria um hábito à parte (categoria de {@item.title}, não este item) —
+          acompanhe a sequência dele na Tela do Dia, não aqui.
+        </p>
         <form
           id="create-item-activity-form"
           phx-submit="create_item_activity"
+          phx-change="new_activity_form_change"
           phx-target={@myself}
-          class="flex items-end gap-2"
+          class="space-y-3"
         >
-          <div class="flex-1">
-            <.input
-              type="text"
-              name="title"
-              label="Título"
-              value=""
-              placeholder="Ex: Ler capítulo 3"
-            />
+          <div class="flex flex-wrap items-end gap-3">
+            <div class="min-w-40 flex-1">
+              <.input
+                type="text"
+                name="title"
+                label="Título"
+                value={@new_activity_title}
+                placeholder="Ex: Ler capítulo 3"
+              />
+            </div>
+            <div class="fieldset mb-2">
+              <label class="label flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  name="is_habit"
+                  value="true"
+                  checked={@new_activity_is_habit?}
+                  class="checkbox checkbox-sm"
+                /> É um hábito?
+              </label>
+            </div>
+            <div class="fieldset mb-2">
+              <label>
+                <span class="label mb-1 invisible">Adicionar</span>
+                <button type="submit" class="btn btn-primary btn-sm rounded-full px-4">
+                  {if @new_activity_is_habit?, do: "Criar hábito", else: "Adicionar"}
+                </button>
+              </label>
+            </div>
           </div>
-          <div class="fieldset mb-2">
-            <label>
-              <span class="label mb-1 invisible">Adicionar</span>
-              <button type="submit" class="btn btn-primary btn-sm rounded-full px-4">
-                Adicionar
-              </button>
-            </label>
+
+          <div
+            :if={@new_activity_is_habit?}
+            class="space-y-3 rounded-2xl border border-base-300 p-3"
+          >
+            <.input
+              type="select"
+              name="frequency"
+              label="Frequência"
+              value={@new_activity_frequency}
+              options={[
+                {"Diário", "daily"},
+                {"Dias da semana", "weekly"},
+                {"Dias do mês", "monthly"}
+              ]}
+            />
+
+            <div :if={@new_activity_frequency == "weekly"} class="fieldset mb-2">
+              <span class="label mb-1">Quais dias</span>
+              <Components.day_toggle_group
+                name="weekdays[]"
+                selected={[]}
+                options={[
+                  {"Segunda", "1"},
+                  {"Terça", "2"},
+                  {"Quarta", "3"},
+                  {"Quinta", "4"},
+                  {"Sexta", "5"},
+                  {"Sábado", "6"},
+                  {"Domingo", "7"}
+                ]}
+              />
+            </div>
+
+            <div :if={@new_activity_frequency == "monthly"} class="fieldset mb-2">
+              <span class="label mb-1">Quais dias do mês</span>
+              <Components.day_toggle_group
+                name="month_days[]"
+                selected={[]}
+                options={Enum.map(1..31, &{to_string(&1), to_string(&1)})}
+                class="grid grid-cols-6 gap-1.5 sm:grid-cols-7"
+              />
+            </div>
           </div>
         </form>
       </section>
@@ -961,6 +1115,17 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
                 <.icon name="hero-trash" class="size-4 opacity-50" />
               </button>
             </div>
+            <div :if={activity.status != :pendente} class="flex shrink-0 items-center gap-1">
+              <button
+                phx-click="reopen_item_activity"
+                phx-value-id={activity.id}
+                phx-target={@myself}
+                class="btn btn-ghost btn-xs"
+                title="Reabrir — volta pra pendente"
+              >
+                <.icon name="hero-arrow-uturn-left" class="size-4 opacity-50" />
+              </button>
+            </div>
           </li>
         </ul>
       </section>
@@ -977,6 +1142,7 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
   attr :progress, :any, required: true
   attr :tasks, :list, required: true
   attr :myself, :any, required: true
+  attr :activities, :list, default: []
 
   defp type_editor(%{item: %{item_type: :book}} = assigns) do
     ~H"""
@@ -1082,30 +1248,6 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
         <button type="submit" class="btn btn-soft btn-sm rounded-full px-5">Salvar acesso</button>
       </div>
     </form>
-    """
-  end
-
-  defp type_editor(%{item: %{item_type: :habit}} = assigns) do
-    ~H"""
-    <div class="flex items-center justify-between gap-3">
-      <p class="flex items-center gap-2 text-sm font-semibold text-primary">
-        <.icon name="hero-fire" class="size-5" />
-        {@item.habit_current_streak} {if @item.habit_current_streak == 1,
-          do: "dia seguido",
-          else: "dias seguidos"}
-      </p>
-      <button
-        id="check-in-habit-btn"
-        phx-click="check_in_habit"
-        phx-target={@myself}
-        class="btn btn-primary btn-sm rounded-full px-5"
-      >
-        Marcar hoje
-      </button>
-    </div>
-    <p :if={@item.habit_last_checked_on} class="text-xs opacity-60">
-      Última marcação: {Calendar.strftime(@item.habit_last_checked_on, "%d/%m/%Y")}
-    </p>
     """
   end
 

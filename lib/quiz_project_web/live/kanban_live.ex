@@ -1,13 +1,22 @@
 defmodule QuizProjectWeb.KanbanLive do
   @moduledoc """
   Tela do dia: seção própria do app (menu principal, `/today`), não uma aba
-  de Prioridades. Raias por prioridade (uma por item com atividade hoje), com
-  fluxo todo/fazendo/feito como filtro dentro da raia — não como colunas de
-  fluxo globais. Capturas soltas (atividades sem item) ficam destacadas no
-  topo, fora de qualquer raia, porque são o que ainda não tem pra onde ir.
+  de Prioridades. Board único (3 colunas: a fazer/fazendo/feito) com todas
+  as atividades presas a um item ou hábito hoje, misturadas — sem raia por
+  prioridade. O que diferencia um card do outro é só visual: a cor lateral
+  e a badge da categoria do item/hábito associado (ver
+  `Components.activity_card/1`). Capturas soltas (sem item nem hábito)
+  ficam destacadas à parte, no topo, porque são o que ainda não tem pra
+  onde ir.
 
-  Mudar de fluxo é arrastar (mesmo padrão de `PrioritiesLive.Ranking`, drag
-  nativo via `Components.draggable/1` + `Components.drop_zone/1`); "feito"
+  Hábito é sempre extensão de uma prioridade (`Habit.item_id`, nunca solto)
+  — nasce direto pelo form de captura (checkbox "É um hábito?"), anexado
+  via o mesmo dropdown "Anexar" de uma captura comum (categoria vira o item
+  "Geral" dela, prioridade anexa direto), sem página própria pra navegar
+  (streak fica visível ao abrir a atividade, `ActivityModal`).
+
+  Mudar de fluxo é arrastar (mesmo padrão de `PrioritiesLive.Ranking`, via
+  `Components.draggable/1` + `Components.drop_zone/1`, SortableJS); "feito"
   não aceita drop — só os botões de resolução, que carregam uma intenção que
   um simples arrastar não capta.
   """
@@ -19,7 +28,25 @@ defmodule QuizProjectWeb.KanbanLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    {:ok, socket |> assign(page_title: "Hoje", modal_activity_id: nil) |> load_data()}
+    # Geração preguiçosa das instâncias de hábito devidas hoje — só na
+    # conexão via socket, não no render estático inicial (que roda duas
+    # vezes por carregamento), mesmo cuidado que `UserAuth.on_mount(:notify_attempts)`
+    # já toma pra evitar trabalho em dobro.
+    if connected?(socket) do
+      Priorities.ensure_today_habit_instances(socket.assigns.current_user)
+    end
+
+    {:ok,
+     socket
+     |> assign(
+       page_title: "Hoje",
+       modal_activity_id: nil,
+       capture_is_habit?: false,
+       capture_frequency: "daily",
+       capture_category_id: nil,
+       attach_category_by_activity: %{}
+     )
+     |> load_data()}
   end
 
   @impl true
@@ -33,17 +60,37 @@ defmodule QuizProjectWeb.KanbanLive do
   end
 
   @impl true
+  def handle_event("capture_form_change", params, socket) do
+    category_id = params |> Map.get("category_id", "") |> blank_to_nil()
+
+    {:noreply,
+     assign(socket,
+       capture_is_habit?: Map.get(params, "is_habit") == "true",
+       capture_frequency: Map.get(params, "frequency", "daily"),
+       capture_category_id: category_id
+     )}
+  end
+
+  @impl true
   def handle_event("create_capture", params, socket) do
     user = socket.assigns.current_user
     title = params |> Map.get("title", "") |> String.trim()
-    category_id = params |> Map.get("category_id", "") |> blank_to_nil()
+    item_id = params |> Map.get("item_id", "") |> blank_to_nil()
+    is_habit? = Map.get(params, "is_habit") == "true"
 
-    if title == "" do
-      {:noreply, put_flash(socket, :error, "Escreva alguma coisa antes de registrar.")}
-    else
-      attrs = capture_attrs(title, category_id, user)
-      {:ok, _activity} = Priorities.create_activity(user, attrs)
-      {:noreply, socket |> put_flash(:info, "Capturado.") |> load_data()}
+    cond do
+      title == "" ->
+        {:noreply, put_flash(socket, :error, "Escreva alguma coisa antes de registrar.")}
+
+      is_habit? and is_nil(item_id) ->
+        {:noreply,
+         put_flash(socket, :error, "Escolha uma categoria e uma prioridade pra anexar o hábito.")}
+
+      is_habit? ->
+        create_habit_capture(socket, user, title, item_id, params)
+
+      true ->
+        create_loose_capture(socket, user, title, item_id)
     end
   end
 
@@ -75,32 +122,42 @@ defmodule QuizProjectWeb.KanbanLive do
     do: {:noreply, resolve(socket, id, &Priorities.discard_activity/2)}
 
   @impl true
-  def handle_event("assign_item", %{"activity_id" => activity_id, "item_id" => item_id}, socket) do
-    user = socket.assigns.current_user
+  def handle_event("reopen_activity", %{"id" => id}, socket),
+    do: {:noreply, resolve(socket, id, &Priorities.reopen_activity/2)}
 
-    with {:ok, activity} <- Priorities.get_activity(activity_id, user),
-         {:ok, item} <- Priorities.get_item(item_id, user) do
-      Priorities.assign_activity_to_item(activity, item, user)
-    end
+  @impl true
+  def handle_event(
+        "attach_category_change",
+        %{"activity_id" => activity_id, "category_id" => category_id},
+        socket
+      ) do
+    category_id = blank_to_nil(category_id)
 
-    {:noreply, load_data(socket)}
+    {:noreply,
+     update(
+       socket,
+       :attach_category_by_activity,
+       &Map.put(&1, activity_id, category_id)
+     )}
   end
 
   @impl true
   def handle_event(
-        "assign_category",
-        %{"activity_id" => activity_id, "category_id" => category_id},
+        "attach_capture",
+        %{"activity_id" => activity_id, "item_id" => item_id},
         socket
       ) do
     user = socket.assigns.current_user
 
     with {:ok, activity} <- Priorities.get_activity(activity_id, user),
-         {:ok, category} <- Priorities.get_category(category_id, user) do
-      item = Priorities.general_item_for_category(category)
+         {:ok, %Priorities.Item{} = item} <- Priorities.resolve_attach_item(item_id, user) do
       Priorities.assign_activity_to_item(activity, item, user)
     end
 
-    {:noreply, load_data(socket)}
+    {:noreply,
+     socket
+     |> update(:attach_category_by_activity, &Map.delete(&1, activity_id))
+     |> load_data()}
   end
 
   @impl true
@@ -111,20 +168,63 @@ defmodule QuizProjectWeb.KanbanLive do
   defp blank_to_nil(""), do: nil
   defp blank_to_nil(value), do: value
 
-  # `category_id` é opcional: sem ele a atividade nasce solta de verdade;
-  # com ele, nasce presa ao item "Geral" da categoria — meio-termo entre
-  # solta e presa a uma prioridade específica.
-  defp capture_attrs(title, nil, _user), do: %{title: title}
+  defp create_habit_capture(socket, user, title, item_id, params) do
+    with {:ok, %Priorities.Item{} = item} <- Priorities.resolve_attach_item(item_id, user) do
+      attrs = Map.merge(%{title: title, item_id: item.id}, build_habit_attrs(params))
 
-  defp capture_attrs(title, category_id, user) do
-    case Priorities.get_category(category_id, user) do
-      {:ok, category} ->
-        %{title: title, item_id: Priorities.general_item_for_category(category).id}
+      case Priorities.create_habit(user, attrs) do
+        {:ok, habit} ->
+          Priorities.ensure_today_habit_instance(habit, user)
 
-      _ ->
-        %{title: title}
+          {:noreply,
+           socket
+           |> put_flash(:info, "Hábito criado.")
+           |> assign(
+             capture_is_habit?: false,
+             capture_frequency: "daily",
+             capture_category_id: nil
+           )
+           |> load_data()}
+
+        _ ->
+          {:noreply, put_flash(socket, :error, "Não foi possível criar o hábito.")}
+      end
+    else
+      _ -> {:noreply, put_flash(socket, :error, "Não foi possível criar o hábito.")}
     end
   end
+
+  defp create_loose_capture(socket, user, title, item_id) do
+    case Priorities.resolve_attach_item(item_id, user) do
+      {:ok, item} ->
+        attrs = if item, do: %{title: title, item_id: item.id}, else: %{title: title}
+        {:ok, _activity} = Priorities.create_activity(user, attrs)
+
+        {:noreply,
+         socket
+         |> put_flash(:info, "Capturado.")
+         |> assign(capture_category_id: nil)
+         |> load_data()}
+
+      _ ->
+        {:noreply, put_flash(socket, :error, "Não foi possível registrar.")}
+    end
+  end
+
+  defp build_habit_attrs(%{"frequency" => "weekly"} = params) do
+    %{frequency: :weekly, weekdays: parse_int_list(params["weekdays"]), month_days: []}
+  end
+
+  defp build_habit_attrs(%{"frequency" => "monthly"} = params) do
+    %{frequency: :monthly, weekdays: [], month_days: parse_int_list(params["month_days"])}
+  end
+
+  defp build_habit_attrs(_params) do
+    %{frequency: :daily, weekdays: [], month_days: []}
+  end
+
+  defp parse_int_list(nil), do: []
+  defp parse_int_list(values) when is_list(values), do: Enum.map(values, &String.to_integer/1)
 
   defp resolve(socket, id, fun) do
     user = socket.assigns.current_user
@@ -138,17 +238,20 @@ defmodule QuizProjectWeb.KanbanLive do
 
   defp load_data(socket) do
     user = socket.assigns.current_user
+    by_flow = Priorities.list_today_activities_by_flow(user)
 
     assign(socket,
-      lanes: Priorities.list_today_lanes(user),
+      todo_activities: Map.get(by_flow, :todo, []),
+      fazendo_activities: Map.get(by_flow, :fazendo, []),
+      feito_activities: Map.get(by_flow, :feito, []),
       loose_captures: Priorities.list_loose_captures(user),
-      categories: Priorities.list_categories(user)
+      categories: Priorities.list_categories(user),
+      items_by_category:
+        Enum.group_by(Priorities.list_items_including_general(user), & &1.category_id)
     )
   end
 
-  defp activities_in(lane, flow), do: Map.get(lane.activities, flow, [])
-
-  defp lane_count(lane), do: lane.activities |> Map.values() |> Enum.map(&length/1) |> Enum.sum()
+  defp category_by_id(categories, id), do: Enum.find(categories, &(&1.id == id))
 
   @impl true
   def render(assigns) do
@@ -168,6 +271,8 @@ defmodule QuizProjectWeb.KanbanLive do
           </p>
         </div>
 
+        <Components.kanban_sub_nav active={:today} />
+
         <div id="loose-captures" class="space-y-3 rounded-3xl border border-base-300 bg-base-100 p-4">
           <div class="flex items-center justify-between gap-3">
             <h2 class="flex items-center gap-2 text-lg font-bold">
@@ -181,27 +286,105 @@ defmodule QuizProjectWeb.KanbanLive do
             </span>
           </div>
 
-          <form id="capture-form" phx-submit="create_capture" class="flex flex-wrap items-end gap-3">
-            <div class="min-w-48 flex-1">
-              <.input type="text" name="title" value="" placeholder="Anotar algo rápido..." />
+          <form
+            id="capture-form"
+            phx-submit="create_capture"
+            phx-change="capture_form_change"
+            class="space-y-3"
+          >
+            <div class="flex flex-wrap items-end gap-3">
+              <div class="min-w-48 flex-1">
+                <.input type="text" name="title" value="" placeholder="Anotar algo rápido..." />
+              </div>
+              <div class="w-40">
+                <.input
+                  type="select"
+                  name="category_id"
+                  label="Categoria"
+                  value={@capture_category_id || ""}
+                  options={Enum.map(@categories, &{&1.name, &1.id})}
+                  prompt="Fica solta"
+                />
+              </div>
+              <div class="w-48">
+                <.input
+                  type="select"
+                  name="item_id"
+                  label="Prioridade"
+                  value=""
+                  options={
+                    if @capture_category_id,
+                      do:
+                        Components.attach_item_options(
+                          Map.get(@items_by_category, @capture_category_id, []),
+                          category_by_id(@categories, @capture_category_id)
+                        ),
+                      else: []
+                  }
+                  prompt={if @capture_category_id, do: "Escolha", else: "Escolha a categoria"}
+                  disabled={is_nil(@capture_category_id)}
+                />
+              </div>
+              <div class="fieldset mb-2">
+                <label class="label flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    name="is_habit"
+                    value="true"
+                    checked={@capture_is_habit?}
+                    class="checkbox checkbox-sm"
+                  /> É um hábito?
+                </label>
+              </div>
+              <div class="fieldset mb-2">
+                <label>
+                  <span class="label mb-1 invisible">Registrar</span>
+                  <button type="submit" class="btn btn-primary btn-sm rounded-full px-5">
+                    {if @capture_is_habit?, do: "Criar hábito", else: "Registrar"}
+                  </button>
+                </label>
+              </div>
             </div>
-            <div class="w-44">
+
+            <div :if={@capture_is_habit?} class="space-y-3 rounded-2xl border border-base-300 p-3">
               <.input
                 type="select"
-                name="category_id"
-                label="Categoria (opcional)"
-                value=""
-                options={Enum.map(@categories, &{&1.name, &1.id})}
-                prompt="Fica solta"
+                name="frequency"
+                label="Frequência"
+                value={@capture_frequency}
+                options={[
+                  {"Diário", "daily"},
+                  {"Dias da semana", "weekly"},
+                  {"Dias do mês", "monthly"}
+                ]}
               />
-            </div>
-            <div class="fieldset mb-2">
-              <label>
-                <span class="label mb-1 invisible">Registrar</span>
-                <button type="submit" class="btn btn-primary btn-sm rounded-full px-5">
-                  Registrar
-                </button>
-              </label>
+
+              <div :if={@capture_frequency == "weekly"} class="fieldset mb-2">
+                <span class="label mb-1">Quais dias</span>
+                <Components.day_toggle_group
+                  name="weekdays[]"
+                  selected={[]}
+                  options={[
+                    {"Segunda", "1"},
+                    {"Terça", "2"},
+                    {"Quarta", "3"},
+                    {"Quinta", "4"},
+                    {"Sexta", "5"},
+                    {"Sábado", "6"},
+                    {"Domingo", "7"}
+                  ]}
+                />
+              </div>
+
+              <div :if={@capture_frequency == "monthly"} class="fieldset mb-2">
+                <span class="label mb-1">Quais dias do mês</span>
+                <Components.day_toggle_group
+                  name="month_days[]"
+                  selected={[]}
+                  options={Enum.map(1..31, &{to_string(&1), to_string(&1)})}
+                  class="grid grid-cols-6 gap-1.5 sm:grid-cols-7"
+                />
+              </div>
             </div>
           </form>
 
@@ -209,7 +392,11 @@ defmodule QuizProjectWeb.KanbanLive do
             Nada solto — tudo categorizado.
           </p>
 
-          <div :for={activity <- @loose_captures} class="space-y-2">
+          <div
+            :for={activity <- @loose_captures}
+            id={"loose-capture-#{activity.id}"}
+            class="space-y-2"
+          >
             <Components.activity_card activity={activity} show_age?={true}>
               <:actions>
                 <button
@@ -220,129 +407,138 @@ defmodule QuizProjectWeb.KanbanLive do
                   <.icon name="hero-check" class="size-4" /> Concluir
                 </button>
                 <button
-                  :for={item <- Priorities.suggest_items_for_activity(activity)}
-                  phx-click="assign_item"
-                  phx-value-activity_id={activity.id}
-                  phx-value-item_id={item.id}
-                  class="btn btn-soft btn-sm rounded-full"
-                  title={"Associar a \"#{item.title}\""}
+                  phx-click="discard_activity"
+                  phx-value-id={activity.id}
+                  class="btn btn-ghost btn-sm"
+                  title="Descartar"
                 >
-                  {item.title}
+                  <.icon name="hero-trash" class="size-4 opacity-50" />
                 </button>
-                <button
-                  :for={category <- @categories}
-                  phx-click="assign_category"
-                  phx-value-activity_id={activity.id}
-                  phx-value-category_id={category.id}
-                  class="btn btn-outline btn-sm rounded-full"
-                  title={"Categorizar em \"#{category.name}\", sem virar prioridade"}
+                <% attach_category_id = Map.get(@attach_category_by_activity, activity.id) %>
+                <form
+                  id={"attach-category-form-#{activity.id}"}
+                  phx-change="attach_category_change"
+                  class="inline-flex items-center gap-1.5"
                 >
-                  {category.name}
-                </button>
+                  <input type="hidden" name="activity_id" value={activity.id} />
+                  <.input
+                    type="select"
+                    name="category_id"
+                    value={attach_category_id || ""}
+                    options={Enum.map(@categories, &{&1.name, &1.id})}
+                    prompt="Anexar a..."
+                    class="select select-sm select-bordered rounded-full"
+                  />
+                </form>
+                <form
+                  :if={attach_category_id}
+                  id={"attach-item-form-#{activity.id}"}
+                  phx-change="attach_capture"
+                  class="inline-flex items-center"
+                >
+                  <input type="hidden" name="activity_id" value={activity.id} />
+                  <.input
+                    type="select"
+                    name="item_id"
+                    value=""
+                    options={
+                      Components.attach_item_options(
+                        Map.get(@items_by_category, attach_category_id, []),
+                        category_by_id(@categories, attach_category_id)
+                      )
+                    }
+                    prompt="Qual prioridade?"
+                    class="select select-sm select-bordered rounded-full"
+                  />
+                </form>
               </:actions>
             </Components.activity_card>
           </div>
         </div>
 
         <p
-          :if={@lanes == []}
+          :if={@todo_activities == [] and @fazendo_activities == [] and @feito_activities == []}
           class="rounded-3xl border border-dashed border-base-300 p-10 text-center text-sm opacity-50"
         >
           Nenhuma atividade presa a uma prioridade hoje.
         </p>
 
-        <div :for={lane <- @lanes} class="space-y-3">
-          <div class="flex items-center justify-between gap-3">
-            <h2 class="flex items-center gap-2 text-lg font-bold">
-              <span class={[
-                "size-2.5 shrink-0 rounded-full",
-                elem(Components.category_colors(lane.item.category_id), 1)
-              ]}></span>
-              <%= if lane.item.general do %>
-                {lane.item.title}
-              <% else %>
-                <.link navigate={~p"/priorities/#{lane.item.id}"} class="hover:underline">
-                  {lane.item.title}
-                </.link>
-              <% end %>
-            </h2>
-            <span class="text-xs font-semibold opacity-60">{lane_count(lane)} atividades</span>
+        <div
+          :if={@todo_activities != [] or @fazendo_activities != [] or @feito_activities != []}
+          class="grid grid-cols-1 gap-3 md:grid-cols-3"
+        >
+          <div class="space-y-2">
+            <h3 class="text-xs font-bold uppercase tracking-wide opacity-50">A fazer</h3>
+            <Components.drop_zone
+              id="today-todo"
+              drag_group="today-flow"
+              mode="move"
+              event="move_flow"
+              value="todo"
+              class="min-h-16 space-y-2 rounded-2xl border border-dashed border-base-300 p-2"
+            >
+              <p :if={@todo_activities == []} class="py-4 text-center text-xs opacity-40">
+                Nada por aqui
+              </p>
+              <Components.draggable
+                :for={activity <- @todo_activities}
+                id={"activity-drag-#{activity.id}"}
+                drag_id={activity.id}
+              >
+                <Components.activity_card activity={activity}>
+                  <:actions>
+                    <.resolve_buttons activity={activity} />
+                  </:actions>
+                </Components.activity_card>
+              </Components.draggable>
+            </Components.drop_zone>
           </div>
 
-          <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
-            <div class="space-y-2">
-              <h3 class="text-xs font-bold uppercase tracking-wide opacity-50">A fazer</h3>
-              <Components.drop_zone
-                id={"lane-#{lane.item.id}-todo"}
-                drag_group={"today-lane-#{lane.item.id}"}
-                mode="move"
-                event="move_flow"
-                value="todo"
-                class="min-h-16 space-y-2 rounded-2xl border border-dashed border-base-300 p-2"
+          <div class="space-y-2">
+            <h3 class="text-xs font-bold uppercase tracking-wide opacity-50">Fazendo</h3>
+            <Components.drop_zone
+              id="today-fazendo"
+              drag_group="today-flow"
+              mode="move"
+              event="move_flow"
+              value="fazendo"
+              class="min-h-16 space-y-2 rounded-2xl border border-dashed border-base-300 p-2"
+            >
+              <p :if={@fazendo_activities == []} class="py-4 text-center text-xs opacity-40">
+                Nada em andamento
+              </p>
+              <Components.draggable
+                :for={activity <- @fazendo_activities}
+                id={"activity-drag-#{activity.id}"}
+                drag_id={activity.id}
               >
-                <p :if={activities_in(lane, :todo) == []} class="py-4 text-center text-xs opacity-40">
-                  Nada por aqui
-                </p>
-                <Components.draggable
-                  :for={activity <- activities_in(lane, :todo)}
-                  id={"activity-drag-#{activity.id}"}
-                  drag_id={activity.id}
-                  drag_group={"today-lane-#{lane.item.id}"}
-                >
-                  <Components.activity_card activity={activity}>
-                    <:actions>
-                      <.resolve_buttons activity={activity} />
-                    </:actions>
-                  </Components.activity_card>
-                </Components.draggable>
-              </Components.drop_zone>
-            </div>
+                <Components.activity_card activity={activity}>
+                  <:actions>
+                    <.resolve_buttons activity={activity} />
+                  </:actions>
+                </Components.activity_card>
+              </Components.draggable>
+            </Components.drop_zone>
+          </div>
 
-            <div class="space-y-2">
-              <h3 class="text-xs font-bold uppercase tracking-wide opacity-50">Fazendo</h3>
-              <Components.drop_zone
-                id={"lane-#{lane.item.id}-fazendo"}
-                drag_group={"today-lane-#{lane.item.id}"}
-                mode="move"
-                event="move_flow"
-                value="fazendo"
-                class="min-h-16 space-y-2 rounded-2xl border border-dashed border-base-300 p-2"
-              >
-                <p
-                  :if={activities_in(lane, :fazendo) == []}
-                  class="py-4 text-center text-xs opacity-40"
-                >
-                  Nada em andamento
-                </p>
-                <Components.draggable
-                  :for={activity <- activities_in(lane, :fazendo)}
-                  id={"activity-drag-#{activity.id}"}
-                  drag_id={activity.id}
-                  drag_group={"today-lane-#{lane.item.id}"}
-                >
-                  <Components.activity_card activity={activity}>
-                    <:actions>
-                      <.resolve_buttons activity={activity} />
-                    </:actions>
-                  </Components.activity_card>
-                </Components.draggable>
-              </Components.drop_zone>
-            </div>
-
-            <div class="space-y-2">
-              <h3 class="text-xs font-bold uppercase tracking-wide opacity-50">Feito</h3>
-              <div class="min-h-16 space-y-2 rounded-2xl border border-base-200 bg-base-200/40 p-2">
-                <p
-                  :if={activities_in(lane, :feito) == []}
-                  class="py-4 text-center text-xs opacity-40"
-                >
-                  Nada concluído ainda
-                </p>
-                <Components.activity_card
-                  :for={activity <- activities_in(lane, :feito)}
-                  activity={activity}
-                />
-              </div>
+          <div class="space-y-2">
+            <h3 class="text-xs font-bold uppercase tracking-wide opacity-50">Feito</h3>
+            <div class="min-h-16 space-y-2 rounded-2xl border border-base-200 bg-base-200/40 p-2">
+              <p :if={@feito_activities == []} class="py-4 text-center text-xs opacity-40">
+                Nada concluído ainda
+              </p>
+              <Components.activity_card :for={activity <- @feito_activities} activity={activity}>
+                <:actions>
+                  <button
+                    phx-click="reopen_activity"
+                    phx-value-id={activity.id}
+                    class="btn btn-ghost btn-xs"
+                    title="Reabrir — volta pra a fazer"
+                  >
+                    <.icon name="hero-arrow-uturn-left" class="size-4 opacity-50" /> Reabrir
+                  </button>
+                </:actions>
+              </Components.activity_card>
             </div>
           </div>
         </div>

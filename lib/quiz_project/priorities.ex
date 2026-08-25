@@ -9,6 +9,7 @@ defmodule QuizProject.Priorities do
   """
   use Ash.Domain
   require Ash.Query
+  require Logger
 
   alias QuizProject.AdaptiveStudy
   alias QuizProject.Attempts
@@ -17,6 +18,9 @@ defmodule QuizProject.Priorities do
   alias QuizProject.Priorities.Category
   alias QuizProject.Priorities.FieldDefinition
   alias QuizProject.Priorities.FieldValue
+  alias QuizProject.Priorities.Habit
+  alias QuizProject.Priorities.HabitOverride
+  alias QuizProject.Priorities.HabitRecurrence
   alias QuizProject.Priorities.Item
   alias QuizProject.Priorities.ItemCategory
   alias QuizProject.Priorities.ItemLink
@@ -36,6 +40,8 @@ defmodule QuizProject.Priorities do
     resource Activity
     resource ActivityTask
     resource ItemLink
+    resource Habit
+    resource HabitOverride
   end
 
   # Autorização
@@ -90,6 +96,39 @@ defmodule QuizProject.Priorities do
 
   # Itens
 
+  # Hábito deixou de ser um `item_type` de `Item` (Fase 4 — virou seu
+  # próprio resource, `Priorities.Habit`) e o schema não aceita mais criar
+  # um novo item assim. Uma linha `item_type: "habit"` que sobreviva de
+  # antes dessa migração (produção, principalmente — bancos de dev/teste
+  # não têm esse legado) derruba qualquer despacho por tipo
+  # (`progress_for_item/1`, `Components.item_type_label/1`, o `type_editor/1`
+  # do `ItemModal`, ...) com `FunctionClauseError`. Em vez de blindar cada
+  # função de despacho separadamente, todo ponto que lista ou busca um
+  # `Item` passa primeiro por aqui: encontrar um desses apaga o registro
+  # (cascade normal de `Item`) e ele nunca chega a ser renderizado —
+  # self-healing, sem precisar de migração de dados manual.
+  defp prune_legacy_habit_items(items) when is_list(items) do
+    {legacy, valid} = Enum.split_with(items, &(&1.item_type == :habit))
+    Enum.each(legacy, &delete_legacy_habit_item/1)
+    valid
+  end
+
+  defp prune_legacy_habit_items(%Item{item_type: :habit} = item) do
+    delete_legacy_habit_item(item)
+    nil
+  end
+
+  defp prune_legacy_habit_items(item_or_nil), do: item_or_nil
+
+  defp delete_legacy_habit_item(item) do
+    Logger.warning(
+      "Removendo item legado item_type: :habit (id=#{item.id}, title=#{inspect(item.title)}) — " <>
+        "hábito virou Priorities.Habit, esse tipo não existe mais em Item."
+    )
+
+    Ash.destroy(item, authorize?: false)
+  end
+
   @doc "Itens ativos (não arquivados) de uma categoria, pela ordem — inclui os que a têm como secundária. Nunca inclui o item \"Geral\"."
   def list_items_by_category(category_id) do
     Item
@@ -100,6 +139,7 @@ defmodule QuizProject.Priorities do
     |> Ash.Query.sort(position: :asc)
     |> Ash.Query.load([:tags])
     |> Ash.read!(authorize?: false)
+    |> prune_legacy_habit_items()
   end
 
   @doc "Itens ativos cuja categoria primária (não secundária) é `category_id`, na ordem — base da reordenação por botões."
@@ -108,6 +148,7 @@ defmodule QuizProject.Priorities do
     |> Ash.Query.filter(category_id == ^category_id and is_nil(archived_at) and general == false)
     |> Ash.Query.sort(position: :asc)
     |> Ash.read!(authorize?: false)
+    |> prune_legacy_habit_items()
   end
 
   @item_load [
@@ -122,9 +163,18 @@ defmodule QuizProject.Priorities do
 
   def get_item(id, %{id: user_id}) do
     case Ash.get(Item, id, authorize?: false, load: @item_load) do
-      {:ok, %Item{user_id: ^user_id} = item} -> {:ok, item}
-      {:ok, _} -> {:error, :unauthorized}
-      error -> error
+      {:ok, %Item{user_id: ^user_id, item_type: :habit} = item} ->
+        prune_legacy_habit_items(item)
+        {:error, :not_found}
+
+      {:ok, %Item{user_id: ^user_id} = item} ->
+        {:ok, item}
+
+      {:ok, _} ->
+        {:error, :unauthorized}
+
+      error ->
+        error
     end
   end
 
@@ -227,9 +277,9 @@ defmodule QuizProject.Priorities do
   garantir que `study_material_id`/`quiz_id`, quando presentes no novo tipo,
   continuam pertencendo ao usuário certo.
 
-  Campos do tipo anterior (ex: `habit_current_streak` ao sair de `:habit`)
-  não são zerados — ficam no registro, mas `progress_for_item/1` despacha só
-  pelo `item_type` atual e os ignora, então não há efeito colateral.
+  Campos do tipo anterior (ex: `manual_percent` ao sair de `:manual`) não são
+  zerados — ficam no registro, mas `progress_for_item/1` despacha só pelo
+  `item_type` atual e os ignora, então não há efeito colateral.
   """
   def change_item_type(item, attrs, actor) do
     with :ok <- authorize_owner(item, actor),
@@ -296,12 +346,6 @@ defmodule QuizProject.Priorities do
       item
       |> Ash.Changeset.for_update(:set_manual_mode, attrs, authorize?: false)
       |> Ash.update()
-    end
-  end
-
-  def check_in_habit(item, actor) do
-    with :ok <- authorize_owner(item, actor) do
-      item |> Ash.Changeset.for_update(:check_in_habit, %{}, authorize?: false) |> Ash.update()
     end
   end
 
@@ -453,6 +497,7 @@ defmodule QuizProject.Priorities do
       )
       |> Ash.Query.load([:tags, :category])
       |> Ash.read!(authorize?: false)
+      |> prune_legacy_habit_items()
       |> Enum.group_by(& &1.tier)
 
     Enum.map(@tier_order, &{&1, Map.get(items, &1, [])})
@@ -467,6 +512,7 @@ defmodule QuizProject.Priorities do
     |> Ash.Query.sort(inserted_at: :desc)
     |> Ash.Query.load([:tags, :category])
     |> Ash.read!(authorize?: false)
+    |> prune_legacy_habit_items()
   end
 
   @doc "Filtro flat por categoria (primária ou secundária), tag, tipo e arquivamento. Nunca inclui o item \"Geral\"."
@@ -507,12 +553,14 @@ defmodule QuizProject.Priorities do
     |> Ash.Query.sort(inserted_at: :desc)
     |> Ash.Query.load([:tags, :category])
     |> Ash.read!(authorize?: false)
+    |> prune_legacy_habit_items()
   end
 
   @doc """
-  Progresso de um item, no formato certo pro tipo:
-  `{:percent, 0..100}` (book/quiz_goal/course/checklist/manual, `nil` quando
-  ainda não há como calcular) ou `{:streak, n}` (habit).
+  Progresso de um item, no formato certo pro tipo: sempre
+  `{:percent, 0..100}` (`nil` quando ainda não há como calcular) — hábito
+  não é mais um `item_type` de `Item` (ver `Priorities.Habit`), então não
+  existe mais clause `{:streak, n}` aqui.
   """
   def progress_for_item(%Item{item_type: :book, study_material_id: material_id, user_id: user_id})
       when not is_nil(material_id) do
@@ -542,10 +590,6 @@ defmodule QuizProject.Priorities do
       }) do
     percent = if total && total > 0, do: round(current / total * 100), else: nil
     {:percent, percent}
-  end
-
-  def progress_for_item(%Item{item_type: :habit, habit_current_streak: streak}) do
-    {:streak, streak}
   end
 
   def progress_for_item(%Item{item_type: :checklist} = item) do
@@ -583,46 +627,57 @@ defmodule QuizProject.Priorities do
   @doc "Capturas soltas (sem item) ainda pendentes, mais antiga primeiro — a que mais precisa de atenção."
   def list_loose_captures(%{id: user_id}) do
     Activity
-    |> Ash.Query.filter(user_id == ^user_id and is_nil(item_id) and status == :pendente)
+    |> Ash.Query.filter(
+      user_id == ^user_id and is_nil(item_id) and is_nil(habit_id) and status == :pendente
+    )
     |> Ash.Query.sort(logical_date: :asc, position: :asc)
     |> Ash.read!(authorize?: false)
   end
 
   def count_loose_captures(%{id: user_id}) do
     Activity
-    |> Ash.Query.filter(user_id == ^user_id and is_nil(item_id) and status == :pendente)
+    |> Ash.Query.filter(
+      user_id == ^user_id and is_nil(item_id) and is_nil(habit_id) and status == :pendente
+    )
     |> Ash.Query.select([:id])
     |> Ash.read!(authorize?: false)
     |> length()
   end
 
-  @doc "Atividades presas a um item, com `logical_date` de hoje — base das raias da Tela do dia."
-  def list_today_activities_by_item(%{id: user_id}) do
+  @doc """
+  Atividades de hoje presas a um item ou hábito, mais capturas soltas já
+  resolvidas hoje — base do board da Tela do dia. Uma captura solta ainda
+  `:pendente` só aparece em "Capturas soltas" (ver `list_loose_captures/1`);
+  uma vez concluída/descartada/não cumprida, ela vira `flow == :feito` e
+  precisa aparecer aqui também, senão resolver uma captura solta some com
+  ela em vez de mostrar o resultado na coluna "Feito", como qualquer outra
+  atividade.
+  """
+  def list_today_activities(%{id: user_id}) do
     Activity
     |> Ash.Query.filter(
-      user_id == ^user_id and not is_nil(item_id) and logical_date == ^Date.utc_today()
+      user_id == ^user_id and
+        (not is_nil(item_id) or not is_nil(habit_id) or flow == :feito) and
+        logical_date == ^Date.utc_today()
     )
     |> Ash.Query.sort(position: :asc)
-    |> Ash.Query.load([:item])
+    |> Ash.Query.load(item: [:category], habit: [item: [:category]])
     |> Ash.read!(authorize?: false)
   end
 
-  @doc "Raias da Tela do dia: uma entrada por item com atividade hoje, atividades já separadas por `flow`."
-  def list_today_lanes(actor) do
-    actor
-    |> list_today_activities_by_item()
-    # Agrupa pelo id, não pelo struct `%Item{}` em si — instâncias carregadas
-    # em `load/1` separadamente podem carregar metadados internos do Ash
-    # distintos mesmo representando a mesma linha, o que quebraria `==`.
-    |> Enum.group_by(& &1.item.id)
-    |> Enum.map(fn {_item_id, [%{item: item} | _] = activities} ->
-      %{item: item, activities: Enum.group_by(activities, & &1.flow)}
-    end)
-    |> Enum.sort_by(& &1.item.title)
+  @doc """
+  Atividades presas a um item ou hábito hoje, agrupadas só por `flow` — um
+  board único pro dia (3 colunas: a fazer/fazendo/feito), sem raia por
+  prioridade. O que diferencia um card do outro na tela é a cor lateral e a
+  badge da categoria (ver `Components.activity_card/1`), não mais o
+  agrupamento em si.
+  """
+  def list_today_activities_by_flow(actor) do
+    Enum.group_by(list_today_activities(actor), & &1.flow)
   end
 
   def get_activity(id, %{id: user_id}) do
-    case Ash.get(Activity, id, authorize?: false) do
+    case Ash.get(Activity, id, authorize?: false, load: [:habit]) do
       {:ok, %Activity{user_id: ^user_id} = activity} -> {:ok, activity}
       {:ok, _} -> {:error, :unauthorized}
       error -> error
@@ -630,17 +685,25 @@ defmodule QuizProject.Priorities do
   end
 
   @doc """
-  Cria uma atividade presa a um item (checa dono do item) ou uma captura
-  solta quando `attrs` não tem `item_id`.
+  Cria uma atividade presa a um item (checa dono do item), instância de um
+  hábito (checa dono do hábito) ou uma captura solta quando `attrs` não tem
+  nenhum dos dois.
   """
   def create_activity(%{id: user_id} = actor, attrs) do
-    with :ok <- validate_item_ownership(attrs, actor) do
+    with :ok <- validate_item_ownership(attrs, actor),
+         :ok <- validate_habit_ownership(attrs, actor) do
       attrs =
         attrs
         |> Map.put_new_lazy(:logical_date, &Date.utc_today/0)
         |> Map.put(:user_id, user_id)
 
-      position = next_activity_position(user_id, Map.get(attrs, :item_id), :todo)
+      position =
+        next_activity_position(
+          user_id,
+          Map.get(attrs, :item_id),
+          Map.get(attrs, :habit_id),
+          :todo
+        )
 
       Activity
       |> Ash.Changeset.for_create(:create, Map.put(attrs, :position, position), authorize?: false)
@@ -656,6 +719,15 @@ defmodule QuizProject.Priorities do
   end
 
   defp validate_item_ownership(_attrs, _actor), do: :ok
+
+  defp validate_habit_ownership(%{habit_id: habit_id}, actor) when not is_nil(habit_id) do
+    case get_habit(habit_id, actor) do
+      {:ok, _habit} -> :ok
+      _ -> {:error, :unauthorized}
+    end
+  end
+
+  defp validate_habit_ownership(_attrs, _actor), do: :ok
 
   def update_activity(activity, attrs, actor) do
     with :ok <- authorize_owner(activity, actor) do
@@ -711,6 +783,13 @@ defmodule QuizProject.Priorities do
     end
   end
 
+  @doc "Desfaz a resolução de uma atividade (concluída, não cumprida ou descartada por engano) — volta pra \"a fazer\"."
+  def reopen_activity(activity, actor) do
+    with :ok <- authorize_owner(activity, actor) do
+      activity |> Ash.Changeset.for_update(:reopen, %{}, authorize?: false) |> Ash.update()
+    end
+  end
+
   # Checklist de atividade
 
   def list_activity_tasks(activity_id) do
@@ -749,32 +828,24 @@ defmodule QuizProject.Priorities do
   end
 
   @doc """
-  Sugestões de prioridade pra resolver uma captura solta (triagem em um
-  toque): itens cujo título contém o da atividade (case-insensitive); sem
-  match, cai pros mais recentes. Nunca sugere o item "Geral" de uma
-  categoria — esse caminho é o botão de categoria, à parte.
+  Todas as prioridades ativas do usuário, incluindo o item "Geral" de cada
+  categoria — base do dropdown "Anexar" (categoria escolhida primeiro,
+  depois a lista de prioridades daquela categoria, ver
+  `Components.attach_item_options/2`). Ordenado com o "Geral" primeiro
+  dentro de cada categoria.
   """
-  def suggest_items_for_activity(%Activity{title: title, user_id: user_id}, limit \\ 4) do
-    needle = title |> String.downcase() |> String.trim()
-
-    items =
-      Item
-      |> Ash.Query.filter(user_id == ^user_id and is_nil(archived_at) and general == false)
-      |> Ash.Query.sort(inserted_at: :desc)
-      |> Ash.read!(authorize?: false)
-
-    matches =
-      if needle == "" do
-        []
-      else
-        Enum.filter(items, &String.contains?(String.downcase(&1.title), needle))
-      end
-
-    case matches do
-      [] -> Enum.take(items, limit)
-      matches -> Enum.take(matches, limit)
-    end
+  def list_items_including_general(%{id: user_id}) do
+    Item
+    |> Ash.Query.filter(user_id == ^user_id and is_nil(archived_at))
+    |> Ash.Query.sort(general: :desc, title: :asc)
+    |> Ash.read!(authorize?: false)
+    |> prune_legacy_habit_items()
   end
+
+  @doc "Resolve o `item_id` escolhido no dropdown \"Anexar\" num `Item` — vazio/`nil` é \"fica solta\" (só válido pra atividade comum; hábito exige uma escolha)."
+  def resolve_attach_item(nil, _actor), do: {:ok, nil}
+  def resolve_attach_item("", _actor), do: {:ok, nil}
+  def resolve_attach_item(item_id, actor), do: get_item(item_id, actor)
 
   @doc """
   Item "Geral" oculto da categoria, usado pra prender uma atividade solta
@@ -813,6 +884,234 @@ defmodule QuizProject.Priorities do
       |> Ash.create()
 
     item
+  end
+
+  # Hábitos
+
+  @doc "Cria um hábito — nasce `:daily` por padrão; `item_id` é obrigatório (hábito é sempre extensão de uma prioridade)."
+  def create_habit(%{id: user_id} = user, attrs) do
+    with :ok <- authorize_habit_item(attrs, user) do
+      Habit
+      |> Ash.Changeset.for_create(:create, Map.put(attrs, :user_id, user_id), authorize?: false)
+      |> Ash.create()
+    end
+  end
+
+  defp authorize_habit_item(%{item_id: item_id}, user) when not is_nil(item_id) do
+    case get_item(item_id, user) do
+      {:ok, _item} -> :ok
+      _ -> {:error, :unauthorized}
+    end
+  end
+
+  defp authorize_habit_item(_attrs, _user), do: {:error, :unauthorized}
+
+  def get_habit(id, %{id: user_id}) do
+    case Ash.get(Habit, id, authorize?: false) do
+      {:ok, %Habit{user_id: ^user_id} = habit} -> {:ok, habit}
+      {:ok, _} -> {:error, :unauthorized}
+      error -> error
+    end
+  end
+
+  def set_habit_frequency(habit, attrs, actor) do
+    with :ok <- authorize_owner(habit, actor) do
+      habit |> Ash.Changeset.for_update(:update, attrs, authorize?: false) |> Ash.update()
+    end
+  end
+
+  @doc """
+  Mudança de frequência com escopo "essa [data] e as próximas": o hábito
+  atual é encerrado no dia anterior a `date` (`ends_on`), e nasce um hábito
+  novo com a regra de `attrs`, valendo a partir de `date` (`starts_on`) —
+  os dias antes de `date` continuam com a regra antiga (já vale pros dias
+  já passados, que são `Activity`s independentes, e pros dias entre hoje e
+  `date` na prévia de "Próximos dias"). Pra mudar a regra inteira, sem esse
+  corte, usar `set_habit_frequency/3`.
+  """
+  def change_habit_frequency_from(habit, date, attrs, actor) do
+    with :ok <- authorize_owner(habit, actor),
+         {:ok, _ended} <-
+           habit
+           |> Ash.Changeset.for_update(:update, %{ends_on: Date.add(date, -1)}, authorize?: false)
+           |> Ash.update() do
+      Habit
+      |> Ash.Changeset.for_create(
+        :create,
+        Map.merge(attrs, %{
+          user_id: habit.user_id,
+          item_id: habit.item_id,
+          title: habit.title,
+          starts_on: date
+        }),
+        authorize?: false
+      )
+      |> Ash.create()
+    end
+  end
+
+  def get_habit_occurrence_override(habit_id, date) do
+    HabitOverride
+    |> Ash.Query.filter(habit_id == ^habit_id and date == ^date)
+    |> Ash.read_one!(authorize?: false)
+  end
+
+  @doc "Cria ou atualiza a exceção do hábito pra `date` (\"pular esse dia\" e/ou título/nota só daquele dia) — não mexe na regra nem nos outros dias."
+  def set_habit_occurrence_override(habit, date, attrs, actor) do
+    with :ok <- authorize_owner(habit, actor) do
+      HabitOverride
+      |> Ash.Changeset.for_create(:create, Map.merge(attrs, %{habit_id: habit.id, date: date}),
+        authorize?: false
+      )
+      |> Ash.create()
+    end
+  end
+
+  @doc "Remove a exceção do hábito pra `date`, se existir — volta a valer a regra normal nesse dia."
+  def clear_habit_occurrence_override(habit, date, actor) do
+    with :ok <- authorize_owner(habit, actor) do
+      case get_habit_occurrence_override(habit.id, date) do
+        nil -> :ok
+        override -> Ash.destroy(override, authorize?: false)
+      end
+    end
+  end
+
+  @doc "Se o hábito é devido em `date`, já considerando exceção de \"pular esse dia\" — ver `HabitRecurrence.due_on?/3`."
+  def habit_due_on?(habit, date) do
+    case get_habit_occurrence_override(habit.id, date) do
+      %{skipped: true} -> false
+      _ -> HabitRecurrence.due_on?(habit, date)
+    end
+  end
+
+  @doc "Título efetivo do hábito em `date` — o da exceção, se houver um não-vazio; senão o do próprio hábito."
+  def occurrence_title(habit, date) do
+    case get_habit_occurrence_override(habit.id, date) do
+      %{title: title} when is_binary(title) and title != "" -> title
+      _ -> habit.title
+    end
+  end
+
+  def archive_habit(habit, actor) do
+    with :ok <- authorize_owner(habit, actor) do
+      habit |> Ash.Changeset.for_update(:archive, %{}, authorize?: false) |> Ash.update()
+    end
+  end
+
+  def unarchive_habit(habit, actor) do
+    with :ok <- authorize_owner(habit, actor) do
+      habit |> Ash.Changeset.for_update(:unarchive, %{}, authorize?: false) |> Ash.update()
+    end
+  end
+
+  @doc "Exclui o hábito definitivamente (não é reversível como arquivar/desarquivar) — atividades já geradas viram capturas soltas (`habit_id` some, `on_delete: :nilify`)."
+  def delete_habit(habit, actor) do
+    with :ok <- authorize_owner(habit, actor) do
+      Ash.destroy(habit, authorize?: false, return_destroyed?: true)
+    end
+  end
+
+  @doc """
+  Garante a instância de hoje de um hábito devido, e resolve como não
+  cumprida qualquer instância vencida (dia passado, ainda pendente) do
+  mesmo hábito — cada dia devido gera sua própria instância independente; o
+  que não foi feito ontem não trava o que é devido hoje.
+  """
+  def ensure_today_habit_instance(%Habit{} = habit, actor) do
+    with :ok <- authorize_owner(habit, actor) do
+      close_overdue_habit_instances(habit, actor)
+
+      today = Date.utc_today()
+
+      if habit_due_on?(habit, today) and not habit_instance_exists?(habit.id, today) do
+        create_activity(actor, %{
+          title: occurrence_title(habit, today),
+          habit_id: habit.id,
+          logical_date: today
+        })
+      end
+
+      :ok
+    end
+  end
+
+  @doc "Aplica `ensure_today_habit_instance/2` a todo hábito ativo do usuário — chamado no mount da Tela do dia."
+  def ensure_today_habit_instances(%{id: user_id} = actor) do
+    Habit
+    |> Ash.Query.filter(user_id == ^user_id and is_nil(archived_at))
+    |> Ash.read!(authorize?: false)
+    |> Enum.each(&ensure_today_habit_instance(&1, actor))
+  end
+
+  defp close_overdue_habit_instances(habit, actor) do
+    today = Date.utc_today()
+
+    Activity
+    |> Ash.Query.filter(habit_id == ^habit.id and status == :pendente and logical_date < ^today)
+    |> Ash.read!(authorize?: false)
+    |> Enum.each(&mark_activity_not_done(&1, actor))
+  end
+
+  defp habit_instance_exists?(habit_id, date) do
+    Activity
+    |> Ash.Query.filter(habit_id == ^habit_id and logical_date == ^date)
+    |> Ash.Query.select([:id])
+    |> Ash.read!(authorize?: false)
+    |> Enum.any?()
+  end
+
+  @doc "Sequência atual de um hábito, derivada do histórico de atividades — ver `HabitRecurrence.streak/5`."
+  def habit_streak(habit_id) do
+    config = Ash.get!(Habit, habit_id, authorize?: false)
+
+    statuses_by_date =
+      Activity
+      |> Ash.Query.filter(habit_id == ^habit_id)
+      |> Ash.Query.select([:logical_date, :status])
+      |> Ash.read!(authorize?: false)
+      |> Map.new(&{&1.logical_date, &1.status})
+
+    skipped_dates =
+      HabitOverride
+      |> Ash.Query.filter(habit_id == ^habit_id and skipped == true)
+      |> Ash.Query.select([:date])
+      |> Ash.read!(authorize?: false)
+      |> MapSet.new(& &1.date)
+
+    HabitRecurrence.streak(config, statuses_by_date, Date.utc_today(), skipped_dates)
+  end
+
+  @doc """
+  Prévia dos hábitos ativos devidos em cada um dos próximos `days` dias
+  (a partir de amanhã — hoje já tem a própria tela). Só orientação: não
+  gera nenhuma `Activity`, é a mesma checagem que `ensure_today_habit_instance/2`
+  faria, projetada pra frente — já considerando exceção por data
+  (`HabitOverride`: "pular esse dia" tira o hábito daquele dia, título de
+  exceção substitui o do hábito só naquele dia). Cada entrada de
+  `day.habits` é `%{habit: %Habit{}, title: String.t()}` — `title` é o
+  efetivo pra aquele dia (`occurrence_title/2`), não necessariamente
+  `habit.title`.
+  """
+  def upcoming_habit_schedule(%{id: user_id}, days \\ 7) do
+    habits =
+      Habit
+      |> Ash.Query.filter(user_id == ^user_id and is_nil(archived_at))
+      |> Ash.Query.load(item: [:category])
+      |> Ash.read!(authorize?: false)
+
+    tomorrow = Date.add(Date.utc_today(), 1)
+
+    Enum.map(0..(days - 1), fn offset ->
+      date = Date.add(tomorrow, offset)
+
+      due =
+        habits
+        |> Enum.filter(&habit_due_on?(&1, date))
+        |> Enum.map(&%{habit: &1, title: occurrence_title(&1, date)})
+
+      %{date: date, habits: due}
+    end)
   end
 
   # Vínculos entre itens
@@ -918,15 +1217,31 @@ defmodule QuizProject.Priorities do
     FieldDefinition |> Ash.Query.filter(user_id == ^user_id) |> next_position_for()
   end
 
-  defp next_activity_position(user_id, nil, flow) do
+  # `item_id` e `habit_id` juntos são inválidos (ver `validate` em
+  # `Activity.create`) — não crasha aqui, só deixa a criação seguir até essa
+  # validação rejeitar com uma mensagem de erro decente.
+  defp next_activity_position(user_id, item_id, habit_id, flow)
+       when not is_nil(item_id) and not is_nil(habit_id) do
+    next_activity_position(user_id, item_id, nil, flow)
+  end
+
+  defp next_activity_position(user_id, nil, nil, flow) do
     Activity
-    |> Ash.Query.filter(user_id == ^user_id and is_nil(item_id) and flow == ^flow)
+    |> Ash.Query.filter(
+      user_id == ^user_id and is_nil(item_id) and is_nil(habit_id) and flow == ^flow
+    )
     |> next_position_for()
   end
 
-  defp next_activity_position(user_id, item_id, flow) do
+  defp next_activity_position(user_id, item_id, nil, flow) do
     Activity
     |> Ash.Query.filter(user_id == ^user_id and item_id == ^item_id and flow == ^flow)
+    |> next_position_for()
+  end
+
+  defp next_activity_position(user_id, nil, habit_id, flow) do
+    Activity
+    |> Ash.Query.filter(user_id == ^user_id and habit_id == ^habit_id and flow == ^flow)
     |> next_position_for()
   end
 end
