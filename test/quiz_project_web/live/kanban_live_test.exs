@@ -187,6 +187,48 @@ defmodule QuizProjectWeb.KanbanLiveTest do
     end
   end
 
+  describe "adiar" do
+    test "botão Adiar abre o modal com o título da atividade", %{conn: conn, user: user} do
+      item = manual_item(user, category(user), "Trabalho")
+      act = activity(user, item, "Relatório")
+
+      {:ok, view, _html} = live(conn, ~p"/today")
+      html = render_click(view, "open_snooze", %{"id" => act.id})
+
+      assert html =~ "Adiar atividade"
+      assert html =~ "Relatório"
+    end
+
+    test "confirmar o adiamento tira a atividade da tela do dia", %{conn: conn, user: user} do
+      item = manual_item(user, category(user), "Trabalho")
+      act = activity(user, item, "Relatório")
+      segunda = Date.add(Date.utc_today(), 3)
+
+      {:ok, view, _html} = live(conn, ~p"/today")
+      render_click(view, "open_snooze", %{"id" => act.id})
+
+      html =
+        view
+        |> element("#snooze-form")
+        |> render_submit(%{"until" => Date.to_iso8601(segunda)})
+
+      refute html =~ "Relatório"
+      {:ok, updated} = Priorities.get_activity(act.id, user)
+      assert updated.snoozed_until == segunda
+    end
+
+    test "hábito não mostra o botão Adiar", %{conn: conn, user: user} do
+      {:ok, habit} =
+        Priorities.create_habit(user, %{title: "Meditar", item_id: habit_item(user).id})
+
+      :ok = Priorities.ensure_today_habit_instance(habit, user)
+
+      {:ok, view, _html} = live(conn, ~p"/today")
+
+      refute has_element?(view, "button[phx-click='open_snooze']")
+    end
+  end
+
   describe "capturas soltas" do
     test "aparecem destacadas no topo, independente da data", %{conn: conn, user: user} do
       loose_activity(user, "Comprar pão")
@@ -714,6 +756,25 @@ defmodule QuizProjectWeb.KanbanLiveTest do
       assert [novo] = novos
       assert novo.starts_on == data_corte
       assert novo.frequency == :weekly
+    end
+
+    test "atividade adiada aparece no dia em que volta, e cancelar o adiamento a devolve pra tela do dia",
+         %{conn: conn, user: user} do
+      item = manual_item(user, category(user), "Trabalho")
+      act = activity(user, item, "Relatório")
+      segunda = Date.add(Date.utc_today(), 3)
+      {:ok, act} = Priorities.snooze_activity(act, segunda, user)
+
+      {:ok, view, html} = live(conn, ~p"/today/upcoming")
+
+      document = LazyHTML.from_fragment(html)
+      dia = LazyHTML.query(document, "#upcoming-day-#{Date.to_iso8601(segunda)}")
+      assert LazyHTML.to_html(dia) =~ "Relatório"
+
+      render_click(view, "cancel_snooze", %{"id" => act.id})
+
+      {:ok, updated} = Priorities.get_activity(act.id, user)
+      assert is_nil(updated.snoozed_until)
     end
   end
 

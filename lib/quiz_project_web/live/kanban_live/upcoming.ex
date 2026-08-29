@@ -1,12 +1,14 @@
 defmodule QuizProjectWeb.KanbanLive.Upcoming do
   @moduledoc """
-  Pré-visualização dos hábitos ativos devidos nos próximos dias — só
-  orientação (ex: "por que esse hábito não apareceu hoje", "o que vem por
-  aí"). Não gera nenhuma `Activity` (isso só acontece na Tela do dia,
-  `KanbanLive`, no dia em que o hábito é devido de verdade) — mas o hábito
-  em si pode ser aberto, ter a frequência editada (pra sempre, ou só a
-  partir daquele dia), ter aquele dia específico pulado/renomeado, ser
-  arquivado ou excluído daqui, via `HabitModal`. Ver
+  Pré-visualização dos próximos dias — hábitos ativos devidos e atividades
+  adiadas que reaparecem em cada dia (ver `Priorities.snooze_activity/3`).
+  Só orientação (ex: "por que esse hábito não apareceu hoje", "o que vem
+  por aí"). Não gera nenhuma `Activity` nova (isso só acontece na Tela do
+  dia, `KanbanLive`, no dia em que é devido/adiado de verdade) — mas o
+  hábito em si pode ser aberto, ter a frequência editada (pra sempre, ou só
+  a partir daquele dia), ter aquele dia específico pulado/renomeado, ser
+  arquivado ou excluído daqui, via `HabitModal`; uma atividade adiada só
+  pode ter o adiamento cancelado daqui (volta pra Tela do dia na hora). Ver
   `Priorities.upcoming_habit_schedule/2`.
   """
   use QuizProjectWeb, :live_view
@@ -33,6 +35,17 @@ defmodule QuizProjectWeb.KanbanLive.Upcoming do
   @impl true
   def handle_event("close_habit_modal", _params, socket) do
     {:noreply, socket |> assign(modal_habit_id: nil, modal_habit_date: nil) |> load_schedule()}
+  end
+
+  @impl true
+  def handle_event("cancel_snooze", %{"id" => id}, socket) do
+    user = socket.assigns.current_user
+
+    with {:ok, activity} <- Priorities.get_activity(id, user) do
+      Priorities.clear_activity_snooze(activity, user)
+    end
+
+    {:noreply, socket |> put_flash(:info, "Adiamento cancelado.") |> load_schedule()}
   end
 
   @impl true
@@ -76,10 +89,10 @@ defmodule QuizProjectWeb.KanbanLive.Upcoming do
         <div class="border-b border-base-300 pb-4">
           <h1 class="text-2xl font-bold tracking-tight">Próximos dias</h1>
           <p class="text-sm opacity-70">
-            Hábitos ativos devidos nos próximos {length(@schedule)} dias — só pré-visualização,
-            nada aqui vira atividade antes do dia chegar. Clique num hábito pra editar a
-            frequência (pra sempre ou só dali pra frente), pular/renomear esse dia, arquivar ou
-            excluir.
+            Hábitos ativos devidos e atividades adiadas nos próximos {length(@schedule)} dias —
+            só pré-visualização. Clique num hábito pra editar a frequência (pra sempre ou só dali
+            pra frente), pular/renomear esse dia, arquivar ou excluir; clique numa atividade
+            adiada pra cancelar o adiamento e trazê-la de volta pra Tela do dia agora.
           </p>
         </div>
 
@@ -97,9 +110,11 @@ defmodule QuizProjectWeb.KanbanLive.Upcoming do
             </span>
           </h2>
 
-          <p :if={day.habits == []} class="text-xs opacity-40">Nada previsto</p>
+          <p :if={day.habits == [] and day.snoozed == []} class="text-xs opacity-40">
+            Nada previsto
+          </p>
 
-          <div :if={day.habits != []} class="flex flex-wrap gap-2">
+          <div :if={day.habits != [] or day.snoozed != []} class="flex flex-wrap gap-2">
             <button
               :for={entry <- day.habits}
               type="button"
@@ -113,6 +128,23 @@ defmodule QuizProjectWeb.KanbanLive.Upcoming do
                 elem(Components.category_colors(entry.habit.item.category_id), 1)
               ]}></span>
               {entry.title}
+            </button>
+
+            <button
+              :for={activity <- day.snoozed}
+              type="button"
+              phx-click="cancel_snooze"
+              phx-value-id={activity.id}
+              data-confirm="Cancelar o adiamento? Volta a aparecer na Tela do dia agora."
+              title="Adiada — clique pra cancelar o adiamento"
+              class="flex items-center gap-1.5 rounded-full border border-dashed border-info/50 bg-info/5 px-3 py-1.5 text-sm font-semibold text-info transition hover:border-info"
+            >
+              <.icon name="hero-clock" class="size-3.5" />
+              <span class={[
+                "size-2 shrink-0 rounded-full",
+                elem(Components.category_colors(activity.item.category_id), 1)
+              ]}></span>
+              {activity.title}
             </button>
           </div>
         </div>

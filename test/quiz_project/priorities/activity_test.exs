@@ -235,6 +235,80 @@ defmodule QuizProject.Priorities.ActivityTest do
     end
   end
 
+  describe "adiar" do
+    test "atividade adiada some da tela do dia enquanto a data não chega", %{user: user} do
+      item = manual_item(user, category(user), "Trabalho")
+      {:ok, activity} = Priorities.create_activity(user, %{title: "Relatório", item_id: item.id})
+
+      segunda = Date.add(Date.utc_today(), 3)
+      {:ok, _} = Priorities.snooze_activity(activity, segunda, user)
+
+      refute Priorities.list_today_activities(user) |> Enum.any?(&(&1.id == activity.id))
+    end
+
+    test "quando o dia do adiamento chega, a atividade já aparece de novo (mesmo antes de limpar)",
+         %{user: user} do
+      item = manual_item(user, category(user), "Trabalho")
+      {:ok, activity} = Priorities.create_activity(user, %{title: "Relatório", item_id: item.id})
+
+      # Simula a data de adiamento já ter passado — a action `:snooze` não
+      # deixaria escolher isso, mas é o estado ao vivo depois de alguns dias.
+      activity
+      |> Ash.Changeset.for_update(:update, %{}, authorize?: false)
+      |> Ash.Changeset.force_change_attribute(:snoozed_until, Date.add(Date.utc_today(), -1))
+      |> Ash.update!()
+
+      assert Priorities.list_today_activities(user) |> Enum.any?(&(&1.id == activity.id))
+    end
+
+    test "clear_expired_snoozes zera snoozed_until de adiamento já vencido", %{user: user} do
+      item = manual_item(user, category(user), "Trabalho")
+      {:ok, activity} = Priorities.create_activity(user, %{title: "Relatório", item_id: item.id})
+
+      activity
+      |> Ash.Changeset.for_update(:update, %{}, authorize?: false)
+      |> Ash.Changeset.force_change_attribute(:snoozed_until, Date.add(Date.utc_today(), -1))
+      |> Ash.update!()
+
+      Priorities.clear_expired_snoozes(user)
+
+      updated = Ash.get!(Priorities.Activity, activity.id, authorize?: false)
+      assert is_nil(updated.snoozed_until)
+    end
+
+    test "cancelar o adiamento antes da hora traz a atividade de volta", %{user: user} do
+      item = manual_item(user, category(user), "Trabalho")
+      {:ok, activity} = Priorities.create_activity(user, %{title: "Relatório", item_id: item.id})
+      {:ok, activity} = Priorities.snooze_activity(activity, Date.add(Date.utc_today(), 5), user)
+
+      {:ok, _} = Priorities.clear_activity_snooze(activity, user)
+
+      assert Priorities.list_today_activities(user) |> Enum.any?(&(&1.id == activity.id))
+    end
+
+    test "não deixa adiar pra hoje ou pra uma data passada", %{user: user} do
+      item = manual_item(user, category(user), "Trabalho")
+      {:ok, activity} = Priorities.create_activity(user, %{title: "Relatório", item_id: item.id})
+
+      assert {:error, _} = Priorities.snooze_activity(activity, Date.utc_today(), user)
+
+      assert {:error, _} =
+               Priorities.snooze_activity(activity, Date.add(Date.utc_today(), -1), user)
+    end
+
+    test "hábito não pode ser adiado", %{user: user} do
+      item = manual_item(user, category(user), "Prioridade")
+      {:ok, habit} = Priorities.create_habit(user, %{title: "Hábito", item_id: item.id})
+      :ok = Priorities.ensure_today_habit_instance(habit, user)
+
+      [instancia] =
+        Priorities.list_today_activities(user) |> Enum.filter(&(&1.habit_id == habit.id))
+
+      assert {:error, _} =
+               Priorities.snooze_activity(instancia, Date.add(Date.utc_today(), 1), user)
+    end
+  end
+
   describe "vínculos entre itens" do
     test "cria vínculo e aparece nos dois itens com direção e rótulo corretos", %{user: user} do
       cat = category(user)

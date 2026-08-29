@@ -415,6 +415,10 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
   def handle_event("reopen_item_activity", %{"id" => id}, socket),
     do: {:noreply, resolve_activity(socket, id, &Priorities.reopen_activity/2)}
 
+  @impl true
+  def handle_event("cancel_item_activity_snooze", %{"id" => id}, socket),
+    do: {:noreply, resolve_activity(socket, id, &Priorities.clear_activity_snooze/2)}
+
   defp resolve_activity(socket, id, fun) do
     activity = Enum.find(socket.assigns.activities, &(&1.id == id))
 
@@ -1085,6 +1089,9 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
                   "%d/%m/%Y"
                 )}
               </p>
+              <p :if={activity.snoozed_until} class="text-xs font-semibold text-info">
+                Adiada até {Calendar.strftime(activity.snoozed_until, "%d/%m/%Y")}
+              </p>
             </div>
             <div :if={activity.status == :pendente} class="flex shrink-0 items-center gap-1">
               <button
@@ -1104,6 +1111,16 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
                 title="Não cumprida"
               >
                 <.icon name="hero-x-mark" class="size-4 text-warning" />
+              </button>
+              <button
+                :if={activity.snoozed_until}
+                phx-click="cancel_item_activity_snooze"
+                phx-value-id={activity.id}
+                phx-target={@myself}
+                class="btn btn-ghost btn-xs"
+                title="Cancelar adiamento — volta a aparecer hoje"
+              >
+                <.icon name="hero-clock" class="size-4 text-info" />
               </button>
               <button
                 phx-click="discard_item_activity"

@@ -141,6 +141,36 @@ defmodule QuizProject.Priorities.Activity do
       change set_attribute(:flow, :todo)
       change set_attribute(:resolved_date, nil)
     end
+
+    # Adiar: some da Tela do dia até `until` (exclusive de hoje, inclusive
+    # de `until`) sem mudar `logical_date` nem `status`/`flow` — não é uma
+    # resolução, só uma pausa. Só faz sentido pra atividade presa a item
+    # (não hábito, que já tem sua própria noção de "dia devido").
+    update :snooze do
+      accept []
+      require_atomic? false
+      argument :until, :date, allow_nil?: false
+
+      validate absent(:habit_id),
+        message: "hábito não pode ser adiado, só atividade presa a item"
+
+      validate fn changeset, _context ->
+        until = Ash.Changeset.get_argument(changeset, :until)
+
+        if Date.compare(until, Clock.today()) == :gt do
+          :ok
+        else
+          {:error, field: :until, message: "a data precisa ser depois de hoje"}
+        end
+      end
+
+      change set_attribute(:snoozed_until, arg(:until))
+    end
+
+    update :clear_snooze do
+      accept []
+      change set_attribute(:snoozed_until, nil)
+    end
   end
 
   attributes do
@@ -188,6 +218,11 @@ defmodule QuizProject.Priorities.Activity do
     # `logical_date` porque atividade presa a item não expira mais sozinha —
     # sem isso não daria pra saber o que foi resolvido hoje pra coluna "Feito".
     attribute :resolved_date, :date
+
+    # Presente = atividade adiada, some da Tela do dia até essa data (ver
+    # `Priorities.list_today_activities/1`). Só faz sentido pra atividade
+    # presa a item — hábito já tem sua própria noção de dia devido.
+    attribute :snoozed_until, :date
 
     attribute :position, :integer do
       allow_nil? false

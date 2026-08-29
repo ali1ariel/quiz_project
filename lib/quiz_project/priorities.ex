@@ -648,11 +648,12 @@ defmodule QuizProject.Priorities do
   @doc """
   Base do board da Tela do dia: instância de hábito devida hoje (qualquer
   `flow` — é o hábito que expira por dia, não o resto), atividade presa a
-  item ainda aberta (não expira mais sozinha, fica até ser resolvida,
-  não importa a `logical_date`) e qualquer atividade (presa a item ou
-  captura solta) resolvida hoje — pra "Feito" continuar sendo um recorte
-  diário em vez de acumular pra sempre. Uma captura solta ainda `:pendente`
-  só aparece em "Capturas soltas" (ver `list_loose_captures/1`).
+  item ainda aberta e não adiada pra depois de hoje (não expira mais
+  sozinha, fica até ser resolvida, não importa a `logical_date` — ver
+  `snooze_activity/3`) e qualquer atividade (presa a item ou captura solta)
+  resolvida hoje — pra "Feito" continuar sendo um recorte diário em vez de
+  acumular pra sempre. Uma captura solta ainda `:pendente` só aparece em
+  "Capturas soltas" (ver `list_loose_captures/1`).
   """
   def list_today_activities(%{id: user_id}) do
     today = Clock.today()
@@ -661,7 +662,8 @@ defmodule QuizProject.Priorities do
     |> Ash.Query.filter(
       user_id == ^user_id and
         ((not is_nil(habit_id) and logical_date == ^today) or
-           (is_nil(habit_id) and not is_nil(item_id) and flow != :feito) or
+           (is_nil(habit_id) and not is_nil(item_id) and flow != :feito and
+              (is_nil(snoozed_until) or snoozed_until <= ^today)) or
            (is_nil(habit_id) and flow == :feito and resolved_date == ^today))
     )
     |> Ash.Query.sort(position: :asc)
@@ -821,6 +823,36 @@ defmodule QuizProject.Priorities do
       |> Ash.Changeset.for_update(:correct_status, %{status: status}, authorize?: false)
       |> Ash.update()
     end
+  end
+
+  @doc "Adia uma atividade presa a item: some da Tela do dia até `until` (que precisa ser depois de hoje)."
+  def snooze_activity(activity, until, actor) do
+    with :ok <- authorize_owner(activity, actor) do
+      activity
+      |> Ash.Changeset.for_update(:snooze, %{until: until}, authorize?: false)
+      |> Ash.update()
+    end
+  end
+
+  @doc "Cancela o adiamento de uma atividade antes da data — volta a aparecer na Tela do dia."
+  def clear_activity_snooze(activity, actor) do
+    with :ok <- authorize_owner(activity, actor) do
+      activity |> Ash.Changeset.for_update(:clear_snooze, %{}, authorize?: false) |> Ash.update()
+    end
+  end
+
+  @doc "Limpa `snoozed_until` de atividades cujo adiamento já venceu — chamado no mount da Tela do dia, mesma lógica de auto-limpeza de `close_overdue_habit_instances/2`."
+  def clear_expired_snoozes(%{id: user_id}) do
+    today = Clock.today()
+
+    Activity
+    |> Ash.Query.filter(
+      user_id == ^user_id and not is_nil(snoozed_until) and snoozed_until <= ^today
+    )
+    |> Ash.read!(authorize?: false)
+    |> Enum.each(fn activity ->
+      activity |> Ash.Changeset.for_update(:clear_snooze, %{}, authorize?: false) |> Ash.update()
+    end)
   end
 
   # Checklist de atividade
@@ -1157,15 +1189,17 @@ defmodule QuizProject.Priorities do
   end
 
   @doc """
-  Prévia dos hábitos ativos devidos em cada um dos próximos `days` dias
-  (a partir de amanhã — hoje já tem a própria tela). Só orientação: não
-  gera nenhuma `Activity`, é a mesma checagem que `ensure_today_habit_instance/2`
-  faria, projetada pra frente — já considerando exceção por data
-  (`HabitOverride`: "pular esse dia" tira o hábito daquele dia, título de
-  exceção substitui o do hábito só naquele dia). Cada entrada de
-  `day.habits` é `%{habit: %Habit{}, title: String.t()}` — `title` é o
-  efetivo pra aquele dia (`occurrence_title/2`), não necessariamente
-  `habit.title`.
+  Prévia dos próximos `days` dias (a partir de amanhã — hoje já tem a
+  própria tela): hábitos ativos devidos e atividades adiadas (ver
+  `snooze_activity/3`) que reaparecem naquele dia. Só orientação: não gera
+  nenhuma `Activity` nova (isso só acontece na Tela do dia), é a mesma
+  checagem que `ensure_today_habit_instance/2` faria, projetada pra frente
+  — já considerando exceção por data (`HabitOverride`: "pular esse dia"
+  tira o hábito daquele dia, título de exceção substitui o do hábito só
+  naquele dia). Cada entrada de `day.habits` é `%{habit: %Habit{}, title:
+  String.t()}` — `title` é o efetivo pra aquele dia (`occurrence_title/2`),
+  não necessariamente `habit.title`. `day.snoozed` é a lista de `Activity`
+  cujo `snoozed_until` cai naquele dia.
   """
   def upcoming_habit_schedule(%{id: user_id}, days \\ 7) do
     habits =
@@ -1175,6 +1209,18 @@ defmodule QuizProject.Priorities do
       |> Ash.read!(authorize?: false)
 
     tomorrow = Date.add(Clock.today(), 1)
+    last_day = Date.add(tomorrow, days - 1)
+
+    snoozed_by_date =
+      Activity
+      |> Ash.Query.filter(
+        user_id == ^user_id and not is_nil(snoozed_until) and snoozed_until >= ^tomorrow and
+          snoozed_until <= ^last_day
+      )
+      |> Ash.Query.sort(position: :asc)
+      |> Ash.Query.load(item: [:category])
+      |> Ash.read!(authorize?: false)
+      |> Enum.group_by(& &1.snoozed_until)
 
     Enum.map(0..(days - 1), fn offset ->
       date = Date.add(tomorrow, offset)
@@ -1184,7 +1230,7 @@ defmodule QuizProject.Priorities do
         |> Enum.filter(&habit_due_on?(&1, date))
         |> Enum.map(&%{habit: &1, title: occurrence_title(&1, date)})
 
-      %{date: date, habits: due}
+      %{date: date, habits: due, snoozed: Map.get(snoozed_by_date, date, [])}
     end)
   end
 
