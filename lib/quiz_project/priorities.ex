@@ -701,6 +701,18 @@ defmodule QuizProject.Priorities do
     Enum.group_by(list_today_activities(actor), & &1.flow)
   end
 
+  @doc """
+  Atividades pendentes com `logical_date` a partir de `from` (inclusive) —
+  usado só pelo backfill inicial de `QuizProject.GoogleCalendar.connect/2`,
+  pra popular o calendário recém-criado sem inundá-lo de histórico já
+  resolvido.
+  """
+  def list_pending_activities_from(%{id: user_id}, from) do
+    Activity
+    |> Ash.Query.filter(user_id == ^user_id and status == :pendente and logical_date >= ^from)
+    |> Ash.read!(authorize?: false)
+  end
+
   def get_activity(id, %{id: user_id}) do
     case Ash.get(Activity, id, authorize?: false, load: [:habit]) do
       {:ok, %Activity{user_id: ^user_id} = activity} -> {:ok, activity}
@@ -733,6 +745,7 @@ defmodule QuizProject.Priorities do
       Activity
       |> Ash.Changeset.for_create(:create, Map.put(attrs, :position, position), authorize?: false)
       |> Ash.create()
+      |> sync_google_out(:insert)
     end
   end
 
@@ -756,7 +769,10 @@ defmodule QuizProject.Priorities do
 
   def update_activity(activity, attrs, actor) do
     with :ok <- authorize_owner(activity, actor) do
-      activity |> Ash.Changeset.for_update(:update, attrs, authorize?: false) |> Ash.update()
+      activity
+      |> Ash.Changeset.for_update(:update, attrs, authorize?: false)
+      |> Ash.update()
+      |> sync_google_out(:patch)
     end
   end
 
@@ -792,26 +808,38 @@ defmodule QuizProject.Priorities do
 
   def complete_activity(activity, actor) do
     with :ok <- authorize_owner(activity, actor) do
-      activity |> Ash.Changeset.for_update(:complete, %{}, authorize?: false) |> Ash.update()
+      activity
+      |> Ash.Changeset.for_update(:complete, %{}, authorize?: false)
+      |> Ash.update()
+      |> sync_google_out(:patch)
     end
   end
 
   def mark_activity_not_done(activity, actor) do
     with :ok <- authorize_owner(activity, actor) do
-      activity |> Ash.Changeset.for_update(:mark_not_done, %{}, authorize?: false) |> Ash.update()
+      activity
+      |> Ash.Changeset.for_update(:mark_not_done, %{}, authorize?: false)
+      |> Ash.update()
+      |> sync_google_out(:patch)
     end
   end
 
   def discard_activity(activity, actor) do
     with :ok <- authorize_owner(activity, actor) do
-      activity |> Ash.Changeset.for_update(:discard, %{}, authorize?: false) |> Ash.update()
+      activity
+      |> Ash.Changeset.for_update(:discard, %{}, authorize?: false)
+      |> Ash.update()
+      |> sync_google_out(:patch)
     end
   end
 
   @doc "Desfaz a resolução de uma atividade (concluída, não cumprida ou descartada por engano) — volta pra \"a fazer\"."
   def reopen_activity(activity, actor) do
     with :ok <- authorize_owner(activity, actor) do
-      activity |> Ash.Changeset.for_update(:reopen, %{}, authorize?: false) |> Ash.update()
+      activity
+      |> Ash.Changeset.for_update(:reopen, %{}, authorize?: false)
+      |> Ash.update()
+      |> sync_google_out(:patch)
     end
   end
 
@@ -831,15 +859,49 @@ defmodule QuizProject.Priorities do
       activity
       |> Ash.Changeset.for_update(:snooze, %{until: until}, authorize?: false)
       |> Ash.update()
+      |> sync_google_out(:patch)
     end
   end
 
   @doc "Cancela o adiamento de uma atividade antes da data — volta a aparecer na Tela do dia."
   def clear_activity_snooze(activity, actor) do
     with :ok <- authorize_owner(activity, actor) do
-      activity |> Ash.Changeset.for_update(:clear_snooze, %{}, authorize?: false) |> Ash.update()
+      activity
+      |> Ash.Changeset.for_update(:clear_snooze, %{}, authorize?: false)
+      |> Ash.update()
+      |> sync_google_out(:patch)
     end
   end
+
+  @doc "Grava o evento do Google criado/atualizado a partir desta atividade (sync de saída, ver `QuizProject.GoogleCalendar`)."
+  def link_google_event(%Activity{} = activity, google_event_id, google_updated_at) do
+    activity
+    |> Ash.Changeset.for_update(
+      :link_google_event,
+      %{google_event_id: google_event_id, google_updated_at: google_updated_at},
+      authorize?: false
+    )
+    |> Ash.update()
+  end
+
+  # Dispara a sincronização de saída com o Google Calendar em background,
+  # depois de qualquer mutação com efeito visível no calendário — sem
+  # conexão do usuário é no-op (checado dentro do próprio
+  # `GoogleCalendar.sync_out_*`, não aqui). `correct_activity_status/3` fica
+  # de fora dos call sites: é correção só de Histórico, não muda nada que o
+  # Google precise saber.
+  defp sync_google_out({:ok, %Activity{} = activity} = result, kind) do
+    QuizProject.Jobs.run(fn -> do_sync_google_out(activity, kind) end)
+    result
+  end
+
+  defp sync_google_out(result, _kind), do: result
+
+  defp do_sync_google_out(activity, :insert),
+    do: QuizProject.GoogleCalendar.sync_out_create(activity)
+
+  defp do_sync_google_out(activity, :patch),
+    do: QuizProject.GoogleCalendar.sync_out_update(activity)
 
   @doc "Limpa `snoozed_until` de atividades cujo adiamento já venceu — chamado no mount da Tela do dia, mesma lógica de auto-limpeza de `close_overdue_habit_instances/2`."
   def clear_expired_snoozes(%{id: user_id}) do

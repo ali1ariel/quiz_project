@@ -4,8 +4,9 @@ defmodule QuizProjectWeb.SettingsLive do
   use QuizProjectWeb, :live_view
 
   alias QuizProject.Accounts
+  alias QuizProject.GoogleCalendar
 
-  @tabs ~w(profile security tokens)
+  @tabs ~w(profile security tokens calendar)
 
   @impl true
   def render(assigns) do
@@ -30,7 +31,7 @@ defmodule QuizProjectWeb.SettingsLive do
 
           <nav
             id="settings-tabs"
-            class="grid grid-cols-3 gap-2 lg:grid-cols-1"
+            class="grid grid-cols-2 gap-2 lg:grid-cols-1"
             aria-label="Conta e API"
           >
             <button
@@ -62,6 +63,16 @@ defmodule QuizProjectWeb.SettingsLive do
             >
               <.icon name="hero-key" class="size-5" />
               <span>Tokens</span>
+            </button>
+            <button
+              id="settings-tab-calendar"
+              type="button"
+              phx-click="switch_tab"
+              phx-value-tab="calendar"
+              class={tab_class(@tab == "calendar")}
+            >
+              <.icon name="hero-calendar-days" class="size-5" />
+              <span>Google Agenda</span>
             </button>
           </nav>
         </aside>
@@ -320,6 +331,77 @@ defmodule QuizProjectWeb.SettingsLive do
               </div>
             </div>
           </section>
+
+          <section :if={@tab == "calendar"} id="calendar-settings" class="space-y-5">
+            <div class="rounded-3xl border border-base-300 bg-base-200 p-6 shadow-sm sm:p-8">
+              <div class="flex items-start gap-4">
+                <span class="grid size-12 shrink-0 place-items-center rounded-2xl bg-primary/10 text-primary">
+                  <.icon name="hero-calendar-days" class="size-6" />
+                </span>
+                <div>
+                  <h2 class="text-xl font-bold">Google Agenda</h2>
+                  <p class="mt-1 max-w-2xl text-sm leading-6 opacity-70">
+                    Conecte sua conta Google para espelhar suas atividades num calendário
+                    dedicado ("QuizProject — Atividades"), sincronizado nos dois sentidos.
+                  </p>
+                </div>
+              </div>
+
+              <div
+                :if={!@google_configured?}
+                class="mt-6 rounded-2xl border border-dashed border-base-300 px-6 py-8 text-center text-sm opacity-70"
+              >
+                Integração com Google Agenda ainda não configurada neste ambiente.
+              </div>
+
+              <div :if={@google_configured? && is_nil(@google_connection)} class="mt-6">
+                <a
+                  id="connect-google-calendar"
+                  href={~p"/settings/google/connect"}
+                  class="inline-flex items-center gap-2 rounded-full bg-primary px-6 py-2.5 text-sm font-semibold text-primary-content transition hover:-translate-y-0.5 hover:shadow-lg"
+                >
+                  <.icon name="hero-link" class="size-4" /> Conectar Google Agenda
+                </a>
+              </div>
+
+              <div :if={@google_configured? && @google_connection} class="mt-6 space-y-4">
+                <div class="flex flex-col justify-between gap-4 rounded-2xl bg-base-200 px-5 py-4 sm:flex-row sm:items-center">
+                  <div>
+                    <p class="font-semibold">
+                      Conectado como {@google_connection.google_account_email}
+                    </p>
+                    <p class="mt-1 text-xs opacity-70">{sync_status_label(@google_connection)}</p>
+                  </div>
+                  <a
+                    id="open-google-calendar"
+                    href={google_calendar_url(@google_connection)}
+                    target="_blank"
+                    rel="noreferrer"
+                    class="inline-flex items-center gap-1 text-sm font-semibold text-primary hover:underline"
+                  >
+                    Abrir no Google Agenda <.icon name="hero-arrow-up-right" class="size-3.5" />
+                  </a>
+                </div>
+
+                <div
+                  :if={@google_connection.last_sync_error}
+                  class="rounded-2xl border border-warning/40 bg-warning/10 px-5 py-4 text-sm text-warning"
+                >
+                  Última sincronização falhou: {@google_connection.last_sync_error}
+                </div>
+
+                <button
+                  id="disconnect-google-calendar"
+                  type="button"
+                  phx-click="disconnect_google_calendar"
+                  data-confirm="Desconectar sua conta do Google Agenda? Os eventos já criados continuam lá, só paramos de sincronizar."
+                  class="rounded-full px-5 py-2.5 text-sm font-semibold text-error transition hover:bg-error/10"
+                >
+                  Desconectar
+                </button>
+              </div>
+            </div>
+          </section>
         </div>
       </div>
 
@@ -352,6 +434,8 @@ defmodule QuizProjectWeb.SettingsLive do
      |> assign(:token_form, token_form())
      |> assign(:new_token, nil)
      |> assign(:token_count, length(tokens))
+     |> assign(:google_configured?, google_configured?())
+     |> assign(:google_connection, google_connection(user))
      |> stream(:api_tokens, tokens, dom_id: &"api-token-#{&1.id}")}
   end
 
@@ -449,6 +533,15 @@ defmodule QuizProjectWeb.SettingsLive do
     end
   end
 
+  def handle_event("disconnect_google_calendar", _params, socket) do
+    GoogleCalendar.disconnect(socket.assigns.current_user)
+
+    {:noreply,
+     socket
+     |> assign(:google_connection, nil)
+     |> put_flash(:info, "Google Agenda desconectado.")}
+  end
+
   defp profile_form(user) do
     to_form(%{"name" => user.name || "", "email" => to_string(user.email)}, as: :profile)
   end
@@ -502,4 +595,25 @@ defmodule QuizProjectWeb.SettingsLive do
 
   defp last_used_label(nil), do: "ainda não utilizado"
   defp last_used_label(datetime), do: "último uso em #{format_datetime(datetime)}"
+
+  defp google_configured? do
+    Application.get_env(:quiz_project, :google_client_id) not in [nil, ""]
+  end
+
+  defp google_connection(user) do
+    case Accounts.get_google_calendar_connection(user) do
+      {:ok, connection} -> connection
+      {:error, :not_found} -> nil
+    end
+  end
+
+  defp google_calendar_url(connection) do
+    "https://calendar.google.com/calendar/u/0/r?cid=" <>
+      URI.encode_www_form(connection.calendar_id)
+  end
+
+  defp sync_status_label(%{last_synced_at: nil}), do: "ainda sem sincronização registrada"
+
+  defp sync_status_label(%{last_synced_at: datetime}),
+    do: "última sincronização em #{format_datetime(datetime)}"
 end

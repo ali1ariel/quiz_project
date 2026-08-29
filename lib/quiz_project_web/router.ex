@@ -99,6 +99,11 @@ defmodule QuizProjectWeb.Router do
     get "/contents/:id/book.css", BookStyleController, :show
     get "/contents/:id/images/*path", BookImageController, :show
 
+    # Vínculo de conta (não login): fica junto de /settings, sob o pipeline
+    # autenticado, não sob o pipeline de /login e /register.
+    get "/settings/google/connect", GoogleAuthController, :connect
+    get "/settings/google/callback", GoogleAuthController, :callback
+
     live_session :authenticated,
       on_mount: [
         {QuizProjectWeb.UserAuth, :ensure_authenticated},
