@@ -1,6 +1,12 @@
 import Config
 config :ash, policies: [show_policy_breakdowns?: true]
 
+# Chave insegura fixa só pra dev não quebrar `mix setup` de todo mundo — em
+# produção vem de CALENDAR_TOKEN_ENCRYPTION_KEY (ver config/runtime.exs).
+config :quiz_project,
+  :calendar_token_encryption_key,
+  "wN2TA0MqNTWLoILKcXDcoYsIicrqHUbRsMkMM2YZvhY="
+
 # Configure your database
 config :quiz_project, QuizProject.Repo,
   username: "postgres",

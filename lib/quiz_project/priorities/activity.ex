@@ -32,7 +32,17 @@ defmodule QuizProject.Priorities.Activity do
     defaults [:read, :destroy]
 
     create :create do
-      accept [:user_id, :item_id, :habit_id, :title, :notes, :logical_date, :position]
+      accept [
+        :user_id,
+        :item_id,
+        :habit_id,
+        :title,
+        :notes,
+        :logical_date,
+        :position,
+        :google_event_id,
+        :google_updated_at
+      ]
 
       validate fn changeset, _context ->
         item_id = Ash.Changeset.get_attribute(changeset, :item_id)
@@ -171,6 +181,58 @@ defmodule QuizProject.Priorities.Activity do
       accept []
       change set_attribute(:snoozed_until, nil)
     end
+
+    # Grava o evento do Google criado a partir desta atividade (sync de
+    # saída) ou o evento pré-existente que originou esta atividade como
+    # loose capture (sync de entrada, evento novo no calendário dedicado).
+    update :link_google_event do
+      accept []
+      argument :google_event_id, :string, allow_nil?: false
+      argument :google_updated_at, :utc_datetime_usec, allow_nil?: false
+
+      change set_attribute(:google_event_id, arg(:google_event_id))
+      change set_attribute(:google_updated_at, arg(:google_updated_at))
+    end
+
+    # Evento cancelado/apagado no Google: só desfaz o vínculo, nunca mexe em
+    # status/flow — cancelar no Google não é uma resolução de negócio, só
+    # para de espelhar.
+    update :unlink_google_event do
+      accept []
+      change set_attribute(:google_event_id, nil)
+      change set_attribute(:google_updated_at, nil)
+    end
+
+    # Aplica uma edição feita direto no Google Calendar (sync de entrada).
+    # `logical_date` só é sobrescrita se a atividade ainda não foi resolvida
+    # — resolvida mantém a data histórica mesmo que o evento seja arrastado
+    # no Google, senão corrompe o range de `logical_date`/`resolved_date`
+    # que o Histórico usa.
+    update :sync_from_google do
+      accept []
+      require_atomic? false
+
+      argument :title, :string, allow_nil?: false
+      argument :notes, :string
+      argument :logical_date, :date, allow_nil?: false
+      argument :google_updated_at, :utc_datetime_usec, allow_nil?: false
+
+      change set_attribute(:title, arg(:title))
+      change set_attribute(:notes, arg(:notes))
+      change set_attribute(:google_updated_at, arg(:google_updated_at))
+
+      change fn changeset, _context ->
+        if changeset.data.flow == :feito do
+          changeset
+        else
+          Ash.Changeset.force_change_attribute(
+            changeset,
+            :logical_date,
+            Ash.Changeset.get_argument(changeset, :logical_date)
+          )
+        end
+      end
+    end
   end
 
   attributes do
@@ -229,6 +291,16 @@ defmodule QuizProject.Priorities.Activity do
       default 0
     end
 
+    # Id do evento no calendário dedicado do Google (sync de saída) —
+    # ausente enquanto o usuário não conectou o Google Calendar, ou depois
+    # que o evento correspondente é cancelado lá (ver `:unlink_google_event`).
+    attribute :google_event_id, :string
+
+    # `updated` do evento no Google na última vez que o app leu ou escreveu
+    # nele — usado pra distinguir uma edição real feita no Google de um eco
+    # da própria escrita de saída do app durante a reconciliação.
+    attribute :google_updated_at, :utc_datetime_usec
+
     timestamps()
   end
 
@@ -244,5 +316,9 @@ defmodule QuizProject.Priorities.Activity do
     belongs_to :habit, QuizProject.Priorities.Habit do
       attribute_writable? true
     end
+  end
+
+  identities do
+    identity :unique_google_event_id, [:google_event_id]
   end
 end

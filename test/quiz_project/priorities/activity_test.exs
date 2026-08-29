@@ -419,4 +419,100 @@ defmodule QuizProject.Priorities.ActivityTest do
       assert {:error, :unauthorized} = Priorities.delete_activity_task(task, activity, other)
     end
   end
+
+  describe "sincronização com Google Calendar" do
+    test "link_google_event grava o id do evento e o updated_at", %{user: user} do
+      {:ok, activity} = Priorities.create_activity(user, %{title: "Ler capítulo 1"})
+      agora = DateTime.utc_now()
+
+      linked =
+        activity
+        |> Ash.Changeset.for_update(
+          :link_google_event,
+          %{google_event_id: "evt-1", google_updated_at: agora},
+          authorize?: false
+        )
+        |> Ash.update!()
+
+      assert linked.google_event_id == "evt-1"
+      assert DateTime.compare(linked.google_updated_at, agora) == :eq
+    end
+
+    test "unlink_google_event limpa o vínculo sem mexer em status/flow", %{user: user} do
+      {:ok, activity} = Priorities.create_activity(user, %{title: "Ler capítulo 1"})
+
+      linked =
+        activity
+        |> Ash.Changeset.for_update(
+          :link_google_event,
+          %{google_event_id: "evt-1", google_updated_at: DateTime.utc_now()},
+          authorize?: false
+        )
+        |> Ash.update!()
+
+      {:ok, completed} = Priorities.complete_activity(linked, user)
+
+      unlinked =
+        completed
+        |> Ash.Changeset.for_update(:unlink_google_event, %{}, authorize?: false)
+        |> Ash.update!()
+
+      assert is_nil(unlinked.google_event_id)
+      assert is_nil(unlinked.google_updated_at)
+      assert unlinked.status == :concluida
+      assert unlinked.flow == :feito
+    end
+
+    test "sync_from_google aplica title/notes/logical_date numa atividade ainda não resolvida", %{
+      user: user
+    } do
+      {:ok, activity} = Priorities.create_activity(user, %{title: "Original"})
+      nova_data = Date.add(activity.logical_date, 2)
+      agora = DateTime.utc_now()
+
+      synced =
+        activity
+        |> Ash.Changeset.for_update(
+          :sync_from_google,
+          %{
+            title: "Editado no Google",
+            notes: "notas novas",
+            logical_date: nova_data,
+            google_updated_at: agora
+          },
+          authorize?: false
+        )
+        |> Ash.update!()
+
+      assert synced.title == "Editado no Google"
+      assert synced.notes == "notas novas"
+      assert synced.logical_date == nova_data
+      assert DateTime.compare(synced.google_updated_at, agora) == :eq
+    end
+
+    test "sync_from_google não sobrescreve logical_date de atividade já resolvida", %{
+      user: user
+    } do
+      {:ok, activity} = Priorities.create_activity(user, %{title: "Original"})
+      {:ok, resolved} = Priorities.complete_activity(activity, user)
+      data_original = resolved.logical_date
+      data_arrastada_no_google = Date.add(data_original, 5)
+
+      synced =
+        resolved
+        |> Ash.Changeset.for_update(
+          :sync_from_google,
+          %{
+            title: "Editado no Google",
+            logical_date: data_arrastada_no_google,
+            google_updated_at: DateTime.utc_now()
+          },
+          authorize?: false
+        )
+        |> Ash.update!()
+
+      assert synced.title == "Editado no Google"
+      assert synced.logical_date == data_original
+    end
+  end
 end
