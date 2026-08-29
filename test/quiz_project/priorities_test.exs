@@ -583,6 +583,33 @@ defmodule QuizProject.PrioritiesTest do
       assert atualizada.status == :nao_cumprida
     end
 
+    test "dia devido em que o app não foi aberto vira não cumprido (backfill), sem travar o de hoje",
+         %{user: user} do
+      hoje = Date.utc_today()
+      tres_dias_atras = Date.add(hoje, -3)
+
+      {:ok, habit} =
+        Priorities.create_habit(user, %{
+          title: "Academia",
+          item_id: habit_item(user).id,
+          starts_on: tres_dias_atras
+        })
+
+      :ok = Priorities.ensure_today_habit_instance(habit, user)
+
+      instances =
+        Priorities.list_activities_between(user, tres_dias_atras, hoje)
+        |> Enum.filter(&(&1.habit_id == habit.id))
+        |> Map.new(&{&1.logical_date, &1.status})
+
+      assert instances == %{
+               tres_dias_atras => :nao_cumprida,
+               Date.add(hoje, -2) => :nao_cumprida,
+               Date.add(hoje, -1) => :nao_cumprida,
+               hoje => :pendente
+             }
+    end
+
     test "habit_streak conta dias devidos consecutivos concluídos", %{user: user} do
       {:ok, habit} =
         Priorities.create_habit(user, %{title: "Hábito", item_id: habit_item(user).id})

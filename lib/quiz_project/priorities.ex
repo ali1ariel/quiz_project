@@ -16,6 +16,7 @@ defmodule QuizProject.Priorities do
   alias QuizProject.Priorities.Activity
   alias QuizProject.Priorities.ActivityTask
   alias QuizProject.Priorities.Category
+  alias QuizProject.Priorities.Clock
   alias QuizProject.Priorities.FieldDefinition
   alias QuizProject.Priorities.FieldValue
   alias QuizProject.Priorities.Habit
@@ -645,22 +646,44 @@ defmodule QuizProject.Priorities do
   end
 
   @doc """
-  Atividades de hoje presas a um item ou hábito, mais capturas soltas já
-  resolvidas hoje — base do board da Tela do dia. Uma captura solta ainda
-  `:pendente` só aparece em "Capturas soltas" (ver `list_loose_captures/1`);
-  uma vez concluída/descartada/não cumprida, ela vira `flow == :feito` e
-  precisa aparecer aqui também, senão resolver uma captura solta some com
-  ela em vez de mostrar o resultado na coluna "Feito", como qualquer outra
-  atividade.
+  Base do board da Tela do dia: instância de hábito devida hoje (qualquer
+  `flow` — é o hábito que expira por dia, não o resto), atividade presa a
+  item ainda aberta (não expira mais sozinha, fica até ser resolvida,
+  não importa a `logical_date`) e qualquer atividade (presa a item ou
+  captura solta) resolvida hoje — pra "Feito" continuar sendo um recorte
+  diário em vez de acumular pra sempre. Uma captura solta ainda `:pendente`
+  só aparece em "Capturas soltas" (ver `list_loose_captures/1`).
   """
   def list_today_activities(%{id: user_id}) do
+    today = Clock.today()
+
     Activity
     |> Ash.Query.filter(
       user_id == ^user_id and
-        (not is_nil(item_id) or not is_nil(habit_id) or flow == :feito) and
-        logical_date == ^Date.utc_today()
+        ((not is_nil(habit_id) and logical_date == ^today) or
+           (is_nil(habit_id) and not is_nil(item_id) and flow != :feito) or
+           (is_nil(habit_id) and flow == :feito and resolved_date == ^today))
     )
     |> Ash.Query.sort(position: :asc)
+    |> Ash.Query.load(item: [:category], habit: [item: [:category]])
+    |> Ash.read!(authorize?: false)
+  end
+
+  @doc """
+  Atividades entre `from_date` e `to_date` (inclusive) — hábito pelo dia
+  devido (`logical_date`), o resto pelo dia em que foi resolvido
+  (`resolved_date`). Base do calendário de Histórico (`KanbanLive.History`);
+  uma consulta cobre o mês inteiro, agrupamento por dia fica por conta de
+  quem chama.
+  """
+  def list_activities_between(%{id: user_id}, from_date, to_date) do
+    Activity
+    |> Ash.Query.filter(
+      user_id == ^user_id and
+        ((not is_nil(habit_id) and logical_date >= ^from_date and logical_date <= ^to_date) or
+           (is_nil(habit_id) and flow == :feito and resolved_date >= ^from_date and
+              resolved_date <= ^to_date))
+    )
     |> Ash.Query.load(item: [:category], habit: [item: [:category]])
     |> Ash.read!(authorize?: false)
   end
@@ -694,7 +717,7 @@ defmodule QuizProject.Priorities do
          :ok <- validate_habit_ownership(attrs, actor) do
       attrs =
         attrs
-        |> Map.put_new_lazy(:logical_date, &Date.utc_today/0)
+        |> Map.put_new_lazy(:logical_date, &Clock.today/0)
         |> Map.put(:user_id, user_id)
 
       position =
@@ -787,6 +810,16 @@ defmodule QuizProject.Priorities do
   def reopen_activity(activity, actor) do
     with :ok <- authorize_owner(activity, actor) do
       activity |> Ash.Changeset.for_update(:reopen, %{}, authorize?: false) |> Ash.update()
+    end
+  end
+
+  @doc "Corrige o desfecho (concluída/não cumprida) de uma atividade já resolvida, sem reabri-la nem mudar seu dia — só o Histórico usa isto."
+  def correct_activity_status(activity, status, actor)
+      when status in [:concluida, :nao_cumprida] do
+    with :ok <- authorize_owner(activity, actor) do
+      activity
+      |> Ash.Changeset.for_update(:correct_status, %{status: status}, authorize?: false)
+      |> Ash.update()
     end
   end
 
@@ -1013,16 +1046,20 @@ defmodule QuizProject.Priorities do
   end
 
   @doc """
-  Garante a instância de hoje de um hábito devido, e resolve como não
-  cumprida qualquer instância vencida (dia passado, ainda pendente) do
-  mesmo hábito — cada dia devido gera sua própria instância independente; o
-  que não foi feito ontem não trava o que é devido hoje.
+  Garante a instância de hoje de um hábito devido, resolve como não cumprida
+  qualquer instância vencida (dia passado, ainda pendente) do mesmo hábito, e
+  preenche como não cumprido qualquer dia devido no passado que nunca chegou
+  a gerar instância (usuário não abriu o app naquele dia — sem isso o dia
+  simplesmente não aparecia no Histórico, em vez de aparecer como não
+  cumprido). Cada dia devido gera sua própria instância independente; o que
+  não foi feito ontem não trava o que é devido hoje.
   """
   def ensure_today_habit_instance(%Habit{} = habit, actor) do
     with :ok <- authorize_owner(habit, actor) do
+      backfill_missing_habit_instances(habit, actor)
       close_overdue_habit_instances(habit, actor)
 
-      today = Date.utc_today()
+      today = Clock.today()
 
       if habit_due_on?(habit, today) and not habit_instance_exists?(habit.id, today) do
         create_activity(actor, %{
@@ -1044,8 +1081,45 @@ defmodule QuizProject.Priorities do
     |> Enum.each(&ensure_today_habit_instance(&1, actor))
   end
 
+  # Dia devido no passado sem nenhuma instância (`Activity`) é um dia que o
+  # hábito ficou devido enquanto o usuário não abriu o app — sem instância
+  # não tem o que `close_overdue_habit_instances/2` feche, então o dia some
+  # do Histórico em vez de aparecer como não cumprido. Varre de `starts_on`
+  # (ou da criação do hábito, se nunca mudou de regra) até ontem e cria já
+  # resolvida como não cumprida cada data devida sem instância.
+  defp backfill_missing_habit_instances(habit, actor) do
+    lower_bound = habit.starts_on || DateTime.to_date(habit.inserted_at)
+    yesterday = Date.add(Clock.today(), -1)
+
+    if Date.compare(lower_bound, yesterday) != :gt do
+      existing_dates =
+        Activity
+        |> Ash.Query.filter(
+          habit_id == ^habit.id and logical_date >= ^lower_bound and logical_date <= ^yesterday
+        )
+        |> Ash.Query.select([:logical_date])
+        |> Ash.read!(authorize?: false)
+        |> MapSet.new(& &1.logical_date)
+
+      lower_bound
+      |> Date.range(yesterday)
+      |> Enum.each(fn date ->
+        if habit_due_on?(habit, date) and not MapSet.member?(existing_dates, date) do
+          {:ok, activity} =
+            create_activity(actor, %{
+              title: occurrence_title(habit, date),
+              habit_id: habit.id,
+              logical_date: date
+            })
+
+          mark_activity_not_done(activity, actor)
+        end
+      end)
+    end
+  end
+
   defp close_overdue_habit_instances(habit, actor) do
-    today = Date.utc_today()
+    today = Clock.today()
 
     Activity
     |> Ash.Query.filter(habit_id == ^habit.id and status == :pendente and logical_date < ^today)
@@ -1079,7 +1153,7 @@ defmodule QuizProject.Priorities do
       |> Ash.read!(authorize?: false)
       |> MapSet.new(& &1.date)
 
-    HabitRecurrence.streak(config, statuses_by_date, Date.utc_today(), skipped_dates)
+    HabitRecurrence.streak(config, statuses_by_date, Clock.today(), skipped_dates)
   end
 
   @doc """
@@ -1100,7 +1174,7 @@ defmodule QuizProject.Priorities do
       |> Ash.Query.load(item: [:category])
       |> Ash.read!(authorize?: false)
 
-    tomorrow = Date.add(Date.utc_today(), 1)
+    tomorrow = Date.add(Clock.today(), 1)
 
     Enum.map(0..(days - 1), fn offset ->
       date = Date.add(tomorrow, offset)
