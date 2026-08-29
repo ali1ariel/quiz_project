@@ -20,11 +20,21 @@ echo "Fetching secrets from AWS Parameter Store..."
 DB_URL=$(get_param "/quiz_project/prod/database_url")
 KEY_BASE=$(get_param "/quiz_project/prod/secret_key_base")
 
+# Obrigatória (config/runtime.exs derruba o boot sem ela): criptografa em
+# repouso o access/refresh token do Google Calendar de cada usuário.
+CALENDAR_TOKEN_ENCRYPTION_KEY=$(get_param "/quiz_project/prod/calendar_token_encryption_key")
+
 # Integração com IA é opcional: sem chave, o app usa o provider Fake (heurística local).
 OPENAI_API_KEY=$(get_param_optional "/quiz_project/prod/openai_api_key")
 GEMINI_API_KEY=$(get_param_optional "/quiz_project/prod/gemini_api_key")
 ANTHROPIC_API_KEY=$(get_param_optional "/quiz_project/prod/anthropic_api_key")
 AI_PROVIDER=$(get_param_optional "/quiz_project/prod/ai_provider")
+
+# Google Calendar também é opcional: sem client_id, a aba fica "não
+# configurada" em Configurações e o renovador de watch channel não sobe
+# (ver QuizProject.Application.google_calendar_watch_renewer_child/0).
+GOOGLE_CLIENT_ID=$(get_param_optional "/quiz_project/prod/google_client_id")
+GOOGLE_CLIENT_SECRET=$(get_param_optional "/quiz_project/prod/google_client_secret")
 
 # Quem pode disparar processamento de IA (custo real por chamada). A app não
 # tem credencial AWS em runtime, então lê a lista aqui — igual às chaves
@@ -93,6 +103,9 @@ Environment="GEMINI_API_KEY=${GEMINI_API_KEY}"
 Environment="ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}"
 Environment="AI_PROVIDER=${AI_PROVIDER}"
 Environment="AI_AUTHORIZATION_EMAILS=${AI_AUTHORIZATION_EMAILS}"
+Environment="CALENDAR_TOKEN_ENCRYPTION_KEY=${CALENDAR_TOKEN_ENCRYPTION_KEY}"
+Environment="GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}"
+Environment="GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}"
 
 # Dump de post-mortem da VM em crash não-OOM (o BEAM tem tempo de escrever
 # antes de morrer; um SIGKILL do OOM killer não tem, aí só resta o [vm] no
@@ -124,7 +137,9 @@ fi
 # Se a migração falhar, current/ ainda aponta para a versão antiga (que segue
 # rodando) e o deploy é marcado como falho sem downtime.
 echo "Running migrations with the new release..."
-DATABASE_URL="${DB_URL}" SECRET_KEY_BASE="${KEY_BASE}" "$NEW_BIN" eval "QuizProject.Release.migrate"
+DATABASE_URL="${DB_URL}" SECRET_KEY_BASE="${KEY_BASE}" \
+  CALENDAR_TOKEN_ENCRYPTION_KEY="${CALENDAR_TOKEN_ENCRYPTION_KEY}" \
+  "$NEW_BIN" eval "QuizProject.Release.migrate"
 
 # --- Troca atômica: gira o symlink e faz um único restart ---
 # A janela de indisponibilidade fica limitada ao restart do BEAM (~poucos seg).
