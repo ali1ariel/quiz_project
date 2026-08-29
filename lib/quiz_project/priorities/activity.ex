@@ -130,10 +130,10 @@ defmodule QuizProject.Priorities.Activity do
     end
 
     # Corrige o desfecho de uma atividade já resolvida sem reabri-la nem
-    # mexer em `resolved_date` — usada só pelo Histórico (calendário de dias
-    # anteriores), que é consulta e não pode arrastar a atividade pro dia da
-    # correção (diferente de `:complete`/`:mark_not_done`, que são a
-    # resolução em si e por isso gravam `resolved_date` como hoje).
+    # mexer em `resolved_date` — usada só pelo Calendário (`KanbanLive.Calendar`),
+    # que é consulta e não pode arrastar a atividade pro dia da correção
+    # (diferente de `:complete`/`:mark_not_done`, que são a resolução em si
+    # e por isso gravam `resolved_date` como hoje).
     update :correct_status do
       accept []
 
@@ -213,7 +213,7 @@ defmodule QuizProject.Priorities.Activity do
     # `logical_date` só é sobrescrita se a atividade ainda não foi resolvida
     # — resolvida mantém a data histórica mesmo que o evento seja arrastado
     # no Google, senão corrompe o range de `logical_date`/`resolved_date`
-    # que o Histórico usa.
+    # que o Calendário usa.
     update :sync_from_google do
       accept []
       require_atomic? false

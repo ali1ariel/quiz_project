@@ -118,7 +118,7 @@ defmodule QuizProjectWeb.Router do
       live "/dashboard", DashboardLive
       live "/today", KanbanLive
       live "/today/upcoming", KanbanLive.Upcoming
-      live "/today/history", KanbanLive.History
+      live "/today/calendar", KanbanLive.Calendar
       live "/settings", SettingsLive
       live "/quiz/:version_id/edit", QuizEditorLive
       live "/quiz/:quiz_id/manage", QuizManageLive

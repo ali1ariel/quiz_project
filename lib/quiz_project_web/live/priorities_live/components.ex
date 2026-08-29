@@ -614,13 +614,13 @@ defmodule QuizProjectWeb.PrioritiesLive.Components do
         Próximos dias
       </.link>
       <.link
-        navigate={~p"/today/history"}
+        navigate={~p"/today/calendar"}
         class={[
           "rounded-full px-4 py-1.5 transition [transform:translateZ(0)]",
-          tab_class(@active == :history)
+          tab_class(@active == :calendar)
         ]}
       >
-        Histórico
+        Calendário
       </.link>
     </nav>
     """

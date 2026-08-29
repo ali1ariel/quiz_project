@@ -249,6 +249,50 @@ defmodule QuizProject.Priorities.ActivityTest do
 
       assert activity.item.category.name == "Corpo"
     end
+
+    test "evento só aparece na tela do dia no seu próprio dia, mesmo preso a item", %{user: user} do
+      cat = category(user)
+      item = manual_item(user, cat, "Projeto")
+
+      {:ok, hoje} =
+        Priorities.create_activity(user, %{title: "Reunião hoje", item_id: item.id, kind: :evento})
+
+      {:ok, _futuro} =
+        Priorities.create_activity(user, %{
+          title: "Reunião futura",
+          item_id: item.id,
+          kind: :evento,
+          logical_date: Date.add(Date.utc_today(), 3)
+        })
+
+      {:ok, _passado} =
+        Priorities.create_activity(user, %{
+          title: "Reunião passada",
+          item_id: item.id,
+          kind: :evento,
+          logical_date: Date.add(Date.utc_today(), -3)
+        })
+
+      ids = Priorities.list_today_activities(user) |> Enum.map(& &1.id)
+
+      assert hoje.id in ids
+      assert length(ids) == 1
+    end
+
+    test "evento resolvido hoje aparece na tela do dia mesmo que o dia marcado seja outro",
+         %{user: user} do
+      {:ok, evento} =
+        Priorities.create_activity(user, %{
+          title: "Adiantei",
+          kind: :evento,
+          logical_date: Date.add(Date.utc_today(), 2)
+        })
+
+      {:ok, resolvido} = Priorities.complete_activity(evento, user)
+
+      ids = Priorities.list_today_activities(user) |> Enum.map(& &1.id)
+      assert resolvido.id in ids
+    end
   end
 
   describe "adiar" do

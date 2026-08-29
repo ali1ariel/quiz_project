@@ -625,20 +625,31 @@ defmodule QuizProject.Priorities do
     |> Ash.read!(authorize?: false)
   end
 
-  @doc "Capturas soltas (sem item) ainda pendentes, mais antiga primeiro — a que mais precisa de atenção."
+  @doc """
+  Capturas soltas (sem item) ainda pendentes, mais antiga primeiro — a que
+  mais precisa de atenção. Uma captura do tipo evento só entra aqui no seu
+  próprio dia (ver `list_today_activities/1`) — antes ou depois disso ela
+  só aparece no Calendário.
+  """
   def list_loose_captures(%{id: user_id}) do
+    today = Clock.today()
+
     Activity
     |> Ash.Query.filter(
-      user_id == ^user_id and is_nil(item_id) and is_nil(habit_id) and status == :pendente
+      user_id == ^user_id and is_nil(item_id) and is_nil(habit_id) and status == :pendente and
+        (kind != :evento or logical_date == ^today)
     )
     |> Ash.Query.sort(logical_date: :asc, position: :asc)
     |> Ash.read!(authorize?: false)
   end
 
   def count_loose_captures(%{id: user_id}) do
+    today = Clock.today()
+
     Activity
     |> Ash.Query.filter(
-      user_id == ^user_id and is_nil(item_id) and is_nil(habit_id) and status == :pendente
+      user_id == ^user_id and is_nil(item_id) and is_nil(habit_id) and status == :pendente and
+        (kind != :evento or logical_date == ^today)
     )
     |> Ash.Query.select([:id])
     |> Ash.read!(authorize?: false)
@@ -647,13 +658,15 @@ defmodule QuizProject.Priorities do
 
   @doc """
   Base do board da Tela do dia: instância de hábito devida hoje (qualquer
-  `flow` — é o hábito que expira por dia, não o resto), atividade presa a
-  item ainda aberta e não adiada pra depois de hoje (não expira mais
-  sozinha, fica até ser resolvida, não importa a `logical_date` — ver
-  `snooze_activity/3`) e qualquer atividade (presa a item ou captura solta)
-  resolvida hoje — pra "Feito" continuar sendo um recorte diário em vez de
-  acumular pra sempre. Uma captura solta ainda `:pendente` só aparece em
-  "Capturas soltas" (ver `list_loose_captures/1`).
+  `flow` — é o hábito que expira por dia, não o resto), evento no seu
+  próprio dia (aberto ou resolvido hoje — fora disso não aparece aqui,
+  independente de estar presa a item), atividade comum presa a item ainda
+  aberta e não adiada pra depois de hoje (não expira mais sozinha, fica
+  até ser resolvida, não importa a `logical_date` — ver `snooze_activity/3`)
+  e qualquer atividade comum (presa a item ou captura solta) resolvida
+  hoje — pra "Feito" continuar sendo um recorte diário em vez de acumular
+  pra sempre. Uma captura solta ainda `:pendente` só aparece em "Capturas
+  soltas" (ver `list_loose_captures/1`).
   """
   def list_today_activities(%{id: user_id}) do
     today = Clock.today()
@@ -662,9 +675,12 @@ defmodule QuizProject.Priorities do
     |> Ash.Query.filter(
       user_id == ^user_id and
         ((not is_nil(habit_id) and logical_date == ^today) or
-           (is_nil(habit_id) and not is_nil(item_id) and flow != :feito and
+           (kind == :evento and
+              ((flow != :feito and logical_date == ^today) or
+                 (flow == :feito and resolved_date == ^today))) or
+           (kind != :evento and is_nil(habit_id) and not is_nil(item_id) and flow != :feito and
               (is_nil(snoozed_until) or snoozed_until <= ^today)) or
-           (is_nil(habit_id) and flow == :feito and resolved_date == ^today))
+           (kind != :evento and is_nil(habit_id) and flow == :feito and resolved_date == ^today))
     )
     |> Ash.Query.sort(position: :asc)
     |> Ash.Query.load(item: [:category], habit: [item: [:category]])
@@ -672,19 +688,21 @@ defmodule QuizProject.Priorities do
   end
 
   @doc """
-  Atividades entre `from_date` e `to_date` (inclusive) — hábito pelo dia
-  devido (`logical_date`), o resto pelo dia em que foi resolvido
-  (`resolved_date`). Base do calendário de Histórico (`KanbanLive.History`);
-  uma consulta cobre o mês inteiro, agrupamento por dia fica por conta de
-  quem chama.
+  Atividades entre `from_date` e `to_date` (inclusive) — hábito e evento
+  pelo dia marcado (`logical_date`, para o evento independente de já ter
+  sido resolvido ou não: é a data real do compromisso), o resto pelo dia
+  em que foi resolvido (`resolved_date`). Base do Calendário
+  (`KanbanLive.Calendar`); uma consulta cobre o mês inteiro, agrupamento
+  por dia fica por conta de quem chama.
   """
   def list_activities_between(%{id: user_id}, from_date, to_date) do
     Activity
     |> Ash.Query.filter(
       user_id == ^user_id and
         ((not is_nil(habit_id) and logical_date >= ^from_date and logical_date <= ^to_date) or
-           (is_nil(habit_id) and flow == :feito and resolved_date >= ^from_date and
-              resolved_date <= ^to_date))
+           (kind == :evento and logical_date >= ^from_date and logical_date <= ^to_date) or
+           (kind != :evento and is_nil(habit_id) and flow == :feito and
+              resolved_date >= ^from_date and resolved_date <= ^to_date))
     )
     |> Ash.Query.load(item: [:category], habit: [item: [:category]])
     |> Ash.read!(authorize?: false)

@@ -252,7 +252,7 @@ defmodule QuizProjectWeb.KanbanLiveTest do
       assert [%{item_id: nil}] = Priorities.list_loose_captures(user)
     end
 
-    test "create_capture com type evento cria uma atividade do tipo evento com a data escolhida",
+    test "create_capture com type evento cria uma atividade do tipo evento com a data escolhida, mas só aparece em Capturas soltas no próprio dia",
          %{conn: conn, user: user} do
       {:ok, view, _html} = live(conn, ~p"/today")
       data = Date.add(Date.utc_today(), 4)
@@ -263,7 +263,28 @@ defmodule QuizProjectWeb.KanbanLiveTest do
         "event_date" => Date.to_iso8601(data)
       })
 
-      assert [%{kind: :evento, logical_date: ^data}] = Priorities.list_loose_captures(user)
+      assert [%{kind: :evento, logical_date: ^data, title: "Consulta médica"}] =
+               Priorities.list_activities_between(user, data, data)
+
+      # Data no futuro: some de "Capturas soltas" até o dia chegar (ver
+      # `Priorities.list_loose_captures/1`) — só aparece no Calendário.
+      assert Priorities.list_loose_captures(user) == []
+    end
+
+    test "create_capture com type evento pra hoje aparece em Capturas soltas", %{
+      conn: conn,
+      user: user
+    } do
+      {:ok, view, _html} = live(conn, ~p"/today")
+      hoje = Date.utc_today()
+
+      render_submit(view, "create_capture", %{
+        "title" => "Consulta hoje",
+        "type" => "evento",
+        "event_date" => Date.to_iso8601(hoje)
+      })
+
+      assert [%{kind: :evento, logical_date: ^hoje}] = Priorities.list_loose_captures(user)
     end
 
     test "concluir uma captura solta some de Capturas soltas mas aparece em Feito", %{
