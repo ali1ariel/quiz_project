@@ -10,6 +10,11 @@ defmodule QuizProject.Priorities.Activity do
   no kanban (todo/fazendo/feito). Nenhuma action genérica escreve os dois —
   cada transição de negócio (`:start`, `:complete`, `:discard`, ...) é quem
   garante que ficam consistentes entre si.
+
+  `kind` distingue uma atividade comum (`:tarefa`) de um compromisso com
+  data marcada (`:evento`) — só `:evento` sincroniza com o Google Calendar
+  (ver `QuizProject.GoogleCalendar`). Fixo na criação, sem action de troca:
+  não há um caso de uso pra "virar evento depois de criada".
   """
   use Ash.Resource,
     domain: QuizProject.Priorities,
@@ -40,6 +45,7 @@ defmodule QuizProject.Priorities.Activity do
         :notes,
         :logical_date,
         :position,
+        :kind,
         :google_event_id,
         :google_updated_at
       ]
@@ -289,6 +295,15 @@ defmodule QuizProject.Priorities.Activity do
     attribute :position, :integer do
       allow_nil? false
       default 0
+    end
+
+    # `:evento` é a única que sincroniza com o Google Calendar — o resto
+    # (`:tarefa`, o default) nunca vira evento lá, mesmo com a conta
+    # conectada. Ver `QuizProject.GoogleCalendar.sync_out_create/1`.
+    attribute :kind, :atom do
+      allow_nil? false
+      default :tarefa
+      constraints one_of: ~w(tarefa evento)a
     end
 
     # Id do evento no calendário dedicado do Google (sync de saída) —

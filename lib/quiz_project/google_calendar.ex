@@ -110,16 +110,23 @@ defmodule QuizProject.GoogleCalendar do
   # decidir insert-vs-patch com um valor desatualizado criaria um evento
   # duplicado no Google em vez de atualizar o existente.
   #
+  # Só `kind == :evento` sincroniza — checado antes de tocar no OAuth de
+  # propósito, pra não gastar um refresh de token à toa numa tarefa comum.
+  #
   # Qualquer falha aqui (token revogado, Google fora do ar, ...) fica
   # registrada em `last_sync_error` — sem isso o usuário não teria como
   # descobrir que a sincronização parou, já que tudo roda em background.
   defp sync_out_with_connection(connection, activity_id, user_id, kind) do
-    with {:ok, access_token} <- OAuth.get_valid_access_token(connection),
-         {:ok, activity} <- Priorities.get_activity(activity_id, %{id: user_id}),
+    with {:ok, activity} <- Priorities.get_activity(activity_id, %{id: user_id}),
+         :ok <- ensure_event_kind(activity),
+         {:ok, access_token} <- OAuth.get_valid_access_token(connection),
          {:ok, _updated} = ok <- do_sync_out(activity, connection, access_token, kind) do
       ok
     else
       {:error, :not_found} ->
+        :ok
+
+      :skip ->
         :ok
 
       {:error, reason} = error ->
@@ -127,6 +134,9 @@ defmodule QuizProject.GoogleCalendar do
         error
     end
   end
+
+  defp ensure_event_kind(%{kind: :evento}), do: :ok
+  defp ensure_event_kind(_activity), do: :skip
 
   defp do_sync_out(%{google_event_id: nil} = activity, connection, access_token, _kind) do
     upsert_event(activity, connection, access_token, &Client.insert_event/3)
@@ -335,6 +345,7 @@ defmodule QuizProject.GoogleCalendar do
           title: Map.get(event, "summary", "(sem título)"),
           notes: Map.get(event, "description"),
           logical_date: logical_date,
+          kind: :evento,
           google_event_id: event["id"],
           google_updated_at: parse_updated(event)
         })

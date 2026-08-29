@@ -39,6 +39,22 @@ defmodule QuizProject.Priorities.ActivityTest do
       assert activity.status == :pendente
       assert activity.flow == :todo
       assert activity.logical_date == Date.utc_today()
+      assert activity.kind == :tarefa
+    end
+
+    test "cria atividade do tipo evento, com data escolhida", %{user: user} do
+      data = Date.add(Date.utc_today(), 5)
+
+      {:ok, activity} =
+        Priorities.create_activity(user, %{title: "Reunião", kind: :evento, logical_date: data})
+
+      assert activity.kind == :evento
+      assert activity.logical_date == data
+    end
+
+    test "kind rejeita valor fora de tarefa/evento", %{user: user} do
+      assert {:error, %Ash.Error.Invalid{}} =
+               Priorities.create_activity(user, %{title: "X", kind: :outro})
     end
 
     test "list_activities_for_item lista independente da data, só do dono", %{
@@ -421,6 +437,41 @@ defmodule QuizProject.Priorities.ActivityTest do
   end
 
   describe "sincronização com Google Calendar" do
+    test "list_pending_activities_from só traz eventos pendentes, nunca tarefas comuns", %{
+      user: user
+    } do
+      hoje = Date.utc_today()
+
+      {:ok, evento_futuro} =
+        Priorities.create_activity(user, %{
+          title: "Evento",
+          kind: :evento,
+          logical_date: Date.add(hoje, 3)
+        })
+
+      {:ok, tarefa} = Priorities.create_activity(user, %{title: "Tarefa", kind: :tarefa})
+
+      {:ok, evento_passado} =
+        Priorities.create_activity(user, %{
+          title: "Evento antigo",
+          kind: :evento,
+          logical_date: Date.add(hoje, -3)
+        })
+
+      {:ok, evento_resolvido} =
+        Priorities.create_activity(user, %{title: "Evento feito", kind: :evento})
+
+      {:ok, evento_resolvido} = Priorities.complete_activity(evento_resolvido, user)
+
+      resultado = Priorities.list_pending_activities_from(user, hoje)
+      ids = Enum.map(resultado, & &1.id)
+
+      assert evento_futuro.id in ids
+      refute tarefa.id in ids
+      refute evento_passado.id in ids
+      refute evento_resolvido.id in ids
+    end
+
     test "link_google_event grava o id do evento e o updated_at", %{user: user} do
       {:ok, activity} = Priorities.create_activity(user, %{title: "Ler capítulo 1"})
       agora = DateTime.utc_now()

@@ -46,18 +46,33 @@ defmodule QuizProject.Priorities.GoogleCalendarSyncTest do
     {Jason.decode!(body), conn}
   end
 
-  test "sem conexão do Google, criar atividade não chama a API", %{user: user} do
+  test "sem conexão do Google, criar um evento não chama a API", %{user: user} do
     Req.Test.stub(__MODULE__, fn _conn -> flunk("não deveria chamar o Google sem conexão") end)
 
-    assert {:ok, activity} = Priorities.create_activity(user, %{title: "Sem Google"})
+    assert {:ok, activity} =
+             Priorities.create_activity(user, %{title: "Sem Google", kind: :evento})
+
     assert is_nil(activity.google_event_id)
+  end
+
+  test "com Google conectado, uma tarefa comum (kind padrão) nunca sincroniza", %{user: user} do
+    connect_google(user)
+    Req.Test.stub(__MODULE__, fn _conn -> flunk("tarefa comum não deveria chamar o Google") end)
+
+    {:ok, tarefa} = Priorities.create_activity(user, %{title: "Tarefa qualquer"})
+    assert tarefa.kind == :tarefa
+    assert is_nil(tarefa.google_event_id)
+
+    {:ok, completed} = Priorities.complete_activity(tarefa, user)
+    assert is_nil(completed.google_event_id)
   end
 
   test "criar atividade com Google conectado insere o evento e vincula o id", %{user: user} do
     connect_google(user)
     stub_event_response()
 
-    assert {:ok, activity} = Priorities.create_activity(user, %{title: "Ler capítulo 1"})
+    assert {:ok, activity} =
+             Priorities.create_activity(user, %{title: "Ler capítulo 1", kind: :evento})
 
     assert {:ok, fetched} = Priorities.get_activity(activity.id, user)
     assert fetched.google_event_id == "evt-1"
@@ -80,7 +95,8 @@ defmodule QuizProject.Priorities.GoogleCalendarSyncTest do
       Req.Test.json(conn, %{"id" => "evt-1", "updated" => DateTime.to_iso8601(DateTime.utc_now())})
     end)
 
-    assert {:ok, _activity} = Priorities.create_activity(user, %{title: "Ler capítulo 1"})
+    assert {:ok, _activity} =
+             Priorities.create_activity(user, %{title: "Ler capítulo 1", kind: :evento})
   end
 
   test "concluir a atividade faz PATCH no evento existente com colorId verde (10)", %{
@@ -88,7 +104,7 @@ defmodule QuizProject.Priorities.GoogleCalendarSyncTest do
   } do
     connect_google(user)
     stub_event_response()
-    {:ok, activity} = Priorities.create_activity(user, %{title: "Ler capítulo 1"})
+    {:ok, activity} = Priorities.create_activity(user, %{title: "Ler capítulo 1", kind: :evento})
 
     Req.Test.stub(__MODULE__, fn conn ->
       assert conn.method == "PATCH"
@@ -105,7 +121,7 @@ defmodule QuizProject.Priorities.GoogleCalendarSyncTest do
   test "marcar não cumprida usa colorId vermelho (11)", %{user: user} do
     connect_google(user)
     stub_event_response()
-    {:ok, activity} = Priorities.create_activity(user, %{title: "Ler capítulo 1"})
+    {:ok, activity} = Priorities.create_activity(user, %{title: "Ler capítulo 1", kind: :evento})
 
     Req.Test.stub(__MODULE__, fn conn ->
       {body, conn} = decode_body!(conn)
@@ -122,7 +138,7 @@ defmodule QuizProject.Priorities.GoogleCalendarSyncTest do
   } do
     connect_google(user)
     stub_event_response()
-    {:ok, activity} = Priorities.create_activity(user, %{title: "Ler capítulo 1"})
+    {:ok, activity} = Priorities.create_activity(user, %{title: "Ler capítulo 1", kind: :evento})
 
     Req.Test.stub(__MODULE__, fn conn ->
       assert conn.method == "PATCH"
@@ -138,7 +154,7 @@ defmodule QuizProject.Priorities.GoogleCalendarSyncTest do
   test "adiar a atividade usa colorId amarelo (5)", %{user: user} do
     connect_google(user)
     stub_event_response()
-    {:ok, activity} = Priorities.create_activity(user, %{title: "Ler capítulo 1"})
+    {:ok, activity} = Priorities.create_activity(user, %{title: "Ler capítulo 1", kind: :evento})
 
     Req.Test.stub(__MODULE__, fn conn ->
       {body, conn} = decode_body!(conn)
@@ -154,7 +170,7 @@ defmodule QuizProject.Priorities.GoogleCalendarSyncTest do
   test "corrigir o status no Histórico não sincroniza com o Google", %{user: user} do
     connect_google(user)
     stub_event_response()
-    {:ok, activity} = Priorities.create_activity(user, %{title: "Ler capítulo 1"})
+    {:ok, activity} = Priorities.create_activity(user, %{title: "Ler capítulo 1", kind: :evento})
     {:ok, completed} = Priorities.complete_activity(activity, user)
 
     Req.Test.stub(__MODULE__, fn _conn ->
@@ -167,7 +183,10 @@ defmodule QuizProject.Priorities.GoogleCalendarSyncTest do
   test "atividade criada antes de conectar o Google é criada (não trava tentando um PATCH) na próxima mutação",
        %{user: user} do
     Req.Test.stub(__MODULE__, fn _conn -> flunk("não deveria chamar o Google sem conexão") end)
-    {:ok, activity} = Priorities.create_activity(user, %{title: "Antes de conectar"})
+
+    {:ok, activity} =
+      Priorities.create_activity(user, %{title: "Antes de conectar", kind: :evento})
+
     assert is_nil(activity.google_event_id)
 
     connect_google(user)
@@ -192,7 +211,9 @@ defmodule QuizProject.Priorities.GoogleCalendarSyncTest do
       conn |> Plug.Conn.put_status(500) |> Req.Test.json(%{"error" => "boom"})
     end)
 
-    assert {:ok, activity} = Priorities.create_activity(user, %{title: "Mesmo com Google fora"})
+    assert {:ok, activity} =
+             Priorities.create_activity(user, %{title: "Mesmo com Google fora", kind: :evento})
+
     assert is_nil(activity.google_event_id)
 
     assert {:ok, connection} = Accounts.get_google_calendar_connection(user)

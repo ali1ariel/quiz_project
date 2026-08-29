@@ -43,7 +43,7 @@ defmodule QuizProjectWeb.KanbanLive do
        page_title: "Hoje",
        modal_activity_id: nil,
        snooze_activity: nil,
-       capture_is_habit?: false,
+       capture_type: "tarefa",
        capture_frequency: "daily",
        capture_category_id: nil,
        attach_category_by_activity: %{}
@@ -67,7 +67,7 @@ defmodule QuizProjectWeb.KanbanLive do
 
     {:noreply,
      assign(socket,
-       capture_is_habit?: Map.get(params, "is_habit") == "true",
+       capture_type: Map.get(params, "type", "tarefa"),
        capture_frequency: Map.get(params, "frequency", "daily"),
        capture_category_id: category_id
      )}
@@ -78,7 +78,8 @@ defmodule QuizProjectWeb.KanbanLive do
     user = socket.assigns.current_user
     title = params |> Map.get("title", "") |> String.trim()
     item_id = params |> Map.get("item_id", "") |> blank_to_nil()
-    is_habit? = Map.get(params, "is_habit") == "true"
+    is_habit? = Map.get(params, "type") == "habito"
+    is_event? = Map.get(params, "type") == "evento"
 
     cond do
       title == "" ->
@@ -92,7 +93,7 @@ defmodule QuizProjectWeb.KanbanLive do
         create_habit_capture(socket, user, title, item_id, params)
 
       true ->
-        create_loose_capture(socket, user, title, item_id)
+        create_loose_capture(socket, user, title, item_id, event_attrs(is_event?, params))
     end
   end
 
@@ -222,7 +223,7 @@ defmodule QuizProjectWeb.KanbanLive do
            socket
            |> put_flash(:info, "Hábito criado.")
            |> assign(
-             capture_is_habit?: false,
+             capture_type: "tarefa",
              capture_frequency: "daily",
              capture_category_id: nil
            )
@@ -236,20 +237,36 @@ defmodule QuizProjectWeb.KanbanLive do
     end
   end
 
-  defp create_loose_capture(socket, user, title, item_id) do
+  defp create_loose_capture(socket, user, title, item_id, extra_attrs) do
     case Priorities.resolve_attach_item(item_id, user) do
       {:ok, item} ->
-        attrs = if item, do: %{title: title, item_id: item.id}, else: %{title: title}
+        base = if item, do: %{title: title, item_id: item.id}, else: %{title: title}
+        attrs = Map.merge(base, extra_attrs)
         {:ok, _activity} = Priorities.create_activity(user, attrs)
+
+        flash =
+          if Map.get(extra_attrs, :kind) == :evento, do: "Evento criado.", else: "Capturado."
 
         {:noreply,
          socket
-         |> put_flash(:info, "Capturado.")
-         |> assign(capture_category_id: nil)
+         |> put_flash(:info, flash)
+         |> assign(capture_category_id: nil, capture_type: "tarefa")
          |> load_data()}
 
       _ ->
         {:noreply, put_flash(socket, :error, "Não foi possível registrar.")}
+    end
+  end
+
+  # `logical_date` inválida ou em branco cai no default de hoje que
+  # `Priorities.create_activity/2` já aplica — só força a data quando o
+  # usuário de fato escolheu uma.
+  defp event_attrs(false, _params), do: %{}
+
+  defp event_attrs(true, params) do
+    case params |> Map.get("event_date", "") |> Date.from_iso8601() do
+      {:ok, date} -> %{kind: :evento, logical_date: date}
+      _ -> %{kind: :evento}
     end
   end
 
@@ -367,28 +384,45 @@ defmodule QuizProjectWeb.KanbanLive do
                   disabled={is_nil(@capture_category_id)}
                 />
               </div>
-              <div class="fieldset mb-2">
-                <label class="label flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    name="is_habit"
-                    value="true"
-                    checked={@capture_is_habit?}
-                    class="checkbox checkbox-sm"
-                  /> É um hábito?
-                </label>
+              <div class="w-40">
+                <.input
+                  type="select"
+                  name="type"
+                  label="Tipo"
+                  value={@capture_type}
+                  options={[{"Atividade", "tarefa"}, {"Hábito", "habito"}, {"Evento", "evento"}]}
+                />
               </div>
               <div class="fieldset mb-2">
                 <label>
                   <span class="label mb-1 invisible">Registrar</span>
                   <button type="submit" class="btn btn-primary btn-sm rounded-full px-5">
-                    {if @capture_is_habit?, do: "Criar hábito", else: "Registrar"}
+                    {cond do
+                      @capture_type == "habito" -> "Criar hábito"
+                      @capture_type == "evento" -> "Criar evento"
+                      true -> "Registrar"
+                    end}
                   </button>
                 </label>
               </div>
             </div>
 
-            <div :if={@capture_is_habit?} class="space-y-3 rounded-2xl border border-base-300 p-3">
+            <div :if={@capture_type == "evento"} class="rounded-2xl border border-base-300 p-3">
+              <.input
+                type="date"
+                name="event_date"
+                label="Data do evento"
+                value={Date.to_iso8601(Date.utc_today())}
+              />
+              <p class="mt-1 text-xs opacity-60">
+                Vira evento sincronizado com o Google Agenda, se conectado (ver Configurações).
+              </p>
+            </div>
+
+            <div
+              :if={@capture_type == "habito"}
+              class="space-y-3 rounded-2xl border border-base-300 p-3"
+            >
               <.input
                 type="select"
                 name="frequency"

@@ -252,6 +252,20 @@ defmodule QuizProjectWeb.KanbanLiveTest do
       assert [%{item_id: nil}] = Priorities.list_loose_captures(user)
     end
 
+    test "create_capture com type evento cria uma atividade do tipo evento com a data escolhida",
+         %{conn: conn, user: user} do
+      {:ok, view, _html} = live(conn, ~p"/today")
+      data = Date.add(Date.utc_today(), 4)
+
+      render_submit(view, "create_capture", %{
+        "title" => "Consulta médica",
+        "type" => "evento",
+        "event_date" => Date.to_iso8601(data)
+      })
+
+      assert [%{kind: :evento, logical_date: ^data}] = Priorities.list_loose_captures(user)
+    end
+
     test "concluir uma captura solta some de Capturas soltas mas aparece em Feito", %{
       conn: conn,
       user: user
@@ -520,7 +534,7 @@ defmodule QuizProjectWeb.KanbanLiveTest do
       view
       |> form("#capture-form", %{
         "title" => "Beber água",
-        "is_habit" => "true",
+        "type" => "habito",
         "category_id" => cat.id
       })
       |> render_change()
@@ -529,7 +543,7 @@ defmodule QuizProjectWeb.KanbanLiveTest do
         view
         |> form("#capture-form", %{
           "title" => "Beber água",
-          "is_habit" => "true",
+          "type" => "habito",
           "category_id" => cat.id,
           "item_id" => item.id,
           "frequency" => "daily"

@@ -702,14 +702,17 @@ defmodule QuizProject.Priorities do
   end
 
   @doc """
-  Atividades pendentes com `logical_date` a partir de `from` (inclusive) —
-  usado só pelo backfill inicial de `QuizProject.GoogleCalendar.connect/2`,
-  pra popular o calendário recém-criado sem inundá-lo de histórico já
+  Eventos pendentes (`kind == :evento`) com `logical_date` a partir de
+  `from` (inclusive) — usado só pelo backfill inicial de
+  `QuizProject.GoogleCalendar.connect/2`, pra popular o calendário
+  recém-criado sem inundá-lo de tarefas comuns nem de histórico já
   resolvido.
   """
   def list_pending_activities_from(%{id: user_id}, from) do
     Activity
-    |> Ash.Query.filter(user_id == ^user_id and status == :pendente and logical_date >= ^from)
+    |> Ash.Query.filter(
+      user_id == ^user_id and status == :pendente and kind == :evento and logical_date >= ^from
+    )
     |> Ash.read!(authorize?: false)
   end
 

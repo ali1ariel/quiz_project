@@ -70,6 +70,7 @@ defmodule QuizProject.GoogleCalendar.ReconcileTest do
     assert is_nil(activity.item_id)
     assert is_nil(activity.habit_id)
     assert activity.user_id == user.id
+    assert activity.kind == :evento
 
     assert {:ok, updated_connection} = Accounts.get_google_calendar_connection(user)
     assert updated_connection.sync_token == "sync-token-2"

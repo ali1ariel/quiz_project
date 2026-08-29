@@ -170,6 +170,29 @@ defmodule QuizProjectWeb.PrioritiesLiveTest do
       assert reaberta.status == :pendente
     end
 
+    test "aba Atividades com \"É um evento?\" marcado cria uma atividade do tipo evento com a data escolhida",
+         %{conn: conn, user: user} do
+      cat = category(user)
+      item = manual_item(user, cat, "Projeto")
+      {:ok, view, _html} = live(conn, ~p"/priorities")
+      data = Date.add(Date.utc_today(), 7)
+
+      render_click(view, "open_item", %{"id" => item.id})
+      view |> element("button[phx-value-tab=\"activities\"]") |> render_click()
+
+      view
+      |> element("#create-item-activity-form")
+      |> render_submit(%{
+        "title" => "Apresentação do projeto",
+        "type" => "evento",
+        "event_date" => Date.to_iso8601(data)
+      })
+
+      assert [activity] = Priorities.list_activities_for_item(item.id, user)
+      assert activity.kind == :evento
+      assert activity.logical_date == data
+    end
+
     test "aba Atividades com \"É um hábito?\" marcado cria um hábito à parte, não uma atividade presa ao item",
          %{conn: conn, user: user} do
       cat = category(user)
@@ -182,14 +205,14 @@ defmodule QuizProjectWeb.PrioritiesLiveTest do
       # O campo de frequência só existe no DOM depois do phx-change revelar a
       # seção de hábito (mesmo padrão do form de captura do Kanban).
       view
-      |> form("#create-item-activity-form", %{"title" => "Correr", "is_habit" => "true"})
+      |> form("#create-item-activity-form", %{"title" => "Correr", "type" => "habito"})
       |> render_change()
 
       html =
         view
         |> form("#create-item-activity-form", %{
           "title" => "Correr",
-          "is_habit" => "true",
+          "type" => "habito",
           "frequency" => "daily"
         })
         |> render_submit()
