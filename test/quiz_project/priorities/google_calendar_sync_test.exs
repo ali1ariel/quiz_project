@@ -194,5 +194,8 @@ defmodule QuizProject.Priorities.GoogleCalendarSyncTest do
 
     assert {:ok, activity} = Priorities.create_activity(user, %{title: "Mesmo com Google fora"})
     assert is_nil(activity.google_event_id)
+
+    assert {:ok, connection} = Accounts.get_google_calendar_connection(user)
+    assert connection.last_sync_error =~ "500"
   end
 end

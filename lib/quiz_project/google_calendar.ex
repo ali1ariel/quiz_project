@@ -96,20 +96,35 @@ defmodule QuizProject.GoogleCalendar do
   """
   def sync_out_update(activity), do: sync_out(activity, :patch)
 
+  defp sync_out(%{id: activity_id, user_id: user_id}, kind) do
+    case Accounts.get_google_calendar_connection(%{id: user_id}) do
+      {:error, :not_found} -> :ok
+      {:ok, connection} -> sync_out_with_connection(connection, activity_id, user_id, kind)
+    end
+  end
+
   # Recarrega a atividade em vez de confiar no `google_event_id` da struct
   # que o chamador passou: `Jobs.run/1` é fire-and-forget, então uma
   # mutação seguinte pode chegar aqui antes (ou pouco depois, mas ainda com
   # a cópia antiga em memória) do vínculo do evento anterior ser gravado —
   # decidir insert-vs-patch com um valor desatualizado criaria um evento
   # duplicado no Google em vez de atualizar o existente.
-  defp sync_out(%{id: activity_id, user_id: user_id}, kind) do
-    with {:ok, connection} <- Accounts.get_google_calendar_connection(%{id: user_id}),
-         {:ok, access_token} <- OAuth.get_valid_access_token(connection),
-         {:ok, activity} <- Priorities.get_activity(activity_id, %{id: user_id}) do
-      do_sync_out(activity, connection, access_token, kind)
+  #
+  # Qualquer falha aqui (token revogado, Google fora do ar, ...) fica
+  # registrada em `last_sync_error` — sem isso o usuário não teria como
+  # descobrir que a sincronização parou, já que tudo roda em background.
+  defp sync_out_with_connection(connection, activity_id, user_id, kind) do
+    with {:ok, access_token} <- OAuth.get_valid_access_token(connection),
+         {:ok, activity} <- Priorities.get_activity(activity_id, %{id: user_id}),
+         {:ok, _updated} = ok <- do_sync_out(activity, connection, access_token, kind) do
+      ok
     else
-      {:error, :not_found} -> :ok
-      {:error, _reason} = error -> error
+      {:error, :not_found} ->
+        :ok
+
+      {:error, reason} = error ->
+        Accounts.record_google_calendar_sync_error(connection, inspect(reason))
+        error
     end
   end
 
