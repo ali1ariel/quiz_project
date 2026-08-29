@@ -132,6 +132,17 @@ defmodule QuizProject.Accounts do
     end
   end
 
+  @doc """
+  Conexões cujo canal de push notifications está sem registro ainda ou vai
+  expirar até `before` — usado por `GoogleCalendar.WatchRenewer` pra saber
+  o que renovar.
+  """
+  def list_google_calendar_connections_needing_watch_renewal(before) do
+    GoogleCalendarConnection
+    |> Ash.Query.filter(is_nil(channel_expires_at) or channel_expires_at <= ^before)
+    |> Ash.read!(authorize?: false)
+  end
+
   @doc "Cria (ou recria) a conexão do usuário com o Google Calendar."
   def upsert_google_calendar_connection(%{id: user_id}, attrs) do
     case get_google_calendar_connection(%{id: user_id}) do

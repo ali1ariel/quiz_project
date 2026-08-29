@@ -100,6 +100,49 @@ defmodule QuizProject.Accounts.GoogleCalendarConnectionTest do
     assert found.id == connection.id
   end
 
+  test "list_google_calendar_connections_needing_watch_renewal traz quem não tem canal ou expira logo",
+       %{user: user} do
+    {:ok, sem_canal} = Accounts.upsert_google_calendar_connection(user, connection_attrs())
+
+    {:ok, outro} =
+      Accounts.register_user(%{email: "outro@teste.com", password: "senha12345"},
+        authorize?: false
+      )
+
+    {:ok, expira_logo} = Accounts.upsert_google_calendar_connection(outro, connection_attrs())
+
+    {:ok, expira_logo} =
+      Accounts.update_google_calendar_watch_channel(expira_logo, %{
+        channel_id: "canal-expira-logo",
+        channel_token_hash: "hash",
+        channel_resource_id: "recurso-1",
+        channel_expires_at: DateTime.add(DateTime.utc_now(), 3600, :second)
+      })
+
+    {:ok, terceiro} =
+      Accounts.register_user(%{email: "terceiro@teste.com", password: "senha12345"},
+        authorize?: false
+      )
+
+    {:ok, ainda_valido} = Accounts.upsert_google_calendar_connection(terceiro, connection_attrs())
+
+    {:ok, _ainda_valido} =
+      Accounts.update_google_calendar_watch_channel(ainda_valido, %{
+        channel_id: "canal-ainda-valido",
+        channel_token_hash: "hash",
+        channel_resource_id: "recurso-2",
+        channel_expires_at: DateTime.add(DateTime.utc_now(), 10 * 24 * 3600, :second)
+      })
+
+    limite = DateTime.add(DateTime.utc_now(), 24 * 3600, :second)
+    resultado = Accounts.list_google_calendar_connections_needing_watch_renewal(limite)
+    ids = Enum.map(resultado, & &1.id)
+
+    assert sem_canal.id in ids
+    assert expira_logo.id in ids
+    refute ainda_valido.id in ids
+  end
+
   test "update_sync_state grava o sync_token e limpa erro anterior", %{user: user} do
     {:ok, connection} = Accounts.upsert_google_calendar_connection(user, connection_attrs())
     {:ok, connection} = Accounts.record_google_calendar_sync_error(connection, "boom")

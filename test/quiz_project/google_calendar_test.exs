@@ -164,4 +164,25 @@ defmodule QuizProject.GoogleCalendarTest do
   test "disconnect sem conexão existente não quebra", %{user: user} do
     assert {:error, :not_found} = GoogleCalendar.disconnect(user)
   end
+
+  test "disconnect encerra o canal de push notifications registrado", %{user: user} do
+    stub_happy_path()
+    {:ok, _connection} = GoogleCalendar.connect(user, "auth-code-123")
+    assert {:ok, %{channel_id: channel_id}} = Accounts.get_google_calendar_connection(user)
+
+    test_pid = self()
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      if String.ends_with?(conn.request_path, "/channels/stop") do
+        {:ok, body, _conn} = Plug.Conn.read_body(conn)
+        send(test_pid, {:stop_body, Jason.decode!(body)})
+      end
+
+      Plug.Conn.send_resp(conn, 200, "")
+    end)
+
+    assert {:ok, _} = GoogleCalendar.disconnect(user)
+
+    assert_received {:stop_body, %{"id" => ^channel_id, "resourceId" => "resource-1"}}
+  end
 end

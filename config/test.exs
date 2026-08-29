@@ -80,3 +80,10 @@ config :phoenix,
 
 # Não sobe Chrome na suíte: a rota de card de preview cai no fallback estático.
 config :quiz_project, enable_chromic_pdf: false
+
+# Não sobe o renovador de watch channel na suíte: a Application sobe uma
+# única vez pra todos os testes, então o `:renew` inicial do GenServer
+# consultaria o banco fora do sandbox por-teste do Ecto. Os testes de
+# `GoogleCalendar.WatchRenewer` chamam `handle_info/2` direto, sem subir o
+# processo de verdade.
+config :quiz_project, enable_google_calendar_watch_renewer: false

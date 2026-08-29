@@ -18,8 +18,8 @@ defmodule QuizProject.GoogleCalendar do
 
   @calendar_summary "QuizProject — Atividades"
   # Bem abaixo do teto do Google (RFC diz até uns dias — na prática o canal
-  # costuma durar menos do que o pedido); a renovação periódica (marco 5)
-  # cuida de manter isso sempre coberto.
+  # costuma durar menos do que o pedido); a renovação periódica
+  # (`GoogleCalendar.WatchRenewer`) cuida de manter isso sempre coberto.
   @watch_ttl_ms 7 * 24 * 60 * 60 * 1000
 
   @doc "URL de consentimento do Google para iniciar a conexão."
@@ -33,7 +33,8 @@ defmodule QuizProject.GoogleCalendar do
   pendentes já existentes (sem isso, o calendário nasceria vazio até a
   próxima mutação de cada uma). Falha ao registrar o watch não derruba a
   conexão — sem ele o app só perde o sync de entrada até a próxima
-  renovação (marco 5), continua escrevendo pro Google normalmente.
+  renovação (`GoogleCalendar.WatchRenewer`), continua escrevendo pro
+  Google normalmente.
   """
   def connect(user, code) do
     with {:ok, token_data} <- OAuth.exchange_code(code),
@@ -54,15 +55,29 @@ defmodule QuizProject.GoogleCalendar do
   end
 
   @doc """
-  Desconecta o usuário do Google Calendar — revoga o token no Google
-  (melhor esforço) e apaga a conexão salva. Não apaga o calendário nem os
-  eventos do lado do Google: só para de sincronizar.
+  Desconecta o usuário do Google Calendar — revoga o token e encerra o
+  canal de push notifications no Google (ambos melhor esforço) e apaga a
+  conexão salva. Não apaga o calendário nem os eventos do lado do Google:
+  só para de sincronizar.
   """
   def disconnect(user) do
     with {:ok, connection} <- Accounts.get_google_calendar_connection(user) do
       OAuth.revoke(connection.refresh_token)
+      stop_existing_channel(connection)
       Accounts.disconnect_google_calendar(connection, user)
     end
+  end
+
+  @doc """
+  Renova o canal de push notifications de uma conexão — encerra o canal
+  antigo (melhor esforço) e registra um novo. Usado por
+  `GoogleCalendar.WatchRenewer` antes do canal expirar; Google não renova
+  sozinho, e sem isso o sync de entrada simplesmente para de funcionar
+  silenciosamente depois de alguns dias.
+  """
+  def renew_watch_channel(connection) do
+    stop_existing_channel(connection)
+    start_watching(connection)
   end
 
   @doc """
@@ -155,6 +170,16 @@ defmodule QuizProject.GoogleCalendar do
           Accounts.record_google_calendar_sync_error(connection, inspect(reason))
       end
     end
+  end
+
+  defp stop_existing_channel(%{channel_id: nil}), do: :ok
+
+  defp stop_existing_channel(connection) do
+    with {:ok, access_token} <- OAuth.get_valid_access_token(connection) do
+      Client.stop_channel(access_token, connection.channel_id, connection.channel_resource_id)
+    end
+
+    :ok
   end
 
   defp capture_baseline_sync_token(connection, access_token, page_token \\ nil) do
