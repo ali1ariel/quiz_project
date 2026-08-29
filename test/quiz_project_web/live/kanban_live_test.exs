@@ -661,6 +661,42 @@ defmodule QuizProjectWeb.KanbanLiveTest do
       assert LazyHTML.to_html(first_day) =~ "Academia"
     end
 
+    test "evento em aberto nos próximos dias aparece no dia marcado", %{conn: conn, user: user} do
+      daqui_a_3_dias = Date.add(Date.utc_today(), 3)
+
+      {:ok, _evento} =
+        Priorities.create_activity(user, %{
+          title: "Dentista",
+          kind: :evento,
+          logical_date: daqui_a_3_dias
+        })
+
+      {:ok, _view, html} = live(conn, ~p"/today/upcoming")
+
+      document = LazyHTML.from_fragment(html)
+      dia = LazyHTML.query(document, "#upcoming-day-#{Date.to_iso8601(daqui_a_3_dias)}")
+      assert LazyHTML.to_html(dia) =~ "Dentista"
+    end
+
+    test "evento já resolvido não aparece mais nos próximos dias", %{conn: conn, user: user} do
+      daqui_a_2_dias = Date.add(Date.utc_today(), 2)
+
+      {:ok, evento} =
+        Priorities.create_activity(user, %{
+          title: "Cancelado",
+          kind: :evento,
+          logical_date: daqui_a_2_dias
+        })
+
+      {:ok, _} = Priorities.discard_activity(evento, user)
+
+      {:ok, _view, html} = live(conn, ~p"/today/upcoming")
+
+      document = LazyHTML.from_fragment(html)
+      dia = LazyHTML.query(document, "#upcoming-day-#{Date.to_iso8601(daqui_a_2_dias)}")
+      refute LazyHTML.to_html(dia) =~ "Cancelado"
+    end
+
     test "hábito arquivado não aparece", %{conn: conn, user: user} do
       {:ok, habit} =
         Priorities.create_habit(user, %{title: "Pausado", item_id: habit_item(user).id})

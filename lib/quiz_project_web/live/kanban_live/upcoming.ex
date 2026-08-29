@@ -1,14 +1,16 @@
 defmodule QuizProjectWeb.KanbanLive.Upcoming do
   @moduledoc """
-  Pré-visualização dos próximos dias — hábitos ativos devidos e atividades
-  adiadas que reaparecem em cada dia (ver `Priorities.snooze_activity/3`).
-  Só orientação (ex: "por que esse hábito não apareceu hoje", "o que vem
-  por aí"). Não gera nenhuma `Activity` nova (isso só acontece na Tela do
-  dia, `KanbanLive`, no dia em que é devido/adiado de verdade) — mas o
-  hábito em si pode ser aberto, ter a frequência editada (pra sempre, ou só
-  a partir daquele dia), ter aquele dia específico pulado/renomeado, ser
-  arquivado ou excluído daqui, via `HabitModal`; uma atividade adiada só
-  pode ter o adiamento cancelado daqui (volta pra Tela do dia na hora). Ver
+  Pré-visualização dos próximos dias — hábitos ativos devidos, atividades
+  adiadas e eventos ainda em aberto que caem em cada dia (ver
+  `Priorities.snooze_activity/3`). Só orientação (ex: "por que esse hábito
+  não apareceu hoje", "o que vem por aí"). Não gera nenhuma `Activity` nova
+  (isso só acontece na Tela do dia, `KanbanLive`, no dia em que é
+  devido/adiado de verdade) — mas o hábito em si pode ser aberto, ter a
+  frequência editada (pra sempre, ou só a partir daquele dia), ter aquele
+  dia específico pulado/renomeado, ser arquivado ou excluído daqui, via
+  `HabitModal`; uma atividade adiada só pode ter o adiamento cancelado
+  daqui (volta pra Tela do dia na hora). Evento é só exibido — sem ação
+  daqui, mesma filosofia de consulta do Calendário. Ver
   `Priorities.upcoming_habit_schedule/2`.
   """
   use QuizProjectWeb, :live_view
@@ -89,10 +91,12 @@ defmodule QuizProjectWeb.KanbanLive.Upcoming do
         <div class="border-b border-base-300 pb-4">
           <h1 class="text-2xl font-bold tracking-tight">Próximos dias</h1>
           <p class="text-sm opacity-70">
-            Hábitos ativos devidos e atividades adiadas nos próximos {length(@schedule)} dias —
-            só pré-visualização. Clique num hábito pra editar a frequência (pra sempre ou só dali
-            pra frente), pular/renomear esse dia, arquivar ou excluir; clique numa atividade
-            adiada pra cancelar o adiamento e trazê-la de volta pra Tela do dia agora.
+            Hábitos ativos devidos, atividades adiadas e eventos em aberto nos próximos {length(
+              @schedule
+            )} dias — só pré-visualização. Clique num hábito pra editar a
+            frequência (pra sempre ou só dali pra frente), pular/renomear esse dia, arquivar ou
+            excluir; clique numa atividade adiada pra cancelar o adiamento e trazê-la de volta
+            pra Tela do dia agora.
           </p>
         </div>
 
@@ -110,11 +114,17 @@ defmodule QuizProjectWeb.KanbanLive.Upcoming do
             </span>
           </h2>
 
-          <p :if={day.habits == [] and day.snoozed == []} class="text-xs opacity-40">
+          <p
+            :if={day.habits == [] and day.snoozed == [] and day.events == []}
+            class="text-xs opacity-40"
+          >
             Nada previsto
           </p>
 
-          <div :if={day.habits != [] or day.snoozed != []} class="flex flex-wrap gap-2">
+          <div
+            :if={day.habits != [] or day.snoozed != [] or day.events != []}
+            class="flex flex-wrap gap-2"
+          >
             <button
               :for={entry <- day.habits}
               type="button"
@@ -146,6 +156,22 @@ defmodule QuizProjectWeb.KanbanLive.Upcoming do
               ]}></span>
               {activity.title}
             </button>
+
+            <span
+              :for={activity <- day.events}
+              title="Evento"
+              class="flex items-center gap-1.5 rounded-full border border-dashed border-primary/40 bg-primary/5 px-3 py-1.5 text-sm font-semibold text-primary"
+            >
+              <.icon name="hero-calendar-days" class="size-3.5" />
+              <span
+                :if={activity.item}
+                class={[
+                  "size-2 shrink-0 rounded-full",
+                  elem(Components.category_colors(activity.item.category_id), 1)
+                ]}
+              ></span>
+              {activity.title}
+            </span>
           </div>
         </div>
       </div>

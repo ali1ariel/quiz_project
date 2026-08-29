@@ -1327,16 +1327,20 @@ defmodule QuizProject.Priorities do
 
   @doc """
   Prévia dos próximos `days` dias (a partir de amanhã — hoje já tem a
-  própria tela): hábitos ativos devidos e atividades adiadas (ver
-  `snooze_activity/3`) que reaparecem naquele dia. Só orientação: não gera
-  nenhuma `Activity` nova (isso só acontece na Tela do dia), é a mesma
-  checagem que `ensure_today_habit_instance/2` faria, projetada pra frente
-  — já considerando exceção por data (`HabitOverride`: "pular esse dia"
-  tira o hábito daquele dia, título de exceção substitui o do hábito só
-  naquele dia). Cada entrada de `day.habits` é `%{habit: %Habit{}, title:
+  própria tela): hábitos ativos devidos, atividades adiadas (ver
+  `snooze_activity/3`) e eventos ainda em aberto (`kind == :evento`) que
+  caem naquele dia. Só orientação: não gera nenhuma `Activity` nova (isso
+  só acontece na Tela do dia), é a mesma checagem que
+  `ensure_today_habit_instance/2` faria, projetada pra frente — já
+  considerando exceção por data (`HabitOverride`: "pular esse dia" tira o
+  hábito daquele dia, título de exceção substitui o do hábito só naquele
+  dia). Cada entrada de `day.habits` é `%{habit: %Habit{}, title:
   String.t()}` — `title` é o efetivo pra aquele dia (`occurrence_title/2`),
   não necessariamente `habit.title`. `day.snoozed` é a lista de `Activity`
-  cujo `snoozed_until` cai naquele dia.
+  cujo `snoozed_until` cai naquele dia; `day.events` é a lista de eventos
+  (`kind == :evento`, ainda não resolvidos) cujo `logical_date` cai naquele
+  dia — evento já resolvido não é mais "vindouro", some daqui (continua
+  visível no Calendário).
   """
   def upcoming_habit_schedule(%{id: user_id}, days \\ 7) do
     habits =
@@ -1359,6 +1363,17 @@ defmodule QuizProject.Priorities do
       |> Ash.read!(authorize?: false)
       |> Enum.group_by(& &1.snoozed_until)
 
+    events_by_date =
+      Activity
+      |> Ash.Query.filter(
+        user_id == ^user_id and kind == :evento and flow != :feito and
+          logical_date >= ^tomorrow and logical_date <= ^last_day
+      )
+      |> Ash.Query.sort(position: :asc)
+      |> Ash.Query.load(item: [:category])
+      |> Ash.read!(authorize?: false)
+      |> Enum.group_by(& &1.logical_date)
+
     Enum.map(0..(days - 1), fn offset ->
       date = Date.add(tomorrow, offset)
 
@@ -1367,7 +1382,12 @@ defmodule QuizProject.Priorities do
         |> Enum.filter(&habit_due_on?(&1, date))
         |> Enum.map(&%{habit: &1, title: occurrence_title(&1, date)})
 
-      %{date: date, habits: due, snoozed: Map.get(snoozed_by_date, date, [])}
+      %{
+        date: date,
+        habits: due,
+        snoozed: Map.get(snoozed_by_date, date, []),
+        events: Map.get(events_by_date, date, [])
+      }
     end)
   end
 
