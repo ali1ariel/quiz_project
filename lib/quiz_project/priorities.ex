@@ -658,15 +658,16 @@ defmodule QuizProject.Priorities do
 
   @doc """
   Base do board da Tela do dia: instância de hábito devida hoje (qualquer
-  `flow` — é o hábito que expira por dia, não o resto), evento no seu
-  próprio dia (aberto ou resolvido hoje — fora disso não aparece aqui,
-  independente de estar presa a item), atividade comum presa a item ainda
-  aberta e não adiada pra depois de hoje (não expira mais sozinha, fica
-  até ser resolvida, não importa a `logical_date` — ver `snooze_activity/3`)
-  e qualquer atividade comum (presa a item ou captura solta) resolvida
-  hoje — pra "Feito" continuar sendo um recorte diário em vez de acumular
-  pra sempre. Uma captura solta ainda `:pendente` só aparece em "Capturas
-  soltas" (ver `list_loose_captures/1`).
+  `flow` — é o hábito que expira por dia, não o resto), evento preso a
+  item no seu próprio dia (aberto ou resolvido hoje — fora disso não
+  aparece aqui), atividade comum presa a item ainda aberta e não adiada
+  pra depois de hoje (não expira mais sozinha, fica até ser resolvida, não
+  importa a `logical_date` — ver `snooze_activity/3`) e qualquer atividade
+  comum ou evento (presa a item ou captura solta) resolvida hoje — pra
+  "Feito" continuar sendo um recorte diário em vez de acumular pra sempre.
+  Evento solto ainda `:pendente` (sem item) nunca entra aqui, mesmo no seu
+  próprio dia — só aparece em "Capturas soltas" (ver `list_loose_captures/1`),
+  senão apareceria duplicado (board + capturas soltas ao mesmo tempo).
   """
   def list_today_activities(%{id: user_id}) do
     today = Clock.today()
@@ -675,12 +676,11 @@ defmodule QuizProject.Priorities do
     |> Ash.Query.filter(
       user_id == ^user_id and
         ((not is_nil(habit_id) and logical_date == ^today) or
-           (kind == :evento and
-              ((flow != :feito and logical_date == ^today) or
-                 (flow == :feito and resolved_date == ^today))) or
+           (kind == :evento and not is_nil(item_id) and flow != :feito and
+              logical_date == ^today) or
            (kind != :evento and is_nil(habit_id) and not is_nil(item_id) and flow != :feito and
               (is_nil(snoozed_until) or snoozed_until <= ^today)) or
-           (kind != :evento and is_nil(habit_id) and flow == :feito and resolved_date == ^today))
+           (is_nil(habit_id) and flow == :feito and resolved_date == ^today))
     )
     |> Ash.Query.sort(position: :asc)
     |> Ash.Query.load(item: [:category], habit: [item: [:category]])
@@ -910,6 +910,21 @@ defmodule QuizProject.Priorities do
     with :ok <- authorize_owner(activity, actor) do
       activity
       |> Ash.Changeset.for_update(:snooze, %{until: until}, authorize?: false)
+      |> Ash.update()
+      |> sync_google_out(:patch)
+    end
+  end
+
+  @doc """
+  Reagenda um evento pra outra data — pra evento, "adiar" e "agendar" são a
+  mesma ação (não existe `snoozed_until` separado da data marcada; ver
+  `Activity`'s `:reschedule`). Sincroniza a nova data pro Google Calendar
+  como qualquer outra atualização.
+  """
+  def reschedule_activity(activity, date, actor) do
+    with :ok <- authorize_owner(activity, actor) do
+      activity
+      |> Ash.Changeset.for_update(:reschedule, %{date: date}, authorize?: false)
       |> Ash.update()
       |> sync_google_out(:patch)
     end

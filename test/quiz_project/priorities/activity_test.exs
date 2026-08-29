@@ -369,6 +369,71 @@ defmodule QuizProject.Priorities.ActivityTest do
     end
   end
 
+  describe "reagendar evento" do
+    test "reschedule_activity muda o logical_date de um evento", %{user: user} do
+      {:ok, evento} =
+        Priorities.create_activity(user, %{title: "Consulta", kind: :evento})
+
+      nova_data = Date.add(evento.logical_date, 10)
+      {:ok, reagendado} = Priorities.reschedule_activity(evento, nova_data, user)
+
+      assert reagendado.logical_date == nova_data
+    end
+
+    test "reschedule_activity aceita data no passado (corrige um typo na data original)", %{
+      user: user
+    } do
+      {:ok, evento} = Priorities.create_activity(user, %{title: "Consulta", kind: :evento})
+
+      data_passada = Date.add(Date.utc_today(), -5)
+      {:ok, reagendado} = Priorities.reschedule_activity(evento, data_passada, user)
+
+      assert reagendado.logical_date == data_passada
+    end
+
+    test "reschedule_activity não se aplica a tarefa comum", %{user: user} do
+      {:ok, tarefa} = Priorities.create_activity(user, %{title: "Tarefa"})
+
+      assert {:error, %Ash.Error.Invalid{}} =
+               Priorities.reschedule_activity(tarefa, Date.add(Date.utc_today(), 1), user)
+    end
+
+    test "evento preso a item reagendado pra hoje aparece no board da tela do dia", %{
+      user: user
+    } do
+      item = manual_item(user, category(user), "Projeto")
+
+      {:ok, evento} =
+        Priorities.create_activity(user, %{
+          title: "Consulta",
+          item_id: item.id,
+          kind: :evento,
+          logical_date: Date.add(Date.utc_today(), 3)
+        })
+
+      refute Priorities.list_today_activities(user) |> Enum.any?(&(&1.id == evento.id))
+
+      {:ok, _} = Priorities.reschedule_activity(evento, Date.utc_today(), user)
+
+      assert Priorities.list_today_activities(user) |> Enum.any?(&(&1.id == evento.id))
+    end
+
+    test "evento solto (sem item) nunca entra no board — só em Capturas soltas, mesmo reagendado pra hoje",
+         %{user: user} do
+      {:ok, evento} =
+        Priorities.create_activity(user, %{
+          title: "Consulta",
+          kind: :evento,
+          logical_date: Date.add(Date.utc_today(), 3)
+        })
+
+      {:ok, _} = Priorities.reschedule_activity(evento, Date.utc_today(), user)
+
+      refute Priorities.list_today_activities(user) |> Enum.any?(&(&1.id == evento.id))
+      assert Priorities.list_loose_captures(user) |> Enum.any?(&(&1.id == evento.id))
+    end
+  end
+
   describe "vínculos entre itens" do
     test "cria vínculo e aparece nos dois itens com direção e rótulo corretos", %{user: user} do
       cat = category(user)

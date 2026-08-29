@@ -132,7 +132,8 @@ defmodule QuizProjectWeb.KanbanLive do
   def handle_event("open_snooze", %{"id" => id}, socket) do
     activity =
       Enum.find(
-        socket.assigns.todo_activities ++ socket.assigns.fazendo_activities,
+        socket.assigns.todo_activities ++
+          socket.assigns.fazendo_activities ++ socket.assigns.loose_captures,
         &(&1.id == id)
       )
 
@@ -148,19 +149,35 @@ defmodule QuizProjectWeb.KanbanLive do
   def handle_event("confirm_snooze", %{"until" => until}, socket) do
     user = socket.assigns.current_user
     activity = socket.assigns.snooze_activity
+    event? = activity.kind == :evento
 
     case until != "" && Date.from_iso8601(until) do
       {:ok, date} ->
-        case Priorities.snooze_activity(activity, date, user) do
+        result =
+          if event?,
+            do: Priorities.reschedule_activity(activity, date, user),
+            else: Priorities.snooze_activity(activity, date, user)
+
+        case result do
           {:ok, _} ->
+            message =
+              if event?,
+                do: "Reagendado para #{Calendar.strftime(date, "%d/%m/%Y")}.",
+                else: "Adiada até #{Calendar.strftime(date, "%d/%m/%Y")}."
+
             {:noreply,
              socket
-             |> put_flash(:info, "Adiada até #{Calendar.strftime(date, "%d/%m/%Y")}.")
+             |> put_flash(:info, message)
              |> assign(snooze_activity: nil)
              |> load_data()}
 
           {:error, _} ->
-            {:noreply, put_flash(socket, :error, "A data precisa ser depois de hoje.")}
+            message =
+              if event?,
+                do: "Não foi possível reagendar.",
+                else: "A data precisa ser depois de hoje."
+
+            {:noreply, put_flash(socket, :error, message)}
         end
 
       _ ->
@@ -483,6 +500,15 @@ defmodule QuizProjectWeb.KanbanLive do
                   <.icon name="hero-check" class="size-4" /> Concluir
                 </button>
                 <button
+                  :if={activity.kind == :evento}
+                  phx-click="open_snooze"
+                  phx-value-id={activity.id}
+                  class="btn btn-ghost btn-sm"
+                  title="Reagendar — muda o dia marcado do evento"
+                >
+                  <.icon name="hero-calendar-days" class="size-4 opacity-60" />
+                </button>
+                <button
                   phx-click="discard_activity"
                   phx-value-id={activity.id}
                   class="btn btn-ghost btn-sm"
@@ -658,9 +684,16 @@ defmodule QuizProjectWeb.KanbanLive do
       phx-click="open_snooze"
       phx-value-id={@activity.id}
       class="btn btn-ghost btn-xs"
-      title="Adiar — some daqui até a data escolhida"
+      title={
+        if @activity.kind == :evento,
+          do: "Reagendar — muda o dia marcado do evento",
+          else: "Adiar — some daqui até a data escolhida"
+      }
     >
-      <.icon name="hero-clock" class="size-4 opacity-60" />
+      <.icon
+        name={if @activity.kind == :evento, do: "hero-calendar-days", else: "hero-clock"}
+        class="size-4 opacity-60"
+      />
     </button>
     <button
       phx-click="discard_activity"
@@ -676,25 +709,33 @@ defmodule QuizProjectWeb.KanbanLive do
   attr :activity, :map, required: true
 
   defp snooze_modal(assigns) do
-    assigns = assign(assigns, :min_date, Date.add(Date.utc_today(), 1))
+    assigns =
+      assigns
+      |> assign(:min_date, Date.add(Date.utc_today(), 1))
+      |> assign(:event?, assigns.activity.kind == :evento)
 
     ~H"""
     <div id="snooze-modal">
       <div class="modal modal-open" phx-window-keydown="close_snooze_modal" phx-key="Escape">
         <div class="modal-box max-w-sm rounded-3xl">
-          <h2 class="text-lg font-bold tracking-tight">Adiar atividade</h2>
+          <h2 class="text-lg font-bold tracking-tight">
+            {if @event?, do: "Reagendar evento", else: "Adiar atividade"}
+          </h2>
           <p class="mt-1 text-sm opacity-70">
-            "{@activity.title}" some da Tela do dia até a data escolhida — reaparece sozinha
-            nesse dia.
+            {if @event? do
+              ~s("#{@activity.title}" muda de dia — o card só aparece na Tela do dia na nova data escolhida.)
+            else
+              ~s("#{@activity.title}" some da Tela do dia até a data escolhida — reaparece sozinha nesse dia.)
+            end}
           </p>
 
           <form id="snooze-form" phx-submit="confirm_snooze" class="mt-4 space-y-4">
             <.input
               type="date"
               name="until"
-              label="Adiar até"
-              value=""
-              min={Date.to_iso8601(@min_date)}
+              label={if @event?, do: "Nova data", else: "Adiar até"}
+              value={if @event?, do: Date.to_iso8601(@activity.logical_date), else: ""}
+              min={if @event?, do: nil, else: Date.to_iso8601(@min_date)}
               required
             />
 
@@ -707,7 +748,7 @@ defmodule QuizProjectWeb.KanbanLive do
                 Cancelar
               </button>
               <button type="submit" class="btn btn-primary btn-sm rounded-full px-5">
-                Adiar
+                {if @event?, do: "Reagendar", else: "Adiar"}
               </button>
             </div>
           </form>

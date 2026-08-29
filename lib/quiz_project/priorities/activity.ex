@@ -183,6 +183,21 @@ defmodule QuizProject.Priorities.Activity do
       change set_attribute(:snoozed_until, arg(:until))
     end
 
+    # "Adiar" e "agendar" são a mesma ação pra evento: não tem `snoozed_until`
+    # que faça sentido separado de `logical_date` (é a própria data marcada
+    # que muda), então reagendar move `logical_date` direto — sem restrição
+    # de "depois de hoje" como `:snooze`, corrigir pra uma data passada é
+    # um uso válido (typo na data original).
+    update :reschedule do
+      accept []
+      argument :date, :date, allow_nil?: false
+
+      validate attribute_equals(:kind, :evento),
+        message: "só evento tem data reagendável — o resto usa :snooze"
+
+      change set_attribute(:logical_date, arg(:date))
+    end
+
     update :clear_snooze do
       accept []
       change set_attribute(:snoozed_until, nil)

@@ -119,6 +119,24 @@ defmodule QuizProjectWeb.KanbanLiveTest do
       assert card_html =~ "border-left"
       refute card_html =~ "Corpo"
     end
+
+    test "card de evento mostra a cor da categoria na borda direita, não na esquerda", %{
+      conn: conn,
+      user: user
+    } do
+      cat = category(user, "Saúde")
+      item = manual_item(user, cat, "Cuidados")
+      evento = activity(user, item, "Consulta", %{kind: :evento})
+
+      {:ok, _view, html} = live(conn, ~p"/today")
+
+      document = LazyHTML.from_fragment(html)
+      card = LazyHTML.query(document, "#activity-card-#{evento.id}")
+      card_html = LazyHTML.to_html(card)
+
+      assert card_html =~ "border-right"
+      refute card_html =~ "border-left:"
+    end
   end
 
   describe "fluxo" do
@@ -227,6 +245,41 @@ defmodule QuizProjectWeb.KanbanLiveTest do
 
       refute has_element?(view, "button[phx-click='open_snooze']")
     end
+
+    test "pra evento o botão vira Reagendar e o modal já vem preenchido com a data atual", %{
+      conn: conn,
+      user: user
+    } do
+      item = manual_item(user, category(user), "Trabalho")
+      evento = activity(user, item, "Consulta", %{kind: :evento})
+
+      {:ok, view, _html} = live(conn, ~p"/today")
+      html = render_click(view, "open_snooze", %{"id" => evento.id})
+
+      assert html =~ "Reagendar evento"
+      assert html =~ "Consulta"
+      assert html =~ Date.to_iso8601(evento.logical_date)
+    end
+
+    test "confirmar o reagendamento muda o logical_date do evento, sem mexer em snoozed_until",
+         %{conn: conn, user: user} do
+      item = manual_item(user, category(user), "Trabalho")
+      evento = activity(user, item, "Consulta", %{kind: :evento})
+      nova_data = Date.add(Date.utc_today(), 20)
+
+      {:ok, view, _html} = live(conn, ~p"/today")
+      render_click(view, "open_snooze", %{"id" => evento.id})
+
+      html =
+        view
+        |> element("#snooze-form")
+        |> render_submit(%{"until" => Date.to_iso8601(nova_data)})
+
+      assert html =~ "Reagendado para"
+      {:ok, updated} = Priorities.get_activity(evento.id, user)
+      assert updated.logical_date == nova_data
+      assert is_nil(updated.snoozed_until)
+    end
   end
 
   describe "capturas soltas" do
@@ -285,6 +338,38 @@ defmodule QuizProjectWeb.KanbanLiveTest do
       })
 
       assert [%{kind: :evento, logical_date: ^hoje}] = Priorities.list_loose_captures(user)
+    end
+
+    test "captura solta do tipo evento tem botão Reagendar, tarefa comum não tem", %{
+      conn: conn,
+      user: user
+    } do
+      evento = loose_activity(user, "Consulta", %{kind: :evento})
+      tarefa = loose_activity(user, "Comprar pão")
+
+      {:ok, view, _html} = live(conn, ~p"/today")
+
+      assert has_element?(view, "button[phx-click='open_snooze'][phx-value-id='#{evento.id}']")
+      refute has_element?(view, "button[phx-click='open_snooze'][phx-value-id='#{tarefa.id}']")
+    end
+
+    test "reagendar uma captura solta do tipo evento muda o logical_date", %{
+      conn: conn,
+      user: user
+    } do
+      evento = loose_activity(user, "Consulta", %{kind: :evento})
+      nova_data = Date.add(Date.utc_today(), 15)
+
+      {:ok, view, _html} = live(conn, ~p"/today")
+      html = render_click(view, "open_snooze", %{"id" => evento.id})
+      assert html =~ "Reagendar evento"
+
+      view
+      |> element("#snooze-form")
+      |> render_submit(%{"until" => Date.to_iso8601(nova_data)})
+
+      {:ok, updated} = Priorities.get_activity(evento.id, user)
+      assert updated.logical_date == nova_data
     end
 
     test "concluir uma captura solta some de Capturas soltas mas aparece em Feito", %{
