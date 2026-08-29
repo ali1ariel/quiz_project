@@ -721,6 +721,18 @@ defmodule QuizProject.Priorities do
     end
   end
 
+  @doc "Busca a atividade vinculada a um evento do Google pelo id do evento (sync de entrada)."
+  def get_activity_by_google_event_id(google_event_id) do
+    Activity
+    |> Ash.Query.filter(google_event_id == ^google_event_id)
+    |> Ash.read_one(authorize?: false)
+    |> case do
+      {:ok, nil} -> {:error, :not_found}
+      {:ok, activity} -> {:ok, activity}
+      {:error, error} -> {:error, error}
+    end
+  end
+
   @doc """
   Cria uma atividade presa a um item (checa dono do item), instância de um
   hábito (checa dono do hábito) ou uma captura solta quando `attrs` não tem
@@ -747,6 +759,25 @@ defmodule QuizProject.Priorities do
       |> Ash.create()
       |> sync_google_out(:insert)
     end
+  end
+
+  @doc """
+  Cria uma atividade a partir de um evento adicionado manualmente no
+  calendário dedicado do usuário (sync de entrada, ver
+  `QuizProject.GoogleCalendar.reconcile/1`) — nasce como captura solta, já
+  vinculada ao evento. Não passa por `sync_google_out`: o evento já existe
+  do lado do Google, não há nada nesta criação que precise ser escrito lá.
+  """
+  def create_activity_from_google(%{id: user_id}, attrs) do
+    position = next_activity_position(user_id, nil, nil, :todo)
+
+    Activity
+    |> Ash.Changeset.for_create(
+      :create,
+      Map.merge(attrs, %{user_id: user_id, position: position}),
+      authorize?: false
+    )
+    |> Ash.create()
   end
 
   defp validate_item_ownership(%{item_id: item_id}, actor) when not is_nil(item_id) do
@@ -881,6 +912,29 @@ defmodule QuizProject.Priorities do
       %{google_event_id: google_event_id, google_updated_at: google_updated_at},
       authorize?: false
     )
+    |> Ash.update()
+  end
+
+  @doc """
+  Desfaz o vínculo com um evento do Google cancelado/apagado (sync de
+  entrada) — não mexe em `status`/`flow`: cancelar no Google não é uma
+  resolução de negócio, só para de espelhar.
+  """
+  def unlink_google_event(%Activity{} = activity) do
+    activity
+    |> Ash.Changeset.for_update(:unlink_google_event, %{}, authorize?: false)
+    |> Ash.update()
+  end
+
+  @doc """
+  Aplica uma edição feita direto no Google Calendar (sync de entrada, ver
+  `QuizProject.GoogleCalendar.reconcile/1`). Não passa por
+  `sync_google_out`: escrever de volta o que acabou de chegar do Google
+  criaria um ping-pong entre app e Google.
+  """
+  def sync_activity_from_google(%Activity{} = activity, attrs) do
+    activity
+    |> Ash.Changeset.for_update(:sync_from_google, attrs, authorize?: false)
     |> Ash.update()
   end
 

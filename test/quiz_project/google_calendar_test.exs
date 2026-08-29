@@ -17,21 +17,27 @@ defmodule QuizProject.GoogleCalendarTest do
     %{user: user}
   end
 
-  defp stub_happy_path do
+  defp stub_happy_path(calendar_id \\ "calendar-abc") do
     Req.Test.stub(__MODULE__, fn conn ->
-      case conn.request_path do
-        "/token" ->
+      cond do
+        conn.request_path == "/token" ->
           Req.Test.json(conn, %{
             "access_token" => "access-1",
             "refresh_token" => "refresh-1",
             "expires_in" => 3600
           })
 
-        "/oauth2/v2/userinfo" ->
+        conn.request_path == "/oauth2/v2/userinfo" ->
           Req.Test.json(conn, %{"email" => "dono@gmail.com"})
 
-        "/calendar/v3/calendars" ->
-          Req.Test.json(conn, %{"id" => "calendar-abc"})
+        conn.request_path == "/calendar/v3/calendars" ->
+          Req.Test.json(conn, %{"id" => calendar_id})
+
+        String.ends_with?(conn.request_path, "/events/watch") ->
+          Req.Test.json(conn, %{"resourceId" => "resource-1", "expiration" => "9999999999999"})
+
+        conn.method == "GET" and String.ends_with?(conn.request_path, "/events") ->
+          Req.Test.json(conn, %{"items" => [], "nextSyncToken" => "sync-token-inicial"})
       end
     end)
   end
@@ -55,19 +61,25 @@ defmodule QuizProject.GoogleCalendarTest do
     {:ok, first} = GoogleCalendar.connect(user, "auth-code-123")
 
     Req.Test.stub(__MODULE__, fn conn ->
-      case conn.request_path do
-        "/token" ->
+      cond do
+        conn.request_path == "/token" ->
           Req.Test.json(conn, %{
             "access_token" => "access-2",
             "refresh_token" => "refresh-2",
             "expires_in" => 3600
           })
 
-        "/oauth2/v2/userinfo" ->
+        conn.request_path == "/oauth2/v2/userinfo" ->
           Req.Test.json(conn, %{"email" => "outra-conta@gmail.com"})
 
-        "/calendar/v3/calendars" ->
+        conn.request_path == "/calendar/v3/calendars" ->
           Req.Test.json(conn, %{"id" => "calendar-novo"})
+
+        String.ends_with?(conn.request_path, "/events/watch") ->
+          Req.Test.json(conn, %{"resourceId" => "resource-2", "expiration" => "9999999999999"})
+
+        conn.method == "GET" and String.ends_with?(conn.request_path, "/events") ->
+          Req.Test.json(conn, %{"items" => [], "nextSyncToken" => "sync-token-novo"})
       end
     end)
 
@@ -77,6 +89,57 @@ defmodule QuizProject.GoogleCalendarTest do
     assert second.google_account_email == "outra-conta@gmail.com"
     assert {:ok, fetched} = Accounts.get_google_calendar_connection(user)
     assert fetched.id == second.id
+  end
+
+  test "connect registra o watch channel e captura o sync_token inicial", %{user: user} do
+    stub_happy_path()
+
+    assert {:ok, connection} = GoogleCalendar.connect(user, "auth-code-123")
+
+    assert {:ok, fetched} = Accounts.get_google_calendar_connection(user)
+    assert fetched.id == connection.id
+    assert fetched.channel_id != nil
+    assert fetched.channel_resource_id == "resource-1"
+    assert fetched.channel_token_hash != nil
+    assert fetched.channel_expires_at != nil
+    assert fetched.sync_token == "sync-token-inicial"
+
+    assert {:ok, by_channel} =
+             Accounts.get_google_calendar_connection_by_channel_id(fetched.channel_id)
+
+    assert by_channel.id == connection.id
+  end
+
+  test "falha ao registrar o watch não impede a conexão (só fica sem sync de entrada por ora)",
+       %{user: user} do
+    Req.Test.stub(__MODULE__, fn conn ->
+      cond do
+        conn.request_path == "/token" ->
+          Req.Test.json(conn, %{
+            "access_token" => "access-1",
+            "refresh_token" => "refresh-1",
+            "expires_in" => 3600
+          })
+
+        conn.request_path == "/oauth2/v2/userinfo" ->
+          Req.Test.json(conn, %{"email" => "dono@gmail.com"})
+
+        conn.request_path == "/calendar/v3/calendars" ->
+          Req.Test.json(conn, %{"id" => "calendar-abc"})
+
+        String.ends_with?(conn.request_path, "/events/watch") ->
+          conn
+          |> Plug.Conn.put_status(400)
+          |> Req.Test.json(%{"error" => "webhook não alcançável"})
+      end
+    end)
+
+    assert {:ok, connection} = GoogleCalendar.connect(user, "auth-code-123")
+
+    assert {:ok, fetched} = Accounts.get_google_calendar_connection(user)
+    assert fetched.id == connection.id
+    assert is_nil(fetched.channel_id)
+    assert fetched.last_sync_error != nil
   end
 
   test "connect propaga falha na troca do código sem criar conexão", %{user: user} do

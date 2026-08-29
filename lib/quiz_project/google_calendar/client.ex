@@ -41,6 +41,50 @@ defmodule QuizProject.GoogleCalendar.Client do
     request(:patch, url, access_token, event_body)
   end
 
+  @doc """
+  Lista eventos do calendário dedicado — com `syncToken` para sincronização
+  incremental, sem ele para uma listagem completa (rebaseline depois de um
+  410, ou a primeira captura de `nextSyncToken` logo após o `watch`).
+  `query` aceita `syncToken` e/ou `pageToken`.
+  """
+  def list_events(access_token, calendar_id, query \\ %{}) do
+    url = events_url(calendar_id) <> "?" <> URI.encode_query(query)
+    get(url, access_token)
+  end
+
+  @doc """
+  Registra um canal de push notifications (`events.watch`) no calendário
+  dedicado — Google chama `webhook_url` sempre que algo muda lá.
+  `expiration_ms` é um timestamp Unix em milissegundos.
+  """
+  def watch_events(
+        access_token,
+        calendar_id,
+        channel_id,
+        channel_token,
+        webhook_url,
+        expiration_ms
+      ) do
+    body = %{
+      id: channel_id,
+      type: "web_hook",
+      address: webhook_url,
+      token: channel_token,
+      expiration: expiration_ms
+    }
+
+    post(events_url(calendar_id) <> "/watch", access_token, body)
+  end
+
+  @doc "Encerra um canal de push notifications — usado ao renovar ou desconectar."
+  def stop_channel(access_token, channel_id, resource_id) do
+    post(
+      "#{@calendar_base}/channels/stop",
+      access_token,
+      %{id: channel_id, resourceId: resource_id}
+    )
+  end
+
   defp events_url(calendar_id) do
     "#{@calendar_base}/calendars/#{URI.encode_www_form(calendar_id)}/events"
   end

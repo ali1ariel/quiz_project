@@ -149,7 +149,10 @@ if config_env() != :test do
     google_client_secret: System.get_env("GOOGLE_CLIENT_SECRET"),
     google_oauth_redirect_uri:
       System.get_env("GOOGLE_OAUTH_REDIRECT_URI") ||
-        "https://#{System.get_env("PHX_HOST") || "localhost"}/settings/google/callback"
+        "https://#{System.get_env("PHX_HOST") || "localhost"}/settings/google/callback",
+    google_calendar_webhook_url:
+      System.get_env("GOOGLE_CALENDAR_WEBHOOK_URL") ||
+        "https://#{System.get_env("PHX_HOST") || "localhost"}/api/google/calendar/webhook"
 
   if config_env() == :prod do
     calendar_token_encryption_key =

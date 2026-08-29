@@ -7,8 +7,8 @@ config :bcrypt_elixir, :log_rounds, 1
 # Chave fixa só pra teste (mesma lógica do secret_key_base abaixo) — não
 # precisa ser secreta, só precisa ter 32 bytes em base64.
 config :quiz_project,
-  :calendar_token_encryption_key,
-  "Zm9vYmFyYmF6cXV1eGNvcmdlZ3JhdWx0Zm9vYmFyYmE="
+       :calendar_token_encryption_key,
+       "Zm9vYmFyYmF6cXV1eGNvcmdlZ3JhdWx0Zm9vYmFyYmE="
 
 # Credenciais falsas pra exercitar o fluxo OAuth do Google Calendar nos
 # testes (chamadas reais são sempre stubadas via `Req.Test`, ver
@@ -16,7 +16,8 @@ config :quiz_project,
 config :quiz_project,
   google_client_id: "test-client-id",
   google_client_secret: "test-client-secret",
-  google_oauth_redirect_uri: "http://localhost:4002/settings/google/callback"
+  google_oauth_redirect_uri: "http://localhost:4002/settings/google/callback",
+  google_calendar_webhook_url: "http://localhost:4002/api/google/calendar/webhook"
 
 # Nos testes a IA é sempre o provider heurístico local
 config :quiz_project, :ai_provider, QuizProject.AI.Fake

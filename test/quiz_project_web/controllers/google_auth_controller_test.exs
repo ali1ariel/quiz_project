@@ -51,19 +51,25 @@ defmodule QuizProjectWeb.GoogleAuthControllerTest do
     conn = recycle(conn)
 
     Req.Test.stub(__MODULE__, fn conn ->
-      case conn.request_path do
-        "/token" ->
+      cond do
+        conn.request_path == "/token" ->
           Req.Test.json(conn, %{
             "access_token" => "access-1",
             "refresh_token" => "refresh-1",
             "expires_in" => 3600
           })
 
-        "/oauth2/v2/userinfo" ->
+        conn.request_path == "/oauth2/v2/userinfo" ->
           Req.Test.json(conn, %{"email" => "dono@gmail.com"})
 
-        "/calendar/v3/calendars" ->
+        conn.request_path == "/calendar/v3/calendars" ->
           Req.Test.json(conn, %{"id" => "calendar-abc"})
+
+        String.ends_with?(conn.request_path, "/events/watch") ->
+          Req.Test.json(conn, %{"resourceId" => "resource-1", "expiration" => "9999999999999"})
+
+        conn.method == "GET" and String.ends_with?(conn.request_path, "/events") ->
+          Req.Test.json(conn, %{"items" => [], "nextSyncToken" => "sync-token-inicial"})
       end
     end)
 

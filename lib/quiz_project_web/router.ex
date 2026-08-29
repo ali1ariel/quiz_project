@@ -44,6 +44,11 @@ defmodule QuizProjectWeb.Router do
     pipe_through :api
 
     get "/openapi.json", OpenApiController, :show
+
+    # Sem sessão/CSRF de propósito: o Google não carrega cookie nenhum.
+    # Verificação é o `X-Goog-Channel-Token` contra o hash salvo na conexão
+    # (ver `GoogleCalendarWebhookController`).
+    post "/google/calendar/webhook", GoogleCalendarWebhookController, :notify
   end
 
   scope "/api/v1", QuizProjectWeb.Api do
