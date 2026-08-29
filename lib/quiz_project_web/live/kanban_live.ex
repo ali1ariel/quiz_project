@@ -34,6 +34,7 @@ defmodule QuizProjectWeb.KanbanLive do
     # já toma pra evitar trabalho em dobro.
     if connected?(socket) do
       Priorities.ensure_today_habit_instances(socket.assigns.current_user)
+      Priorities.clear_expired_snoozes(socket.assigns.current_user)
     end
 
     {:ok,
@@ -41,6 +42,7 @@ defmodule QuizProjectWeb.KanbanLive do
      |> assign(
        page_title: "Hoje",
        modal_activity_id: nil,
+       snooze_activity: nil,
        capture_is_habit?: false,
        capture_frequency: "daily",
        capture_category_id: nil,
@@ -124,6 +126,46 @@ defmodule QuizProjectWeb.KanbanLive do
   @impl true
   def handle_event("reopen_activity", %{"id" => id}, socket),
     do: {:noreply, resolve(socket, id, &Priorities.reopen_activity/2)}
+
+  @impl true
+  def handle_event("open_snooze", %{"id" => id}, socket) do
+    activity =
+      Enum.find(
+        socket.assigns.todo_activities ++ socket.assigns.fazendo_activities,
+        &(&1.id == id)
+      )
+
+    {:noreply, assign(socket, snooze_activity: activity)}
+  end
+
+  @impl true
+  def handle_event("close_snooze_modal", _params, socket) do
+    {:noreply, assign(socket, snooze_activity: nil)}
+  end
+
+  @impl true
+  def handle_event("confirm_snooze", %{"until" => until}, socket) do
+    user = socket.assigns.current_user
+    activity = socket.assigns.snooze_activity
+
+    case until != "" && Date.from_iso8601(until) do
+      {:ok, date} ->
+        case Priorities.snooze_activity(activity, date, user) do
+          {:ok, _} ->
+            {:noreply,
+             socket
+             |> put_flash(:info, "Adiada até #{Calendar.strftime(date, "%d/%m/%Y")}.")
+             |> assign(snooze_activity: nil)
+             |> load_data()}
+
+          {:error, _} ->
+            {:noreply, put_flash(socket, :error, "A data precisa ser depois de hoje.")}
+        end
+
+      _ ->
+        {:noreply, put_flash(socket, :error, "Escolha uma data.")}
+    end
+  end
 
   @impl true
   def handle_event(
@@ -551,6 +593,8 @@ defmodule QuizProjectWeb.KanbanLive do
         activity_id={@modal_activity_id}
         current_user={@current_user}
       />
+
+      <.snooze_modal :if={@snooze_activity} activity={@snooze_activity} />
     </Layouts.app>
     """
   end
@@ -576,6 +620,15 @@ defmodule QuizProjectWeb.KanbanLive do
       <.icon name="hero-x-mark" class="size-4 text-warning" />
     </button>
     <button
+      :if={is_nil(@activity.habit_id)}
+      phx-click="open_snooze"
+      phx-value-id={@activity.id}
+      class="btn btn-ghost btn-xs"
+      title="Adiar — some daqui até a data escolhida"
+    >
+      <.icon name="hero-clock" class="size-4 opacity-60" />
+    </button>
+    <button
       phx-click="discard_activity"
       phx-value-id={@activity.id}
       class="btn btn-ghost btn-xs"
@@ -583,6 +636,59 @@ defmodule QuizProjectWeb.KanbanLive do
     >
       <.icon name="hero-trash" class="size-4 opacity-50" />
     </button>
+    """
+  end
+
+  attr :activity, :map, required: true
+
+  defp snooze_modal(assigns) do
+    assigns = assign(assigns, :min_date, Date.add(Date.utc_today(), 1))
+
+    ~H"""
+    <div id="snooze-modal">
+      <div class="modal modal-open" phx-window-keydown="close_snooze_modal" phx-key="Escape">
+        <div class="modal-box max-w-sm rounded-3xl">
+          <h2 class="text-lg font-bold tracking-tight">Adiar atividade</h2>
+          <p class="mt-1 text-sm opacity-70">
+            "{@activity.title}" some da Tela do dia até a data escolhida — reaparece sozinha
+            nesse dia.
+          </p>
+
+          <form id="snooze-form" phx-submit="confirm_snooze" class="mt-4 space-y-4">
+            <.input
+              type="date"
+              name="until"
+              label="Adiar até"
+              value=""
+              min={Date.to_iso8601(@min_date)}
+              required
+            />
+
+            <div class="flex justify-end gap-2">
+              <button
+                type="button"
+                phx-click="close_snooze_modal"
+                class="btn btn-ghost btn-sm rounded-full"
+              >
+                Cancelar
+              </button>
+              <button type="submit" class="btn btn-primary btn-sm rounded-full px-5">
+                Adiar
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <button
+          type="button"
+          phx-click="close_snooze_modal"
+          class="modal-backdrop"
+          aria-label="Fechar"
+        >
+          Fechar
+        </button>
+      </div>
+    </div>
     """
   end
 end
