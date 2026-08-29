@@ -34,10 +34,8 @@ defmodule QuizProjectWeb.KanbanLiveTest do
   end
 
   describe "board do dia" do
-    test "só aparecem atividades de hoje, mesmo com pendência de ontem presa ao mesmo item", %{
-      conn: conn,
-      user: user
-    } do
+    test "atividade presa a item continua aparecendo mesmo depois de virar o dia — só hábito expira",
+         %{conn: conn, user: user} do
       cat = category(user)
       item = manual_item(user, cat, "Estudar Elixir")
       activity(user, item, "Ler capítulo 3")
@@ -55,17 +53,33 @@ defmodule QuizProjectWeb.KanbanLiveTest do
       {:ok, _view, html} = live(conn, ~p"/today")
 
       assert html =~ "Ler capítulo 3"
-      refute html =~ "Revisar exercícios de ontem"
-      refute html =~ "Atividade só de ontem"
+      assert html =~ "Revisar exercícios de ontem"
+      assert html =~ "Atividade só de ontem"
     end
 
-    test "sem nenhuma atividade hoje mostra o estado vazio", %{conn: conn, user: user} do
-      item = manual_item(user, category(user), "Item ocioso")
-      activity(user, item, "Só ontem", %{logical_date: Date.add(Date.utc_today(), -1)})
+    test "atividade resolvida em dia anterior não volta a aparecer na coluna feito hoje", %{
+      conn: conn,
+      user: user
+    } do
+      item = manual_item(user, category(user), "Item")
+      old = activity(user, item, "Resolvida ontem")
+      {:ok, old} = Priorities.complete_activity(old, user)
+
+      old
+      |> Ash.Changeset.for_update(:update, %{}, authorize?: false)
+      |> Ash.Changeset.force_change_attribute(:resolved_date, Date.add(Date.utc_today(), -1))
+      |> Ash.update!()
 
       {:ok, _view, html} = live(conn, ~p"/today")
 
-      refute html =~ "Só ontem"
+      refute html =~ "Resolvida ontem"
+    end
+
+    test "sem nenhuma atividade mostra o estado vazio", %{conn: conn, user: user} do
+      _item = manual_item(user, category(user), "Item ocioso")
+
+      {:ok, _view, html} = live(conn, ~p"/today")
+
       assert html =~ "Nenhuma atividade presa a uma prioridade hoje."
     end
 

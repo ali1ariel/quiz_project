@@ -198,7 +198,7 @@ defmodule QuizProject.Priorities.ActivityTest do
   end
 
   describe "tela do dia" do
-    test "list_today_activities_by_flow só traz atividades de hoje, agrupadas por flow", %{
+    test "list_today_activities_by_flow agrupa por flow, sem expirar atividade presa a item", %{
       user: user
     } do
       cat = category(user)
@@ -219,7 +219,7 @@ defmodule QuizProject.Priorities.ActivityTest do
       ids_todo = Map.get(by_flow, :todo, []) |> Enum.map(& &1.id)
       ids_fazendo = Map.get(by_flow, :fazendo, []) |> Enum.map(& &1.id)
 
-      refute ontem.id in ids_todo
+      assert ontem.id in ids_todo
       refute ontem.id in ids_fazendo
       assert hoje_fazendo.id in ids_fazendo
     end

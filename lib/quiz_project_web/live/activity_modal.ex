@@ -235,7 +235,7 @@ defmodule QuizProjectWeb.ActivityModal do
                 myself={@myself}
                 habit_streak={@habit_streak}
                 habit_frequency_form_value={@habit_frequency_form_value}
-                occurrence_date={Date.utc_today()}
+                occurrence_date={@activity.logical_date}
               />
             </div>
 

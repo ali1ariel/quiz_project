@@ -15,6 +15,8 @@ defmodule QuizProject.Priorities.Activity do
     domain: QuizProject.Priorities,
     data_layer: AshPostgres.DataLayer
 
+  alias QuizProject.Priorities.Clock
+
   postgres do
     table "priority_activities"
     repo QuizProject.Repo
@@ -80,20 +82,53 @@ defmodule QuizProject.Priorities.Activity do
 
     update :complete do
       accept []
+      require_atomic? false
       change set_attribute(:status, :concluida)
       change set_attribute(:flow, :feito)
+
+      change fn changeset, _context ->
+        Ash.Changeset.force_change_attribute(changeset, :resolved_date, Clock.today())
+      end
     end
 
     update :mark_not_done do
       accept []
+      require_atomic? false
       change set_attribute(:status, :nao_cumprida)
       change set_attribute(:flow, :feito)
+
+      change fn changeset, _context ->
+        Ash.Changeset.force_change_attribute(changeset, :resolved_date, Clock.today())
+      end
     end
 
     update :discard do
       accept []
+      require_atomic? false
       change set_attribute(:status, :descartada)
       change set_attribute(:flow, :feito)
+
+      change fn changeset, _context ->
+        Ash.Changeset.force_change_attribute(changeset, :resolved_date, Clock.today())
+      end
+    end
+
+    # Corrige o desfecho de uma atividade já resolvida sem reabri-la nem
+    # mexer em `resolved_date` — usada só pelo Histórico (calendário de dias
+    # anteriores), que é consulta e não pode arrastar a atividade pro dia da
+    # correção (diferente de `:complete`/`:mark_not_done`, que são a
+    # resolução em si e por isso gravam `resolved_date` como hoje).
+    update :correct_status do
+      accept []
+
+      argument :status, :atom,
+        allow_nil?: false,
+        constraints: [one_of: [:concluida, :nao_cumprida]]
+
+      validate attribute_equals(:flow, :feito),
+        message: "só é possível corrigir o desfecho de uma atividade já resolvida"
+
+      change set_attribute(:status, arg(:status))
     end
 
     update :reopen do
@@ -104,6 +139,7 @@ defmodule QuizProject.Priorities.Activity do
 
       change set_attribute(:status, :pendente)
       change set_attribute(:flow, :todo)
+      change set_attribute(:resolved_date, nil)
     end
   end
 
@@ -146,6 +182,12 @@ defmodule QuizProject.Priorities.Activity do
     attribute :logical_date, :date do
       allow_nil? false
     end
+
+    # Dia em que a atividade foi resolvida (concluída/não cumprida/descartada),
+    # gravado pelas actions de resolução e limpo por `:reopen`. Separado de
+    # `logical_date` porque atividade presa a item não expira mais sozinha —
+    # sem isso não daria pra saber o que foi resolvido hoje pra coluna "Feito".
+    attribute :resolved_date, :date
 
     attribute :position, :integer do
       allow_nil? false

@@ -589,7 +589,7 @@ defmodule QuizProjectWeb.PrioritiesLive.Components do
   defp tab_class(true), do: "bg-primary text-primary-content shadow-sm"
   defp tab_class(false), do: "bg-base-200 opacity-70 hover:opacity-100"
 
-  @doc "Sub-navegação entre as 2 telas do Kanban (Tela do dia / Próximos dias), usada no topo de cada uma."
+  @doc "Sub-navegação entre as 3 telas do Kanban (Tela do dia / Próximos dias / Histórico), usada no topo de cada uma."
   attr :active, :atom, required: true
 
   def kanban_sub_nav(assigns) do
@@ -613,6 +613,15 @@ defmodule QuizProjectWeb.PrioritiesLive.Components do
       >
         Próximos dias
       </.link>
+      <.link
+        navigate={~p"/today/history"}
+        class={[
+          "rounded-full px-4 py-1.5 transition [transform:translateZ(0)]",
+          tab_class(@active == :history)
+        ]}
+      >
+        Histórico
+      </.link>
     </nav>
     """
   end
@@ -625,7 +634,7 @@ defmodule QuizProjectWeb.PrioritiesLive.Components do
 
   @doc "Nível de alerta pela idade de `logical_date`, usado nas capturas soltas da Tela do dia."
   def age_alert(logical_date) do
-    case Date.diff(Date.utc_today(), logical_date) do
+    case Date.diff(Priorities.Clock.today(), logical_date) do
       days when days >= @urgent_after_days -> :urgent
       days when days >= @warning_after_days -> :warning
       _ -> :ok
@@ -633,15 +642,16 @@ defmodule QuizProjectWeb.PrioritiesLive.Components do
   end
 
   defp age_label(logical_date) do
-    days = Date.diff(Date.utc_today(), logical_date)
+    days = Date.diff(Priorities.Clock.today(), logical_date)
     "#{days} #{if days == 1, do: "dia", else: "dias"}"
   end
 
   @doc """
   Cartão de atividade da Tela do dia. `show_age?` liga o badge de alerta por
-  idade (só faz sentido pra capturas soltas — atividades presas a um
-  item/hábito sempre são de hoje). `actions` é opcional: cartões já
-  resolvidos (`feito`) não recebem nenhuma.
+  idade (só faz sentido pra capturas soltas — atividade presa a um item pode
+  ficar pendente por vários dias sem expirar; só a instância de hábito é
+  sempre do dia). `actions` é opcional: cartões já resolvidos (`feito`) não
+  recebem nenhuma.
 
   Sem raia por prioridade (ver moduledoc de `KanbanLive`), o que diferencia
   um card do outro é só visual: a borda lateral usa a cor da categoria do
@@ -651,6 +661,11 @@ defmodule QuizProjectWeb.PrioritiesLive.Components do
   """
   attr :activity, :map, required: true
   attr :show_age?, :boolean, default: false
+
+  attr :clickable_title?, :boolean,
+    default: true,
+    doc: "false pro Histórico: consulta, não abre o modal de edição"
+
   slot :actions
 
   def activity_card(assigns) do
@@ -664,6 +679,7 @@ defmodule QuizProjectWeb.PrioritiesLive.Components do
     >
       <div class="flex items-start justify-between gap-2">
         <button
+          :if={@clickable_title?}
           type="button"
           phx-click="open_activity"
           phx-value-id={@activity.id}
@@ -671,6 +687,12 @@ defmodule QuizProjectWeb.PrioritiesLive.Components do
         >
           {@activity.title}
         </button>
+        <span
+          :if={!@clickable_title?}
+          class="line-clamp-2 text-left text-sm font-semibold leading-snug"
+        >
+          {@activity.title}
+        </span>
         <span
           :if={@show_age? && age_alert(@activity.logical_date) != :ok}
           class={[
