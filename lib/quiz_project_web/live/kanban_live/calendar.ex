@@ -1,8 +1,12 @@
-defmodule QuizProjectWeb.KanbanLive.History do
+defmodule QuizProjectWeb.KanbanLive.Calendar do
   @moduledoc """
-  Calendário de dias anteriores: instância de hábito aparece pelo dia devido
-  (`logical_date`), atividade presa a item ou captura solta aparece pelo dia
-  em que foi resolvida (`resolved_date`) — ver `Priorities.list_activities_between/3`.
+  Calendário mensal: instância de hábito e evento aparecem pelo dia marcado
+  (`logical_date` — evento independente de já ter sido resolvido ou não, é
+  a data real do compromisso), o resto (atividade comum presa a item ou
+  captura solta) aparece pelo dia em que foi resolvida (`resolved_date`) —
+  ver `Priorities.list_activities_between/3`. Navega livremente entre
+  meses passados e futuros; um dia futuro pode não ter nada resolvido
+  ainda, mas mostra os eventos já marcados pra ele.
 
   Só consulta: sem título clicável, sem editar nada, sem checklist nem
   gerenciar hábito (isso é papel da Tela do dia/`ActivityModal`). A única
@@ -20,7 +24,7 @@ defmodule QuizProjectWeb.KanbanLive.History do
 
   @impl true
   def mount(_params, _session, socket) do
-    {:ok, assign(socket, page_title: "Histórico", weekday_headers: @weekday_headers)}
+    {:ok, assign(socket, page_title: "Calendário", weekday_headers: @weekday_headers)}
   end
 
   @impl true
@@ -69,10 +73,11 @@ defmodule QuizProjectWeb.KanbanLive.History do
 
   defp activity_date(%{
          habit_id: habit_id,
+         kind: kind,
          logical_date: logical_date,
          resolved_date: resolved_date
        }) do
-    if habit_id, do: logical_date, else: resolved_date
+    if habit_id || kind == :evento, do: logical_date, else: resolved_date
   end
 
   defp grid_start(month) do
@@ -111,7 +116,8 @@ defmodule QuizProjectWeb.KanbanLive.History do
   defp day_summary(activities) do
     %{
       done: Enum.count(activities, &(&1.status == :concluida)),
-      not_done: Enum.count(activities, &(&1.status == :nao_cumprida))
+      not_done: Enum.count(activities, &(&1.status == :nao_cumprida)),
+      upcoming: Enum.count(activities, &(&1.kind == :evento and &1.flow != :feito))
     }
   end
 
@@ -159,21 +165,21 @@ defmodule QuizProjectWeb.KanbanLive.History do
     >
       <div class="space-y-6">
         <div class="border-b border-base-300 pb-4">
-          <h1 class="text-2xl font-bold tracking-tight">Histórico</h1>
+          <h1 class="text-2xl font-bold tracking-tight">Calendário</h1>
           <p class="text-sm opacity-70">
-            O que aconteceu em dias anteriores — hábito pelo dia devido, o resto pelo dia em que
-            foi resolvido. Só consulta: dá pra corrigir se ficou marcado como concluída/não
-            cumprida por engano, mais nada.
+            Hábito e evento pelo dia marcado, o resto pelo dia em que foi resolvido — navegue por
+            qualquer mês, passado ou futuro. Só consulta: dá pra corrigir se ficou marcado como
+            concluída/não cumprida por engano, mais nada.
           </p>
         </div>
 
-        <Components.kanban_sub_nav active={:history} />
+        <Components.kanban_sub_nav active={:calendar} />
 
         <div class="space-y-4 rounded-3xl border border-base-300 bg-base-100 p-4">
           <div class="flex items-center justify-between gap-3">
             <.link
               patch={
-                ~p"/today/history?#{[month: month_param(Date.add(Date.beginning_of_month(@month), -1))]}"
+                ~p"/today/calendar?#{[month: month_param(Date.add(Date.beginning_of_month(@month), -1))]}"
               }
               class="btn btn-ghost btn-sm rounded-full"
             >
@@ -185,17 +191,13 @@ defmodule QuizProjectWeb.KanbanLive.History do
             </h2>
 
             <.link
-              :if={not same_month?(@month, Clock.today())}
               patch={
-                ~p"/today/history?#{[month: month_param(Date.add(Date.end_of_month(@month), 1))]}"
+                ~p"/today/calendar?#{[month: month_param(Date.add(Date.end_of_month(@month), 1))]}"
               }
               class="btn btn-ghost btn-sm rounded-full"
             >
               <.icon name="hero-chevron-right" class="size-4" />
             </.link>
-            <span :if={same_month?(@month, Clock.today())} class="btn btn-ghost btn-sm invisible">
-              <.icon name="hero-chevron-right" class="size-4" />
-            </span>
           </div>
 
           <div class="grid grid-cols-7 gap-1 text-center text-xs font-semibold uppercase opacity-50">
@@ -210,7 +212,6 @@ defmodule QuizProjectWeb.KanbanLive.History do
                 month={@month}
                 selected?={day == @selected_date}
                 summary={day_summary(Map.get(@by_date, day, []))}
-                future?={Date.compare(day, Clock.today()) == :gt}
               />
             </div>
           </div>
@@ -283,15 +284,13 @@ defmodule QuizProjectWeb.KanbanLive.History do
   attr :month, :any, required: true
   attr :selected?, :boolean, required: true
   attr :summary, :map, required: true
-  attr :future?, :boolean, required: true
 
   defp day_cell(assigns) do
     assigns = assign(assigns, :outside_month?, assigns.day.month != assigns.month.month)
 
     ~H"""
     <.link
-      :if={not @future?}
-      patch={~p"/today/history?#{[month: month_param(@month), date: Date.to_iso8601(@day)]}"}
+      patch={~p"/today/calendar?#{[month: month_param(@month), date: Date.to_iso8601(@day)]}"}
       class={[
         "flex flex-col items-center gap-0.5 rounded-xl border p-1.5 text-xs transition",
         @selected? && "border-primary bg-primary/10",
@@ -303,14 +302,9 @@ defmodule QuizProjectWeb.KanbanLive.History do
       <span class="flex gap-1">
         <span :if={@summary.done > 0} class="font-bold text-success">✓{@summary.done}</span>
         <span :if={@summary.not_done > 0} class="font-bold text-warning">✗{@summary.not_done}</span>
+        <span :if={@summary.upcoming > 0} class="font-bold text-info">•{@summary.upcoming}</span>
       </span>
     </.link>
-    <span
-      :if={@future?}
-      class={["p-1.5 text-center text-xs opacity-20", @outside_month? && "opacity-10"]}
-    >
-      {@day.day}
-    </span>
     """
   end
 end

@@ -39,6 +39,22 @@ defmodule QuizProject.Priorities.ActivityTest do
       assert activity.status == :pendente
       assert activity.flow == :todo
       assert activity.logical_date == Date.utc_today()
+      assert activity.kind == :tarefa
+    end
+
+    test "cria atividade do tipo evento, com data escolhida", %{user: user} do
+      data = Date.add(Date.utc_today(), 5)
+
+      {:ok, activity} =
+        Priorities.create_activity(user, %{title: "Reunião", kind: :evento, logical_date: data})
+
+      assert activity.kind == :evento
+      assert activity.logical_date == data
+    end
+
+    test "kind rejeita valor fora de tarefa/evento", %{user: user} do
+      assert {:error, %Ash.Error.Invalid{}} =
+               Priorities.create_activity(user, %{title: "X", kind: :outro})
     end
 
     test "list_activities_for_item lista independente da data, só do dono", %{
@@ -233,6 +249,50 @@ defmodule QuizProject.Priorities.ActivityTest do
 
       assert activity.item.category.name == "Corpo"
     end
+
+    test "evento só aparece na tela do dia no seu próprio dia, mesmo preso a item", %{user: user} do
+      cat = category(user)
+      item = manual_item(user, cat, "Projeto")
+
+      {:ok, hoje} =
+        Priorities.create_activity(user, %{title: "Reunião hoje", item_id: item.id, kind: :evento})
+
+      {:ok, _futuro} =
+        Priorities.create_activity(user, %{
+          title: "Reunião futura",
+          item_id: item.id,
+          kind: :evento,
+          logical_date: Date.add(Date.utc_today(), 3)
+        })
+
+      {:ok, _passado} =
+        Priorities.create_activity(user, %{
+          title: "Reunião passada",
+          item_id: item.id,
+          kind: :evento,
+          logical_date: Date.add(Date.utc_today(), -3)
+        })
+
+      ids = Priorities.list_today_activities(user) |> Enum.map(& &1.id)
+
+      assert hoje.id in ids
+      assert length(ids) == 1
+    end
+
+    test "evento resolvido hoje aparece na tela do dia mesmo que o dia marcado seja outro",
+         %{user: user} do
+      {:ok, evento} =
+        Priorities.create_activity(user, %{
+          title: "Adiantei",
+          kind: :evento,
+          logical_date: Date.add(Date.utc_today(), 2)
+        })
+
+      {:ok, resolvido} = Priorities.complete_activity(evento, user)
+
+      ids = Priorities.list_today_activities(user) |> Enum.map(& &1.id)
+      assert resolvido.id in ids
+    end
   end
 
   describe "adiar" do
@@ -306,6 +366,71 @@ defmodule QuizProject.Priorities.ActivityTest do
 
       assert {:error, _} =
                Priorities.snooze_activity(instancia, Date.add(Date.utc_today(), 1), user)
+    end
+  end
+
+  describe "reagendar evento" do
+    test "reschedule_activity muda o logical_date de um evento", %{user: user} do
+      {:ok, evento} =
+        Priorities.create_activity(user, %{title: "Consulta", kind: :evento})
+
+      nova_data = Date.add(evento.logical_date, 10)
+      {:ok, reagendado} = Priorities.reschedule_activity(evento, nova_data, user)
+
+      assert reagendado.logical_date == nova_data
+    end
+
+    test "reschedule_activity aceita data no passado (corrige um typo na data original)", %{
+      user: user
+    } do
+      {:ok, evento} = Priorities.create_activity(user, %{title: "Consulta", kind: :evento})
+
+      data_passada = Date.add(Date.utc_today(), -5)
+      {:ok, reagendado} = Priorities.reschedule_activity(evento, data_passada, user)
+
+      assert reagendado.logical_date == data_passada
+    end
+
+    test "reschedule_activity não se aplica a tarefa comum", %{user: user} do
+      {:ok, tarefa} = Priorities.create_activity(user, %{title: "Tarefa"})
+
+      assert {:error, %Ash.Error.Invalid{}} =
+               Priorities.reschedule_activity(tarefa, Date.add(Date.utc_today(), 1), user)
+    end
+
+    test "evento preso a item reagendado pra hoje aparece no board da tela do dia", %{
+      user: user
+    } do
+      item = manual_item(user, category(user), "Projeto")
+
+      {:ok, evento} =
+        Priorities.create_activity(user, %{
+          title: "Consulta",
+          item_id: item.id,
+          kind: :evento,
+          logical_date: Date.add(Date.utc_today(), 3)
+        })
+
+      refute Priorities.list_today_activities(user) |> Enum.any?(&(&1.id == evento.id))
+
+      {:ok, _} = Priorities.reschedule_activity(evento, Date.utc_today(), user)
+
+      assert Priorities.list_today_activities(user) |> Enum.any?(&(&1.id == evento.id))
+    end
+
+    test "evento solto (sem item) nunca entra no board — só em Capturas soltas, mesmo reagendado pra hoje",
+         %{user: user} do
+      {:ok, evento} =
+        Priorities.create_activity(user, %{
+          title: "Consulta",
+          kind: :evento,
+          logical_date: Date.add(Date.utc_today(), 3)
+        })
+
+      {:ok, _} = Priorities.reschedule_activity(evento, Date.utc_today(), user)
+
+      refute Priorities.list_today_activities(user) |> Enum.any?(&(&1.id == evento.id))
+      assert Priorities.list_loose_captures(user) |> Enum.any?(&(&1.id == evento.id))
     end
   end
 
@@ -417,6 +542,137 @@ defmodule QuizProject.Priorities.ActivityTest do
       assert {:error, :unauthorized} = Priorities.create_activity_task(activity, "X", other)
       assert {:error, :unauthorized} = Priorities.toggle_activity_task(task, activity, other)
       assert {:error, :unauthorized} = Priorities.delete_activity_task(task, activity, other)
+    end
+  end
+
+  describe "sincronização com Google Calendar" do
+    test "list_pending_activities_from só traz eventos pendentes, nunca tarefas comuns", %{
+      user: user
+    } do
+      hoje = Date.utc_today()
+
+      {:ok, evento_futuro} =
+        Priorities.create_activity(user, %{
+          title: "Evento",
+          kind: :evento,
+          logical_date: Date.add(hoje, 3)
+        })
+
+      {:ok, tarefa} = Priorities.create_activity(user, %{title: "Tarefa", kind: :tarefa})
+
+      {:ok, evento_passado} =
+        Priorities.create_activity(user, %{
+          title: "Evento antigo",
+          kind: :evento,
+          logical_date: Date.add(hoje, -3)
+        })
+
+      {:ok, evento_resolvido} =
+        Priorities.create_activity(user, %{title: "Evento feito", kind: :evento})
+
+      {:ok, evento_resolvido} = Priorities.complete_activity(evento_resolvido, user)
+
+      resultado = Priorities.list_pending_activities_from(user, hoje)
+      ids = Enum.map(resultado, & &1.id)
+
+      assert evento_futuro.id in ids
+      refute tarefa.id in ids
+      refute evento_passado.id in ids
+      refute evento_resolvido.id in ids
+    end
+
+    test "link_google_event grava o id do evento e o updated_at", %{user: user} do
+      {:ok, activity} = Priorities.create_activity(user, %{title: "Ler capítulo 1"})
+      agora = DateTime.utc_now()
+
+      linked =
+        activity
+        |> Ash.Changeset.for_update(
+          :link_google_event,
+          %{google_event_id: "evt-1", google_updated_at: agora},
+          authorize?: false
+        )
+        |> Ash.update!()
+
+      assert linked.google_event_id == "evt-1"
+      assert DateTime.compare(linked.google_updated_at, agora) == :eq
+    end
+
+    test "unlink_google_event limpa o vínculo sem mexer em status/flow", %{user: user} do
+      {:ok, activity} = Priorities.create_activity(user, %{title: "Ler capítulo 1"})
+
+      linked =
+        activity
+        |> Ash.Changeset.for_update(
+          :link_google_event,
+          %{google_event_id: "evt-1", google_updated_at: DateTime.utc_now()},
+          authorize?: false
+        )
+        |> Ash.update!()
+
+      {:ok, completed} = Priorities.complete_activity(linked, user)
+
+      unlinked =
+        completed
+        |> Ash.Changeset.for_update(:unlink_google_event, %{}, authorize?: false)
+        |> Ash.update!()
+
+      assert is_nil(unlinked.google_event_id)
+      assert is_nil(unlinked.google_updated_at)
+      assert unlinked.status == :concluida
+      assert unlinked.flow == :feito
+    end
+
+    test "sync_from_google aplica title/notes/logical_date numa atividade ainda não resolvida", %{
+      user: user
+    } do
+      {:ok, activity} = Priorities.create_activity(user, %{title: "Original"})
+      nova_data = Date.add(activity.logical_date, 2)
+      agora = DateTime.utc_now()
+
+      synced =
+        activity
+        |> Ash.Changeset.for_update(
+          :sync_from_google,
+          %{
+            title: "Editado no Google",
+            notes: "notas novas",
+            logical_date: nova_data,
+            google_updated_at: agora
+          },
+          authorize?: false
+        )
+        |> Ash.update!()
+
+      assert synced.title == "Editado no Google"
+      assert synced.notes == "notas novas"
+      assert synced.logical_date == nova_data
+      assert DateTime.compare(synced.google_updated_at, agora) == :eq
+    end
+
+    test "sync_from_google não sobrescreve logical_date de atividade já resolvida", %{
+      user: user
+    } do
+      {:ok, activity} = Priorities.create_activity(user, %{title: "Original"})
+      {:ok, resolved} = Priorities.complete_activity(activity, user)
+      data_original = resolved.logical_date
+      data_arrastada_no_google = Date.add(data_original, 5)
+
+      synced =
+        resolved
+        |> Ash.Changeset.for_update(
+          :sync_from_google,
+          %{
+            title: "Editado no Google",
+            logical_date: data_arrastada_no_google,
+            google_updated_at: DateTime.utc_now()
+          },
+          authorize?: false
+        )
+        |> Ash.update!()
+
+      assert synced.title == "Editado no Google"
+      assert synced.logical_date == data_original
     end
   end
 end

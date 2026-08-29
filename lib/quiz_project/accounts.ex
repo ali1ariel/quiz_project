@@ -3,7 +3,7 @@ defmodule QuizProject.Accounts do
 
   require Ash.Query
 
-  alias QuizProject.Accounts.ApiToken
+  alias QuizProject.Accounts.{ApiToken, GoogleCalendarConnection}
 
   @api_scopes ["quizzes:read", "quizzes:write", "quizzes:publish", "study:write"]
 
@@ -14,6 +14,7 @@ defmodule QuizProject.Accounts do
     end
 
     resource ApiToken
+    resource GoogleCalendarConnection
   end
 
   @doc "Emite um token de API. O valor puro é retornado somente nesta chamada."
@@ -106,6 +107,94 @@ defmodule QuizProject.Accounts do
     )
     |> Ash.update()
   end
+
+  @doc "Busca a conexão do Google Calendar do usuário, se existir."
+  def get_google_calendar_connection(%{id: user_id}) do
+    GoogleCalendarConnection
+    |> Ash.Query.filter(user_id == ^user_id)
+    |> Ash.read_one(authorize?: false)
+    |> case do
+      {:ok, nil} -> {:error, :not_found}
+      {:ok, connection} -> {:ok, connection}
+      {:error, error} -> {:error, error}
+    end
+  end
+
+  @doc "Busca a conexão pelo id do canal de push notifications (lookup do webhook, sem actor)."
+  def get_google_calendar_connection_by_channel_id(channel_id) do
+    GoogleCalendarConnection
+    |> Ash.Query.filter(channel_id == ^channel_id)
+    |> Ash.read_one(authorize?: false)
+    |> case do
+      {:ok, nil} -> {:error, :not_found}
+      {:ok, connection} -> {:ok, connection}
+      {:error, error} -> {:error, error}
+    end
+  end
+
+  @doc """
+  Conexões cujo canal de push notifications está sem registro ainda ou vai
+  expirar até `before` — usado por `GoogleCalendar.WatchRenewer` pra saber
+  o que renovar.
+  """
+  def list_google_calendar_connections_needing_watch_renewal(before) do
+    GoogleCalendarConnection
+    |> Ash.Query.filter(is_nil(channel_expires_at) or channel_expires_at <= ^before)
+    |> Ash.read!(authorize?: false)
+  end
+
+  @doc "Cria (ou recria) a conexão do usuário com o Google Calendar."
+  def upsert_google_calendar_connection(%{id: user_id}, attrs) do
+    case get_google_calendar_connection(%{id: user_id}) do
+      {:ok, existing} -> Ash.destroy(existing, authorize?: false)
+      {:error, :not_found} -> :ok
+    end
+
+    GoogleCalendarConnection
+    |> Ash.Changeset.for_create(:create, Map.put(attrs, :user_id, user_id), authorize?: false)
+    |> Ash.create()
+  end
+
+  @doc "Atualiza o access token (e opcionalmente o refresh token) após troca/renovação."
+  def update_google_calendar_tokens(%GoogleCalendarConnection{} = connection, attrs) do
+    connection
+    |> Ash.Changeset.for_update(:update_tokens, attrs, authorize?: false)
+    |> Ash.update()
+  end
+
+  @doc "Atualiza o estado do canal de push notifications (`events.watch`)."
+  def update_google_calendar_watch_channel(%GoogleCalendarConnection{} = connection, attrs) do
+    connection
+    |> Ash.Changeset.for_update(:update_watch_channel, attrs, authorize?: false)
+    |> Ash.update()
+  end
+
+  @doc "Atualiza o cursor de sincronização incremental após uma reconciliação bem-sucedida."
+  def update_google_calendar_sync_state(%GoogleCalendarConnection{} = connection, sync_token) do
+    connection
+    |> Ash.Changeset.for_update(:update_sync_state, %{sync_token: sync_token}, authorize?: false)
+    |> Ash.update()
+  end
+
+  @doc "Registra o último erro de sincronização, para exibir em Settings."
+  def record_google_calendar_sync_error(%GoogleCalendarConnection{} = connection, error) do
+    connection
+    |> Ash.Changeset.for_update(:record_sync_error, %{error: error}, authorize?: false)
+    |> Ash.update()
+  end
+
+  @doc "Desconecta o usuário do Google Calendar (mantém calendário e eventos do lado do Google)."
+  def disconnect_google_calendar(%GoogleCalendarConnection{user_id: user_id} = connection, %{
+        id: user_id
+      }) do
+    case Ash.destroy(connection, authorize?: false) do
+      :ok -> {:ok, connection}
+      {:ok, _destroyed} -> {:ok, connection}
+      {:error, error} -> {:error, error}
+    end
+  end
+
+  def disconnect_google_calendar(_connection, _user), do: {:error, :unauthorized}
 
   defp hash_token(token) do
     :crypto.hash(:sha256, token)

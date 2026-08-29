@@ -30,7 +30,7 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
       |> assign_new(:type_form_value, fn -> nil end)
       |> assign_new(:active_tab, fn -> :details end)
       |> assign_new(:new_activity_title, fn -> "" end)
-      |> assign_new(:new_activity_is_habit?, fn -> false end)
+      |> assign_new(:new_activity_type, fn -> "tarefa" end)
       |> assign_new(:new_activity_frequency, fn -> "daily" end)
       |> assign_new(:books, fn -> AdaptiveStudy.list_books(assigns.current_user) end)
       |> assign_new(:quizzes, fn -> Quizzes.list_created(assigns.current_user) end)
@@ -348,7 +348,7 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
     {:noreply,
      assign(socket,
        new_activity_title: Map.get(params, "title", ""),
-       new_activity_is_habit?: Map.get(params, "is_habit") == "true",
+       new_activity_type: Map.get(params, "type", "tarefa"),
        new_activity_frequency: Map.get(params, "frequency", "daily")
      )}
   end
@@ -358,12 +358,14 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
     title = params |> Map.get("title", "") |> String.trim()
     user = socket.assigns.current_user
     item = socket.assigns.item
+    is_habit? = Map.get(params, "type") == "habito"
+    is_event? = Map.get(params, "type") == "evento"
 
     cond do
       title == "" ->
         {:noreply, socket}
 
-      Map.get(params, "is_habit") == "true" ->
+      is_habit? ->
         attrs = Map.merge(%{title: title, item_id: item.id}, build_habit_attrs(params))
 
         case Priorities.create_habit(user, attrs) do
@@ -375,7 +377,7 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
              |> notify_flash(:info, "Hábito criado — acompanhe na Tela do Dia, não aqui.")
              |> assign(
                new_activity_title: "",
-               new_activity_is_habit?: false,
+               new_activity_type: "tarefa",
                new_activity_frequency: "daily"
              )
              |> load_item(item.id)}
@@ -385,12 +387,16 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
         end
 
       true ->
-        case Priorities.create_activity(user, %{title: title, item_id: item.id}) do
+        attrs = Map.merge(%{title: title, item_id: item.id}, event_attrs(is_event?, params))
+
+        case Priorities.create_activity(user, attrs) do
           {:ok, _} ->
+            flash = if is_event?, do: "Evento criado.", else: "Atividade criada."
+
             {:noreply,
              socket
-             |> notify_flash(:info, "Atividade criada.")
-             |> assign(new_activity_title: "")
+             |> notify_flash(:info, flash)
+             |> assign(new_activity_title: "", new_activity_type: "tarefa")
              |> load_item(item.id)}
 
           _ ->
@@ -493,6 +499,18 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
   defp parse_int_list(nil), do: []
   defp parse_int_list(values) when is_list(values), do: Enum.map(values, &String.to_integer/1)
 
+  # `logical_date` inválida ou em branco cai no default de hoje que
+  # `Priorities.create_activity/2` já aplica — só força a data quando o
+  # usuário de fato escolheu uma.
+  defp event_attrs(false, _params), do: %{}
+
+  defp event_attrs(true, params) do
+    case params |> Map.get("event_date", "") |> Date.from_iso8601() do
+      {:ok, date} -> %{kind: :evento, logical_date: date}
+      _ -> %{kind: :evento}
+    end
+  end
+
   @item_types ~w(book quiz_goal course checklist manual)
 
   defp parse_item_type(value) when value in @item_types,
@@ -562,7 +580,7 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
           active_tab={@active_tab}
           activities={@activities}
           new_activity_title={@new_activity_title}
-          new_activity_is_habit?={@new_activity_is_habit?}
+          new_activity_type={@new_activity_type}
           new_activity_frequency={@new_activity_frequency}
         />
       </div>
@@ -606,7 +624,7 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
               active_tab={@active_tab}
               activities={@activities}
               new_activity_title={@new_activity_title}
-              new_activity_is_habit?={@new_activity_is_habit?}
+              new_activity_type={@new_activity_type}
               new_activity_frequency={@new_activity_frequency}
             />
           </div>
@@ -724,7 +742,7 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
   attr :active_tab, :atom, required: true
   attr :activities, :list, required: true
   attr :new_activity_title, :string, required: true
-  attr :new_activity_is_habit?, :boolean, required: true
+  attr :new_activity_type, :string, required: true
   attr :new_activity_frequency, :string, required: true
 
   defp content_body(assigns) do
@@ -1006,29 +1024,43 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
                 placeholder="Ex: Ler capítulo 3"
               />
             </div>
-            <div class="fieldset mb-2">
-              <label class="label flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  name="is_habit"
-                  value="true"
-                  checked={@new_activity_is_habit?}
-                  class="checkbox checkbox-sm"
-                /> É um hábito?
-              </label>
+            <div class="w-36">
+              <.input
+                type="select"
+                name="type"
+                label="Tipo"
+                value={@new_activity_type}
+                options={[{"Atividade", "tarefa"}, {"Hábito", "habito"}, {"Evento", "evento"}]}
+              />
             </div>
             <div class="fieldset mb-2">
               <label>
                 <span class="label mb-1 invisible">Adicionar</span>
                 <button type="submit" class="btn btn-primary btn-sm rounded-full px-4">
-                  {if @new_activity_is_habit?, do: "Criar hábito", else: "Adicionar"}
+                  {cond do
+                    @new_activity_type == "habito" -> "Criar hábito"
+                    @new_activity_type == "evento" -> "Criar evento"
+                    true -> "Adicionar"
+                  end}
                 </button>
               </label>
             </div>
           </div>
 
+          <div :if={@new_activity_type == "evento"} class="rounded-2xl border border-base-300 p-3">
+            <.input
+              type="date"
+              name="event_date"
+              label="Data do evento"
+              value={Date.to_iso8601(Date.utc_today())}
+            />
+            <p class="mt-1 text-xs opacity-60">
+              Vira evento sincronizado com o Google Agenda, se conectado (ver Configurações).
+            </p>
+          </div>
+
           <div
-            :if={@new_activity_is_habit?}
+            :if={@new_activity_type == "habito"}
             class="space-y-3 rounded-2xl border border-base-300 p-3"
           >
             <.input

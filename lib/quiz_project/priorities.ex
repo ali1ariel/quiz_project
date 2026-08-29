@@ -625,20 +625,31 @@ defmodule QuizProject.Priorities do
     |> Ash.read!(authorize?: false)
   end
 
-  @doc "Capturas soltas (sem item) ainda pendentes, mais antiga primeiro — a que mais precisa de atenção."
+  @doc """
+  Capturas soltas (sem item) ainda pendentes, mais antiga primeiro — a que
+  mais precisa de atenção. Uma captura do tipo evento só entra aqui no seu
+  próprio dia (ver `list_today_activities/1`) — antes ou depois disso ela
+  só aparece no Calendário.
+  """
   def list_loose_captures(%{id: user_id}) do
+    today = Clock.today()
+
     Activity
     |> Ash.Query.filter(
-      user_id == ^user_id and is_nil(item_id) and is_nil(habit_id) and status == :pendente
+      user_id == ^user_id and is_nil(item_id) and is_nil(habit_id) and status == :pendente and
+        (kind != :evento or logical_date == ^today)
     )
     |> Ash.Query.sort(logical_date: :asc, position: :asc)
     |> Ash.read!(authorize?: false)
   end
 
   def count_loose_captures(%{id: user_id}) do
+    today = Clock.today()
+
     Activity
     |> Ash.Query.filter(
-      user_id == ^user_id and is_nil(item_id) and is_nil(habit_id) and status == :pendente
+      user_id == ^user_id and is_nil(item_id) and is_nil(habit_id) and status == :pendente and
+        (kind != :evento or logical_date == ^today)
     )
     |> Ash.Query.select([:id])
     |> Ash.read!(authorize?: false)
@@ -647,13 +658,16 @@ defmodule QuizProject.Priorities do
 
   @doc """
   Base do board da Tela do dia: instância de hábito devida hoje (qualquer
-  `flow` — é o hábito que expira por dia, não o resto), atividade presa a
-  item ainda aberta e não adiada pra depois de hoje (não expira mais
-  sozinha, fica até ser resolvida, não importa a `logical_date` — ver
-  `snooze_activity/3`) e qualquer atividade (presa a item ou captura solta)
-  resolvida hoje — pra "Feito" continuar sendo um recorte diário em vez de
-  acumular pra sempre. Uma captura solta ainda `:pendente` só aparece em
-  "Capturas soltas" (ver `list_loose_captures/1`).
+  `flow` — é o hábito que expira por dia, não o resto), evento preso a
+  item no seu próprio dia (aberto ou resolvido hoje — fora disso não
+  aparece aqui), atividade comum presa a item ainda aberta e não adiada
+  pra depois de hoje (não expira mais sozinha, fica até ser resolvida, não
+  importa a `logical_date` — ver `snooze_activity/3`) e qualquer atividade
+  comum ou evento (presa a item ou captura solta) resolvida hoje — pra
+  "Feito" continuar sendo um recorte diário em vez de acumular pra sempre.
+  Evento solto ainda `:pendente` (sem item) nunca entra aqui, mesmo no seu
+  próprio dia — só aparece em "Capturas soltas" (ver `list_loose_captures/1`),
+  senão apareceria duplicado (board + capturas soltas ao mesmo tempo).
   """
   def list_today_activities(%{id: user_id}) do
     today = Clock.today()
@@ -662,7 +676,9 @@ defmodule QuizProject.Priorities do
     |> Ash.Query.filter(
       user_id == ^user_id and
         ((not is_nil(habit_id) and logical_date == ^today) or
-           (is_nil(habit_id) and not is_nil(item_id) and flow != :feito and
+           (kind == :evento and not is_nil(item_id) and flow != :feito and
+              logical_date == ^today) or
+           (kind != :evento and is_nil(habit_id) and not is_nil(item_id) and flow != :feito and
               (is_nil(snoozed_until) or snoozed_until <= ^today)) or
            (is_nil(habit_id) and flow == :feito and resolved_date == ^today))
     )
@@ -672,19 +688,21 @@ defmodule QuizProject.Priorities do
   end
 
   @doc """
-  Atividades entre `from_date` e `to_date` (inclusive) — hábito pelo dia
-  devido (`logical_date`), o resto pelo dia em que foi resolvido
-  (`resolved_date`). Base do calendário de Histórico (`KanbanLive.History`);
-  uma consulta cobre o mês inteiro, agrupamento por dia fica por conta de
-  quem chama.
+  Atividades entre `from_date` e `to_date` (inclusive) — hábito e evento
+  pelo dia marcado (`logical_date`, para o evento independente de já ter
+  sido resolvido ou não: é a data real do compromisso), o resto pelo dia
+  em que foi resolvido (`resolved_date`). Base do Calendário
+  (`KanbanLive.Calendar`); uma consulta cobre o mês inteiro, agrupamento
+  por dia fica por conta de quem chama.
   """
   def list_activities_between(%{id: user_id}, from_date, to_date) do
     Activity
     |> Ash.Query.filter(
       user_id == ^user_id and
         ((not is_nil(habit_id) and logical_date >= ^from_date and logical_date <= ^to_date) or
-           (is_nil(habit_id) and flow == :feito and resolved_date >= ^from_date and
-              resolved_date <= ^to_date))
+           (kind == :evento and logical_date >= ^from_date and logical_date <= ^to_date) or
+           (kind != :evento and is_nil(habit_id) and flow == :feito and
+              resolved_date >= ^from_date and resolved_date <= ^to_date))
     )
     |> Ash.Query.load(item: [:category], habit: [item: [:category]])
     |> Ash.read!(authorize?: false)
@@ -701,11 +719,38 @@ defmodule QuizProject.Priorities do
     Enum.group_by(list_today_activities(actor), & &1.flow)
   end
 
+  @doc """
+  Eventos pendentes (`kind == :evento`) com `logical_date` a partir de
+  `from` (inclusive) — usado só pelo backfill inicial de
+  `QuizProject.GoogleCalendar.connect/2`, pra popular o calendário
+  recém-criado sem inundá-lo de tarefas comuns nem de histórico já
+  resolvido.
+  """
+  def list_pending_activities_from(%{id: user_id}, from) do
+    Activity
+    |> Ash.Query.filter(
+      user_id == ^user_id and status == :pendente and kind == :evento and logical_date >= ^from
+    )
+    |> Ash.read!(authorize?: false)
+  end
+
   def get_activity(id, %{id: user_id}) do
     case Ash.get(Activity, id, authorize?: false, load: [:habit]) do
       {:ok, %Activity{user_id: ^user_id} = activity} -> {:ok, activity}
       {:ok, _} -> {:error, :unauthorized}
       error -> error
+    end
+  end
+
+  @doc "Busca a atividade vinculada a um evento do Google pelo id do evento (sync de entrada)."
+  def get_activity_by_google_event_id(google_event_id) do
+    Activity
+    |> Ash.Query.filter(google_event_id == ^google_event_id)
+    |> Ash.read_one(authorize?: false)
+    |> case do
+      {:ok, nil} -> {:error, :not_found}
+      {:ok, activity} -> {:ok, activity}
+      {:error, error} -> {:error, error}
     end
   end
 
@@ -733,7 +778,27 @@ defmodule QuizProject.Priorities do
       Activity
       |> Ash.Changeset.for_create(:create, Map.put(attrs, :position, position), authorize?: false)
       |> Ash.create()
+      |> sync_google_out(:insert)
     end
+  end
+
+  @doc """
+  Cria uma atividade a partir de um evento adicionado manualmente no
+  calendário dedicado do usuário (sync de entrada, ver
+  `QuizProject.GoogleCalendar.reconcile/1`) — nasce como captura solta, já
+  vinculada ao evento. Não passa por `sync_google_out`: o evento já existe
+  do lado do Google, não há nada nesta criação que precise ser escrito lá.
+  """
+  def create_activity_from_google(%{id: user_id}, attrs) do
+    position = next_activity_position(user_id, nil, nil, :todo)
+
+    Activity
+    |> Ash.Changeset.for_create(
+      :create,
+      Map.merge(attrs, %{user_id: user_id, position: position}),
+      authorize?: false
+    )
+    |> Ash.create()
   end
 
   defp validate_item_ownership(%{item_id: item_id}, actor) when not is_nil(item_id) do
@@ -756,7 +821,10 @@ defmodule QuizProject.Priorities do
 
   def update_activity(activity, attrs, actor) do
     with :ok <- authorize_owner(activity, actor) do
-      activity |> Ash.Changeset.for_update(:update, attrs, authorize?: false) |> Ash.update()
+      activity
+      |> Ash.Changeset.for_update(:update, attrs, authorize?: false)
+      |> Ash.update()
+      |> sync_google_out(:patch)
     end
   end
 
@@ -792,26 +860,38 @@ defmodule QuizProject.Priorities do
 
   def complete_activity(activity, actor) do
     with :ok <- authorize_owner(activity, actor) do
-      activity |> Ash.Changeset.for_update(:complete, %{}, authorize?: false) |> Ash.update()
+      activity
+      |> Ash.Changeset.for_update(:complete, %{}, authorize?: false)
+      |> Ash.update()
+      |> sync_google_out(:patch)
     end
   end
 
   def mark_activity_not_done(activity, actor) do
     with :ok <- authorize_owner(activity, actor) do
-      activity |> Ash.Changeset.for_update(:mark_not_done, %{}, authorize?: false) |> Ash.update()
+      activity
+      |> Ash.Changeset.for_update(:mark_not_done, %{}, authorize?: false)
+      |> Ash.update()
+      |> sync_google_out(:patch)
     end
   end
 
   def discard_activity(activity, actor) do
     with :ok <- authorize_owner(activity, actor) do
-      activity |> Ash.Changeset.for_update(:discard, %{}, authorize?: false) |> Ash.update()
+      activity
+      |> Ash.Changeset.for_update(:discard, %{}, authorize?: false)
+      |> Ash.update()
+      |> sync_google_out(:patch)
     end
   end
 
   @doc "Desfaz a resolução de uma atividade (concluída, não cumprida ou descartada por engano) — volta pra \"a fazer\"."
   def reopen_activity(activity, actor) do
     with :ok <- authorize_owner(activity, actor) do
-      activity |> Ash.Changeset.for_update(:reopen, %{}, authorize?: false) |> Ash.update()
+      activity
+      |> Ash.Changeset.for_update(:reopen, %{}, authorize?: false)
+      |> Ash.update()
+      |> sync_google_out(:patch)
     end
   end
 
@@ -831,15 +911,87 @@ defmodule QuizProject.Priorities do
       activity
       |> Ash.Changeset.for_update(:snooze, %{until: until}, authorize?: false)
       |> Ash.update()
+      |> sync_google_out(:patch)
+    end
+  end
+
+  @doc """
+  Reagenda um evento pra outra data — pra evento, "adiar" e "agendar" são a
+  mesma ação (não existe `snoozed_until` separado da data marcada; ver
+  `Activity`'s `:reschedule`). Sincroniza a nova data pro Google Calendar
+  como qualquer outra atualização.
+  """
+  def reschedule_activity(activity, date, actor) do
+    with :ok <- authorize_owner(activity, actor) do
+      activity
+      |> Ash.Changeset.for_update(:reschedule, %{date: date}, authorize?: false)
+      |> Ash.update()
+      |> sync_google_out(:patch)
     end
   end
 
   @doc "Cancela o adiamento de uma atividade antes da data — volta a aparecer na Tela do dia."
   def clear_activity_snooze(activity, actor) do
     with :ok <- authorize_owner(activity, actor) do
-      activity |> Ash.Changeset.for_update(:clear_snooze, %{}, authorize?: false) |> Ash.update()
+      activity
+      |> Ash.Changeset.for_update(:clear_snooze, %{}, authorize?: false)
+      |> Ash.update()
+      |> sync_google_out(:patch)
     end
   end
+
+  @doc "Grava o evento do Google criado/atualizado a partir desta atividade (sync de saída, ver `QuizProject.GoogleCalendar`)."
+  def link_google_event(%Activity{} = activity, google_event_id, google_updated_at) do
+    activity
+    |> Ash.Changeset.for_update(
+      :link_google_event,
+      %{google_event_id: google_event_id, google_updated_at: google_updated_at},
+      authorize?: false
+    )
+    |> Ash.update()
+  end
+
+  @doc """
+  Desfaz o vínculo com um evento do Google cancelado/apagado (sync de
+  entrada) — não mexe em `status`/`flow`: cancelar no Google não é uma
+  resolução de negócio, só para de espelhar.
+  """
+  def unlink_google_event(%Activity{} = activity) do
+    activity
+    |> Ash.Changeset.for_update(:unlink_google_event, %{}, authorize?: false)
+    |> Ash.update()
+  end
+
+  @doc """
+  Aplica uma edição feita direto no Google Calendar (sync de entrada, ver
+  `QuizProject.GoogleCalendar.reconcile/1`). Não passa por
+  `sync_google_out`: escrever de volta o que acabou de chegar do Google
+  criaria um ping-pong entre app e Google.
+  """
+  def sync_activity_from_google(%Activity{} = activity, attrs) do
+    activity
+    |> Ash.Changeset.for_update(:sync_from_google, attrs, authorize?: false)
+    |> Ash.update()
+  end
+
+  # Dispara a sincronização de saída com o Google Calendar em background,
+  # depois de qualquer mutação com efeito visível no calendário — sem
+  # conexão do usuário é no-op (checado dentro do próprio
+  # `GoogleCalendar.sync_out_*`, não aqui). `correct_activity_status/3` fica
+  # de fora dos call sites: é correção só de Histórico, não muda nada que o
+  # Google precise saber.
+  defp sync_google_out({:ok, %Activity{} = activity} = result, kind) do
+    QuizProject.Jobs.run(fn -> do_sync_google_out(activity, kind) end)
+    result
+  end
+
+  defp sync_google_out(result, _kind), do: result
+
+  defp do_sync_google_out(activity, :insert),
+    do: QuizProject.GoogleCalendar.sync_out_create(activity)
+
+  defp do_sync_google_out(activity, :patch),
+    do: QuizProject.GoogleCalendar.sync_out_update(activity)
 
   @doc "Limpa `snoozed_until` de atividades cujo adiamento já venceu — chamado no mount da Tela do dia, mesma lógica de auto-limpeza de `close_overdue_habit_instances/2`."
   def clear_expired_snoozes(%{id: user_id}) do
@@ -1190,16 +1342,20 @@ defmodule QuizProject.Priorities do
 
   @doc """
   Prévia dos próximos `days` dias (a partir de amanhã — hoje já tem a
-  própria tela): hábitos ativos devidos e atividades adiadas (ver
-  `snooze_activity/3`) que reaparecem naquele dia. Só orientação: não gera
-  nenhuma `Activity` nova (isso só acontece na Tela do dia), é a mesma
-  checagem que `ensure_today_habit_instance/2` faria, projetada pra frente
-  — já considerando exceção por data (`HabitOverride`: "pular esse dia"
-  tira o hábito daquele dia, título de exceção substitui o do hábito só
-  naquele dia). Cada entrada de `day.habits` é `%{habit: %Habit{}, title:
+  própria tela): hábitos ativos devidos, atividades adiadas (ver
+  `snooze_activity/3`) e eventos ainda em aberto (`kind == :evento`) que
+  caem naquele dia. Só orientação: não gera nenhuma `Activity` nova (isso
+  só acontece na Tela do dia), é a mesma checagem que
+  `ensure_today_habit_instance/2` faria, projetada pra frente — já
+  considerando exceção por data (`HabitOverride`: "pular esse dia" tira o
+  hábito daquele dia, título de exceção substitui o do hábito só naquele
+  dia). Cada entrada de `day.habits` é `%{habit: %Habit{}, title:
   String.t()}` — `title` é o efetivo pra aquele dia (`occurrence_title/2`),
   não necessariamente `habit.title`. `day.snoozed` é a lista de `Activity`
-  cujo `snoozed_until` cai naquele dia.
+  cujo `snoozed_until` cai naquele dia; `day.events` é a lista de eventos
+  (`kind == :evento`, ainda não resolvidos) cujo `logical_date` cai naquele
+  dia — evento já resolvido não é mais "vindouro", some daqui (continua
+  visível no Calendário).
   """
   def upcoming_habit_schedule(%{id: user_id}, days \\ 7) do
     habits =
@@ -1222,6 +1378,17 @@ defmodule QuizProject.Priorities do
       |> Ash.read!(authorize?: false)
       |> Enum.group_by(& &1.snoozed_until)
 
+    events_by_date =
+      Activity
+      |> Ash.Query.filter(
+        user_id == ^user_id and kind == :evento and flow != :feito and
+          logical_date >= ^tomorrow and logical_date <= ^last_day
+      )
+      |> Ash.Query.sort(position: :asc)
+      |> Ash.Query.load(item: [:category])
+      |> Ash.read!(authorize?: false)
+      |> Enum.group_by(& &1.logical_date)
+
     Enum.map(0..(days - 1), fn offset ->
       date = Date.add(tomorrow, offset)
 
@@ -1230,7 +1397,12 @@ defmodule QuizProject.Priorities do
         |> Enum.filter(&habit_due_on?(&1, date))
         |> Enum.map(&%{habit: &1, title: occurrence_title(&1, date)})
 
-      %{date: date, habits: due, snoozed: Map.get(snoozed_by_date, date, [])}
+      %{
+        date: date,
+        habits: due,
+        snoozed: Map.get(snoozed_by_date, date, []),
+        events: Map.get(events_by_date, date, [])
+      }
     end)
   end
 

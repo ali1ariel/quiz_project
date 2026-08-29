@@ -44,6 +44,11 @@ defmodule QuizProjectWeb.Router do
     pipe_through :api
 
     get "/openapi.json", OpenApiController, :show
+
+    # Sem sessão/CSRF de propósito: o Google não carrega cookie nenhum.
+    # Verificação é o `X-Goog-Channel-Token` contra o hash salvo na conexão
+    # (ver `GoogleCalendarWebhookController`).
+    post "/google/calendar/webhook", GoogleCalendarWebhookController, :notify
   end
 
   scope "/api/v1", QuizProjectWeb.Api do
@@ -99,6 +104,11 @@ defmodule QuizProjectWeb.Router do
     get "/contents/:id/book.css", BookStyleController, :show
     get "/contents/:id/images/*path", BookImageController, :show
 
+    # Vínculo de conta (não login): fica junto de /settings, sob o pipeline
+    # autenticado, não sob o pipeline de /login e /register.
+    get "/settings/google/connect", GoogleAuthController, :connect
+    get "/settings/google/callback", GoogleAuthController, :callback
+
     live_session :authenticated,
       on_mount: [
         {QuizProjectWeb.UserAuth, :ensure_authenticated},
@@ -108,7 +118,7 @@ defmodule QuizProjectWeb.Router do
       live "/dashboard", DashboardLive
       live "/today", KanbanLive
       live "/today/upcoming", KanbanLive.Upcoming
-      live "/today/history", KanbanLive.History
+      live "/today/calendar", KanbanLive.Calendar
       live "/settings", SettingsLive
       live "/quiz/:version_id/edit", QuizEditorLive
       live "/quiz/:quiz_id/manage", QuizManageLive

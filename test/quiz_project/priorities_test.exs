@@ -736,6 +736,33 @@ defmodule QuizProject.PrioritiesTest do
 
       assert Enum.all?(schedule, fn day -> Enum.all?(day.habits, &(&1.title != "Arquivado")) end)
     end
+
+    test "evento em aberto aparece no dia marcado, resolvido some da prévia", %{user: user} do
+      daqui_a_2_dias = Date.add(Date.utc_today(), 2)
+
+      {:ok, aberto} =
+        Priorities.create_activity(user, %{
+          title: "Consulta",
+          kind: :evento,
+          logical_date: daqui_a_2_dias
+        })
+
+      {:ok, resolvido} =
+        Priorities.create_activity(user, %{
+          title: "Já resolvido",
+          kind: :evento,
+          logical_date: daqui_a_2_dias
+        })
+
+      {:ok, _} = Priorities.discard_activity(resolvido, user)
+
+      schedule = Priorities.upcoming_habit_schedule(user, 7)
+      dia = Enum.find(schedule, &(&1.date == daqui_a_2_dias))
+      ids = Enum.map(dia.events, & &1.id)
+
+      assert aberto.id in ids
+      refute resolvido.id in ids
+    end
   end
 
   describe "exceção de hábito por data (HabitOverride)" do

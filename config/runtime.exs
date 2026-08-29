@@ -139,6 +139,37 @@ if config_env() != :test do
   config :quiz_project, fake_authorized_emails: fake_emails
 end
 
+# Sincronização com o Google Calendar: OAuth2 por usuário, cada um com seu
+# próprio calendário secundário dedicado (ver `QuizProject.GoogleCalendar`).
+# Sem GOOGLE_CLIENT_ID, a aba "Google Calendar" em Settings fica desativada
+# e o renovador de watch channel (`GoogleCalendar.WatchRenewer`) não sobe.
+if config_env() != :test do
+  config :quiz_project,
+    google_client_id: System.get_env("GOOGLE_CLIENT_ID"),
+    google_client_secret: System.get_env("GOOGLE_CLIENT_SECRET"),
+    google_oauth_redirect_uri:
+      System.get_env("GOOGLE_OAUTH_REDIRECT_URI") ||
+        "https://#{System.get_env("PHX_HOST") || "localhost"}/settings/google/callback",
+    google_calendar_webhook_url:
+      System.get_env("GOOGLE_CALENDAR_WEBHOOK_URL") ||
+        "https://#{System.get_env("PHX_HOST") || "localhost"}/api/google/calendar/webhook"
+
+  if config_env() == :prod do
+    calendar_token_encryption_key =
+      System.get_env("CALENDAR_TOKEN_ENCRYPTION_KEY") ||
+        raise """
+        environment variable CALENDAR_TOKEN_ENCRYPTION_KEY is missing.
+        You can generate one by calling: :crypto.strong_rand_bytes(32) |> Base.encode64()
+        """
+
+    if byte_size(Base.decode64!(calendar_token_encryption_key)) != 32 do
+      raise "CALENDAR_TOKEN_ENCRYPTION_KEY precisa decodificar para exatamente 32 bytes"
+    end
+
+    config :quiz_project, calendar_token_encryption_key: calendar_token_encryption_key
+  end
+end
+
 config :quiz_project, QuizProjectWeb.Endpoint,
   http: [port: String.to_integer(System.get_env("PORT", "4000"))]
 

@@ -10,6 +10,11 @@ defmodule QuizProject.Priorities.Activity do
   no kanban (todo/fazendo/feito). Nenhuma action genérica escreve os dois —
   cada transição de negócio (`:start`, `:complete`, `:discard`, ...) é quem
   garante que ficam consistentes entre si.
+
+  `kind` distingue uma atividade comum (`:tarefa`) de um compromisso com
+  data marcada (`:evento`) — só `:evento` sincroniza com o Google Calendar
+  (ver `QuizProject.GoogleCalendar`). Fixo na criação, sem action de troca:
+  não há um caso de uso pra "virar evento depois de criada".
   """
   use Ash.Resource,
     domain: QuizProject.Priorities,
@@ -32,7 +37,18 @@ defmodule QuizProject.Priorities.Activity do
     defaults [:read, :destroy]
 
     create :create do
-      accept [:user_id, :item_id, :habit_id, :title, :notes, :logical_date, :position]
+      accept [
+        :user_id,
+        :item_id,
+        :habit_id,
+        :title,
+        :notes,
+        :logical_date,
+        :position,
+        :kind,
+        :google_event_id,
+        :google_updated_at
+      ]
 
       validate fn changeset, _context ->
         item_id = Ash.Changeset.get_attribute(changeset, :item_id)
@@ -114,10 +130,10 @@ defmodule QuizProject.Priorities.Activity do
     end
 
     # Corrige o desfecho de uma atividade já resolvida sem reabri-la nem
-    # mexer em `resolved_date` — usada só pelo Histórico (calendário de dias
-    # anteriores), que é consulta e não pode arrastar a atividade pro dia da
-    # correção (diferente de `:complete`/`:mark_not_done`, que são a
-    # resolução em si e por isso gravam `resolved_date` como hoje).
+    # mexer em `resolved_date` — usada só pelo Calendário (`KanbanLive.Calendar`),
+    # que é consulta e não pode arrastar a atividade pro dia da correção
+    # (diferente de `:complete`/`:mark_not_done`, que são a resolução em si
+    # e por isso gravam `resolved_date` como hoje).
     update :correct_status do
       accept []
 
@@ -167,9 +183,76 @@ defmodule QuizProject.Priorities.Activity do
       change set_attribute(:snoozed_until, arg(:until))
     end
 
+    # "Adiar" e "agendar" são a mesma ação pra evento: não tem `snoozed_until`
+    # que faça sentido separado de `logical_date` (é a própria data marcada
+    # que muda), então reagendar move `logical_date` direto — sem restrição
+    # de "depois de hoje" como `:snooze`, corrigir pra uma data passada é
+    # um uso válido (typo na data original).
+    update :reschedule do
+      accept []
+      argument :date, :date, allow_nil?: false
+
+      validate attribute_equals(:kind, :evento),
+        message: "só evento tem data reagendável — o resto usa :snooze"
+
+      change set_attribute(:logical_date, arg(:date))
+    end
+
     update :clear_snooze do
       accept []
       change set_attribute(:snoozed_until, nil)
+    end
+
+    # Grava o evento do Google criado a partir desta atividade (sync de
+    # saída) ou o evento pré-existente que originou esta atividade como
+    # loose capture (sync de entrada, evento novo no calendário dedicado).
+    update :link_google_event do
+      accept []
+      argument :google_event_id, :string, allow_nil?: false
+      argument :google_updated_at, :utc_datetime_usec, allow_nil?: false
+
+      change set_attribute(:google_event_id, arg(:google_event_id))
+      change set_attribute(:google_updated_at, arg(:google_updated_at))
+    end
+
+    # Evento cancelado/apagado no Google: só desfaz o vínculo, nunca mexe em
+    # status/flow — cancelar no Google não é uma resolução de negócio, só
+    # para de espelhar.
+    update :unlink_google_event do
+      accept []
+      change set_attribute(:google_event_id, nil)
+      change set_attribute(:google_updated_at, nil)
+    end
+
+    # Aplica uma edição feita direto no Google Calendar (sync de entrada).
+    # `logical_date` só é sobrescrita se a atividade ainda não foi resolvida
+    # — resolvida mantém a data histórica mesmo que o evento seja arrastado
+    # no Google, senão corrompe o range de `logical_date`/`resolved_date`
+    # que o Calendário usa.
+    update :sync_from_google do
+      accept []
+      require_atomic? false
+
+      argument :title, :string, allow_nil?: false
+      argument :notes, :string
+      argument :logical_date, :date, allow_nil?: false
+      argument :google_updated_at, :utc_datetime_usec, allow_nil?: false
+
+      change set_attribute(:title, arg(:title))
+      change set_attribute(:notes, arg(:notes))
+      change set_attribute(:google_updated_at, arg(:google_updated_at))
+
+      change fn changeset, _context ->
+        if changeset.data.flow == :feito do
+          changeset
+        else
+          Ash.Changeset.force_change_attribute(
+            changeset,
+            :logical_date,
+            Ash.Changeset.get_argument(changeset, :logical_date)
+          )
+        end
+      end
     end
   end
 
@@ -229,6 +312,25 @@ defmodule QuizProject.Priorities.Activity do
       default 0
     end
 
+    # `:evento` é a única que sincroniza com o Google Calendar — o resto
+    # (`:tarefa`, o default) nunca vira evento lá, mesmo com a conta
+    # conectada. Ver `QuizProject.GoogleCalendar.sync_out_create/1`.
+    attribute :kind, :atom do
+      allow_nil? false
+      default :tarefa
+      constraints one_of: ~w(tarefa evento)a
+    end
+
+    # Id do evento no calendário dedicado do Google (sync de saída) —
+    # ausente enquanto o usuário não conectou o Google Calendar, ou depois
+    # que o evento correspondente é cancelado lá (ver `:unlink_google_event`).
+    attribute :google_event_id, :string
+
+    # `updated` do evento no Google na última vez que o app leu ou escreveu
+    # nele — usado pra distinguir uma edição real feita no Google de um eco
+    # da própria escrita de saída do app durante a reconciliação.
+    attribute :google_updated_at, :utc_datetime_usec
+
     timestamps()
   end
 
@@ -244,5 +346,9 @@ defmodule QuizProject.Priorities.Activity do
     belongs_to :habit, QuizProject.Priorities.Habit do
       attribute_writable? true
     end
+  end
+
+  identities do
+    identity :unique_google_event_id, [:google_event_id]
   end
 end

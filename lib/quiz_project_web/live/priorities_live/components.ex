@@ -614,13 +614,13 @@ defmodule QuizProjectWeb.PrioritiesLive.Components do
         Próximos dias
       </.link>
       <.link
-        navigate={~p"/today/history"}
+        navigate={~p"/today/calendar"}
         class={[
           "rounded-full px-4 py-1.5 transition [transform:translateZ(0)]",
-          tab_class(@active == :history)
+          tab_class(@active == :calendar)
         ]}
       >
-        Histórico
+        Calendário
       </.link>
     </nav>
     """
@@ -658,13 +658,17 @@ defmodule QuizProjectWeb.PrioritiesLive.Components do
   item/hábito associado (`Priorities.category_colors/1` já é usada com essa
   mesma paleta em `item_card/1`) e, se houver categoria, uma badge com o
   nome dela. Captura solta (sem item nem hábito) não tem nenhum dos dois.
+  Evento (`kind == :evento`) usa a mesma cor de categoria, só que na borda
+  direita em vez da esquerda — é a única marcação visual que diferencia um
+  evento de uma tarefa comum, então precisa valer tanto presa a item quanto
+  solta.
   """
   attr :activity, :map, required: true
   attr :show_age?, :boolean, default: false
 
   attr :clickable_title?, :boolean,
     default: true,
-    doc: "false pro Histórico: consulta, não abre o modal de edição"
+    doc: "false pro Calendário: consulta, não abre o modal de edição"
 
   slot :actions
 
@@ -674,7 +678,10 @@ defmodule QuizProjectWeb.PrioritiesLive.Components do
     ~H"""
     <div
       id={"activity-card-#{@activity.id}"}
-      style={@category && "border-left: 4px solid var(--color-#{elem(@category, 1)});"}
+      style={
+        @category &&
+          "border-#{card_border_side(@activity)}: 4px solid var(--color-#{elem(@category, 1)});"
+      }
       class="card qcard flex flex-col gap-2 border border-base-300 bg-base-100 p-3"
     >
       <div class="flex items-start justify-between gap-2">
@@ -729,6 +736,9 @@ defmodule QuizProjectWeb.PrioritiesLive.Components do
   # struct) casa igual com `Ash.NotLoaded` (relação não carregada) ou `nil`
   # (FK ausente) — os dois só caem no catch-all sem quebrar, então não
   # precisa checar qual dos dois é.
+  defp card_border_side(%{kind: :evento}), do: "right"
+  defp card_border_side(_activity), do: "left"
+
   defp activity_category(%{item: %{category: %{id: id}} = item}),
     do: {priority_badge_label(item), elem(category_colors(id), 0)}
 

@@ -119,6 +119,24 @@ defmodule QuizProjectWeb.KanbanLiveTest do
       assert card_html =~ "border-left"
       refute card_html =~ "Corpo"
     end
+
+    test "card de evento mostra a cor da categoria na borda direita, não na esquerda", %{
+      conn: conn,
+      user: user
+    } do
+      cat = category(user, "Saúde")
+      item = manual_item(user, cat, "Cuidados")
+      evento = activity(user, item, "Consulta", %{kind: :evento})
+
+      {:ok, _view, html} = live(conn, ~p"/today")
+
+      document = LazyHTML.from_fragment(html)
+      card = LazyHTML.query(document, "#activity-card-#{evento.id}")
+      card_html = LazyHTML.to_html(card)
+
+      assert card_html =~ "border-right"
+      refute card_html =~ "border-left:"
+    end
   end
 
   describe "fluxo" do
@@ -227,6 +245,41 @@ defmodule QuizProjectWeb.KanbanLiveTest do
 
       refute has_element?(view, "button[phx-click='open_snooze']")
     end
+
+    test "pra evento o botão vira Reagendar e o modal já vem preenchido com a data atual", %{
+      conn: conn,
+      user: user
+    } do
+      item = manual_item(user, category(user), "Trabalho")
+      evento = activity(user, item, "Consulta", %{kind: :evento})
+
+      {:ok, view, _html} = live(conn, ~p"/today")
+      html = render_click(view, "open_snooze", %{"id" => evento.id})
+
+      assert html =~ "Reagendar evento"
+      assert html =~ "Consulta"
+      assert html =~ Date.to_iso8601(evento.logical_date)
+    end
+
+    test "confirmar o reagendamento muda o logical_date do evento, sem mexer em snoozed_until",
+         %{conn: conn, user: user} do
+      item = manual_item(user, category(user), "Trabalho")
+      evento = activity(user, item, "Consulta", %{kind: :evento})
+      nova_data = Date.add(Date.utc_today(), 20)
+
+      {:ok, view, _html} = live(conn, ~p"/today")
+      render_click(view, "open_snooze", %{"id" => evento.id})
+
+      html =
+        view
+        |> element("#snooze-form")
+        |> render_submit(%{"until" => Date.to_iso8601(nova_data)})
+
+      assert html =~ "Reagendado para"
+      {:ok, updated} = Priorities.get_activity(evento.id, user)
+      assert updated.logical_date == nova_data
+      assert is_nil(updated.snoozed_until)
+    end
   end
 
   describe "capturas soltas" do
@@ -250,6 +303,73 @@ defmodule QuizProjectWeb.KanbanLiveTest do
 
       assert html =~ "Ligar pro dentista"
       assert [%{item_id: nil}] = Priorities.list_loose_captures(user)
+    end
+
+    test "create_capture com type evento cria uma atividade do tipo evento com a data escolhida, mas só aparece em Capturas soltas no próprio dia",
+         %{conn: conn, user: user} do
+      {:ok, view, _html} = live(conn, ~p"/today")
+      data = Date.add(Date.utc_today(), 4)
+
+      render_submit(view, "create_capture", %{
+        "title" => "Consulta médica",
+        "type" => "evento",
+        "event_date" => Date.to_iso8601(data)
+      })
+
+      assert [%{kind: :evento, logical_date: ^data, title: "Consulta médica"}] =
+               Priorities.list_activities_between(user, data, data)
+
+      # Data no futuro: some de "Capturas soltas" até o dia chegar (ver
+      # `Priorities.list_loose_captures/1`) — só aparece no Calendário.
+      assert Priorities.list_loose_captures(user) == []
+    end
+
+    test "create_capture com type evento pra hoje aparece em Capturas soltas", %{
+      conn: conn,
+      user: user
+    } do
+      {:ok, view, _html} = live(conn, ~p"/today")
+      hoje = Date.utc_today()
+
+      render_submit(view, "create_capture", %{
+        "title" => "Consulta hoje",
+        "type" => "evento",
+        "event_date" => Date.to_iso8601(hoje)
+      })
+
+      assert [%{kind: :evento, logical_date: ^hoje}] = Priorities.list_loose_captures(user)
+    end
+
+    test "captura solta do tipo evento tem botão Reagendar, tarefa comum não tem", %{
+      conn: conn,
+      user: user
+    } do
+      evento = loose_activity(user, "Consulta", %{kind: :evento})
+      tarefa = loose_activity(user, "Comprar pão")
+
+      {:ok, view, _html} = live(conn, ~p"/today")
+
+      assert has_element?(view, "button[phx-click='open_snooze'][phx-value-id='#{evento.id}']")
+      refute has_element?(view, "button[phx-click='open_snooze'][phx-value-id='#{tarefa.id}']")
+    end
+
+    test "reagendar uma captura solta do tipo evento muda o logical_date", %{
+      conn: conn,
+      user: user
+    } do
+      evento = loose_activity(user, "Consulta", %{kind: :evento})
+      nova_data = Date.add(Date.utc_today(), 15)
+
+      {:ok, view, _html} = live(conn, ~p"/today")
+      html = render_click(view, "open_snooze", %{"id" => evento.id})
+      assert html =~ "Reagendar evento"
+
+      view
+      |> element("#snooze-form")
+      |> render_submit(%{"until" => Date.to_iso8601(nova_data)})
+
+      {:ok, updated} = Priorities.get_activity(evento.id, user)
+      assert updated.logical_date == nova_data
     end
 
     test "concluir uma captura solta some de Capturas soltas mas aparece em Feito", %{
@@ -520,7 +640,7 @@ defmodule QuizProjectWeb.KanbanLiveTest do
       view
       |> form("#capture-form", %{
         "title" => "Beber água",
-        "is_habit" => "true",
+        "type" => "habito",
         "category_id" => cat.id
       })
       |> render_change()
@@ -529,7 +649,7 @@ defmodule QuizProjectWeb.KanbanLiveTest do
         view
         |> form("#capture-form", %{
           "title" => "Beber água",
-          "is_habit" => "true",
+          "type" => "habito",
           "category_id" => cat.id,
           "item_id" => item.id,
           "frequency" => "daily"
@@ -624,6 +744,42 @@ defmodule QuizProjectWeb.KanbanLiveTest do
       document = LazyHTML.from_fragment(html)
       first_day = LazyHTML.query(document, "#upcoming-day-#{Date.to_iso8601(tomorrow)}")
       assert LazyHTML.to_html(first_day) =~ "Academia"
+    end
+
+    test "evento em aberto nos próximos dias aparece no dia marcado", %{conn: conn, user: user} do
+      daqui_a_3_dias = Date.add(Date.utc_today(), 3)
+
+      {:ok, _evento} =
+        Priorities.create_activity(user, %{
+          title: "Dentista",
+          kind: :evento,
+          logical_date: daqui_a_3_dias
+        })
+
+      {:ok, _view, html} = live(conn, ~p"/today/upcoming")
+
+      document = LazyHTML.from_fragment(html)
+      dia = LazyHTML.query(document, "#upcoming-day-#{Date.to_iso8601(daqui_a_3_dias)}")
+      assert LazyHTML.to_html(dia) =~ "Dentista"
+    end
+
+    test "evento já resolvido não aparece mais nos próximos dias", %{conn: conn, user: user} do
+      daqui_a_2_dias = Date.add(Date.utc_today(), 2)
+
+      {:ok, evento} =
+        Priorities.create_activity(user, %{
+          title: "Cancelado",
+          kind: :evento,
+          logical_date: daqui_a_2_dias
+        })
+
+      {:ok, _} = Priorities.discard_activity(evento, user)
+
+      {:ok, _view, html} = live(conn, ~p"/today/upcoming")
+
+      document = LazyHTML.from_fragment(html)
+      dia = LazyHTML.query(document, "#upcoming-day-#{Date.to_iso8601(daqui_a_2_dias)}")
+      refute LazyHTML.to_html(dia) =~ "Cancelado"
     end
 
     test "hábito arquivado não aparece", %{conn: conn, user: user} do

@@ -1,5 +1,8 @@
 defmodule QuizProjectWeb.SettingsLiveTest do
-  use QuizProjectWeb.ConnCase, async: true
+  # `async: false`: o teste de desconexão do Google Agenda manipula
+  # `google_req_options`, configuração global do app (mesmo motivo de
+  # `QuizProject.GoogleCalendar.OAuthTest` ser `async: false`).
+  use QuizProjectWeb.ConnCase, async: false
 
   import Phoenix.LiveViewTest
 
@@ -92,5 +95,56 @@ defmodule QuizProjectWeb.SettingsLiveTest do
 
     assert has_element?(view, "#token-settings")
     assert has_element?(view, "#token-form")
+  end
+
+  describe "aba do Google Agenda" do
+    test "sem conexão, mostra o link pra conectar", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/settings?tab=calendar")
+
+      assert has_element?(view, "#calendar-settings")
+      assert has_element?(view, ~s(a#connect-google-calendar[href="/settings/google/connect"]))
+      refute has_element?(view, "#disconnect-google-calendar")
+    end
+
+    test "com o ambiente sem GOOGLE_CLIENT_ID, mostra aviso de não configurado", %{conn: conn} do
+      original = Application.get_env(:quiz_project, :google_client_id)
+      Application.delete_env(:quiz_project, :google_client_id)
+      on_exit(fn -> Application.put_env(:quiz_project, :google_client_id, original) end)
+
+      {:ok, view, _html} = live(conn, ~p"/settings?tab=calendar")
+
+      assert render(view) =~ "ainda não configurada neste ambiente"
+      refute has_element?(view, "#connect-google-calendar")
+    end
+
+    test "com conexão salva, mostra o e-mail conectado e permite desconectar", %{
+      conn: conn,
+      user: user
+    } do
+      Application.put_env(:quiz_project, :google_req_options, plug: {Req.Test, __MODULE__})
+      on_exit(fn -> Application.delete_env(:quiz_project, :google_req_options) end)
+      Req.Test.stub(__MODULE__, fn conn -> Plug.Conn.send_resp(conn, 200, "") end)
+
+      {:ok, _connection} =
+        Accounts.upsert_google_calendar_connection(user, %{
+          google_account_email: "dono@gmail.com",
+          access_token: "access-1",
+          refresh_token: "refresh-1",
+          access_token_expires_at: DateTime.add(DateTime.utc_now(), 3600, :second),
+          calendar_id: "calendar-abc"
+        })
+
+      {:ok, view, _html} = live(conn, ~p"/settings?tab=calendar")
+
+      assert render(view) =~ "dono@gmail.com"
+      assert has_element?(view, "#disconnect-google-calendar")
+      refute has_element?(view, "#connect-google-calendar")
+
+      view |> element("#disconnect-google-calendar") |> render_click()
+
+      refute has_element?(view, "#disconnect-google-calendar")
+      assert has_element?(view, "#connect-google-calendar")
+      assert {:error, :not_found} = Accounts.get_google_calendar_connection(user)
+    end
   end
 end

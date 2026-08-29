@@ -20,6 +20,7 @@ defmodule QuizProject.Application do
       ] ++
         chromic_pdf_child() ++
         authorization_child() ++
+        google_calendar_watch_renewer_child() ++
         [
           # Start to serve requests, typically the last entry
           QuizProjectWeb.Endpoint
@@ -50,8 +51,11 @@ defmodule QuizProject.Application do
         probe = Path.join(dir, ".write_check")
 
         case File.write(probe, "") do
-          :ok -> File.rm(probe)
-          {:error, reason} -> raise "BOOK_IMAGES_DIR (#{dir}) não é gravável: #{:file.format_error(reason)}"
+          :ok ->
+            File.rm(probe)
+
+          {:error, reason} ->
+            raise "BOOK_IMAGES_DIR (#{dir}) não é gravável: #{:file.format_error(reason)}"
         end
 
       {:error, reason} ->
@@ -78,6 +82,20 @@ defmodule QuizProject.Application do
   defp authorization_child do
     if Application.get_env(:quiz_project, :ai_authorization) == QuizProject.AI.Authorization.SSM do
       [QuizProject.AI.Authorization.SSM]
+    else
+      []
+    end
+  end
+
+  # Só sobe o renovador quando há um client OAuth do Google configurado e a
+  # suíte não desligou explicitamente (mesmo padrão de `enable_chromic_pdf`
+  # em config/test.exs) — subir esse GenServer durante os testes faria a
+  # primeira consulta ao banco disparar fora do sandbox por-teste do Ecto,
+  # já que a Application sobe uma única vez pra suíte inteira.
+  defp google_calendar_watch_renewer_child do
+    if Application.get_env(:quiz_project, :enable_google_calendar_watch_renewer, true) and
+         Application.get_env(:quiz_project, :google_client_id) not in [nil, ""] do
+      [QuizProject.GoogleCalendar.WatchRenewer]
     else
       []
     end
