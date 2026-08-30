@@ -636,6 +636,7 @@ defmodule QuizProjectWeb.ContentsLive.Read do
       loose_captures_count={@loose_captures_count}
       active_nav={:contents}
       wide={true}
+      sticky_header?={false}
     >
       <%= if @chapters == [] do %>
         <.empty material={@material} progress={@ingest_progress} />
@@ -701,66 +702,29 @@ defmodule QuizProjectWeb.ContentsLive.Read do
           // move o percentual, mas não move o bloco.
           export default {
             mounted() {
-              this.navHidden = false;
-              this.lastScrollY = window.scrollY;
-              this.measureNav();
+              this.measureToolbar();
               this.restore();
               this.blocks = () => Array.from(this.el.querySelectorAll("[data-position]"));
 
               this.onScroll = () => {
-                this.updateNavVisibility();
                 clearTimeout(this.timer);
                 this.timer = setTimeout(() => this.report(), 600);
               };
 
-              this.onResize = () => this.measureNav();
+              this.onResize = () => this.measureToolbar();
 
               window.addEventListener("scroll", this.onScroll, {passive: true});
               window.addEventListener("resize", this.onResize);
             },
 
-            // A navbar muda de altura entre telefone e desktop e entre skins.
-            // Sem medir, a barra do capítulo gruda alto demais e deixa uma
-            // fresta por onde o texto passa rolando, ou baixa demais e cobre a
-            // primeira linha.
-            measureNav() {
-              const nav = document.querySelector("header.navbar");
-              this.navHeight = nav ? Math.round(nav.getBoundingClientRect().height) : 64;
-              // Redimensionar com a navbar escondida não deve trazê-la de volta —
-              // só a rolagem decide isso.
-              if (!this.navHidden) {
-                document.documentElement.style.setProperty("--qnav-h", `${this.navHeight}px`);
-              }
-            },
-
-            // Rolando pra baixo, a navbar do app soma com a barra do capítulo e
-            // rouba espaço de leitura — some, sobrando só a barra do capítulo.
-            // Volta assim que a rolagem inverte ou o topo está por perto, sem
-            // esperar a rolagem parar (diferente do `report`, que é debounced).
-            updateNavVisibility() {
-              const nav = document.querySelector("header.navbar");
-              if (!nav) { return; }
-
-              const y = Math.max(window.scrollY, 0);
-              const delta = y - this.lastScrollY;
-              this.lastScrollY = y;
-
-              if (y < this.navHeight) {
-                this.setNavHidden(nav, false);
-              } else if (delta > 6) {
-                this.setNavHidden(nav, true);
-              } else if (delta < -6) {
-                this.setNavHidden(nav, false);
-              }
-            },
-
-            setNavHidden(nav, hidden) {
-              if (hidden === this.navHidden) { return; }
-              this.navHidden = hidden;
-              nav.classList.toggle("qnav-hidden", hidden);
-              document.documentElement.style.setProperty(
-                "--qnav-h", hidden ? "0px" : `${this.navHeight}px`
-              );
+            // A barra do capítulo muda de altura entre telefone e desktop e
+            // entre skins. Sem medir, um `top` chutado deixa uma fresta por
+            // onde o texto passa rolando, ou baixa demais e cobre a primeira
+            // linha.
+            measureToolbar() {
+              const toolbar = document.getElementById("reader-toolbar");
+              this.toolbarHeight = toolbar ? Math.round(toolbar.getBoundingClientRect().height) : 44;
+              document.documentElement.style.setProperty("--qtoolbar-h", `${this.toolbarHeight}px`);
             },
 
             updated() {
@@ -773,21 +737,14 @@ defmodule QuizProjectWeb.ContentsLive.Read do
               window.removeEventListener("scroll", this.onScroll);
               window.removeEventListener("resize", this.onResize);
               clearTimeout(this.timer);
-
-              // Sair da leitura sem devolver a navbar deixaria as outras
-              // páginas com a barra sumida ou com `--qnav-h` fixo em 0.
-              const nav = document.querySelector("header.navbar");
-              if (nav) { nav.classList.remove("qnav-hidden"); }
-              document.documentElement.style.removeProperty("--qnav-h");
+              document.documentElement.style.removeProperty("--qtoolbar-h");
             },
 
-            // Topo útil da tela: abaixo da navbar e da barra do capítulo. É o
-            // mesmo ponto que decide qual bloco conta como "onde estou".
+            // Topo útil da tela: abaixo da barra do capítulo, que é a única
+            // coisa sticky aqui agora. É o mesmo ponto que decide qual bloco
+            // conta como "onde estou".
             stickyOffset() {
-              const nav = parseInt(
-                getComputedStyle(document.documentElement).getPropertyValue("--qnav-h"), 10
-              ) || 64;
-              return nav + 44;
+              return this.toolbarHeight;
             },
 
             restore() {
@@ -989,14 +946,14 @@ defmodule QuizProjectWeb.ContentsLive.Read do
   attr :chapters, :list, required: true
   attr :ai_authorized?, :boolean, required: true
 
-  # `--qnav-h` é a altura real da navbar, medida no cliente: ela muda com o
-  # ponto de quebra e com a skin, e um `top` chutado deixa uma fresta por onde o
-  # texto passa rolando.
   defp toolbar(assigns) do
     assigns = assign(assigns, :ai_state, Books.chapter_ai_state(assigns.chapter))
 
     ~H"""
-    <div class="sticky top-[var(--qnav-h,4rem)] z-30 rounded-2xl border border-base-300 bg-base-100/95 backdrop-blur transition-[top] duration-300 ease-out">
+    <div
+      id="reader-toolbar"
+      class="sticky top-0 z-30 rounded-2xl border border-base-300 bg-base-100/95 backdrop-blur"
+    >
       <%!-- Uma linha só: o título do capítulo é a única informação que a barra
            precisa dar enquanto se lê; o resto são botões que abrem painel. --%>
       <div class="flex items-center gap-1 px-1.5 py-1">

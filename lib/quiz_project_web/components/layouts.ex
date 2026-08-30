@@ -31,6 +31,10 @@ defmodule QuizProjectWeb.Layouts do
 
   attr :wide, :boolean, default: false, doc: "usa container largo para telas densas"
 
+  attr :sticky_header?, :boolean,
+    default: true,
+    doc: "falso nas telas que já têm seu próprio header sticky (ex: leitura de conteúdos)"
+
   attr :active_nav, :atom,
     default: nil,
     doc:
@@ -52,7 +56,10 @@ defmodule QuizProjectWeb.Layouts do
 
   def app(assigns) do
     ~H"""
-    <header class="navbar sticky top-0 z-50 px-4 sm:px-6 lg:px-8 border-b border-base-300 bg-base-100/95 backdrop-blur min-h-14 gap-2">
+    <header class={[
+      "navbar px-4 sm:px-6 lg:px-8 border-b border-base-300 bg-base-100/95 backdrop-blur min-h-14 gap-2",
+      @sticky_header? && "sticky top-0 z-50"
+    ]}>
       <div class="flex-1 min-w-0">
         <.link navigate={~p"/"} class="flex w-fit items-center gap-2 font-bold text-lg">
           <img src={~p"/images/logo.png"} alt="Quizzes" class="size-8 shrink-0 rounded-full" />

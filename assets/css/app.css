@@ -717,9 +717,9 @@ h1, h2, h3 {
 
 .qreader-block {
   /* Alvo de rolagem: a posição salva e as âncoras da busca caem no
-     topo do bloco, e sem esta margem ele para atrás da navbar mais
-     a barra do capítulo. `--qnav-h` é medida no cliente. */
-  scroll-margin-block-start: calc(var(--qnav-h, 4rem) + 3.5rem);
+     topo do bloco, e sem esta margem ele para atrás da barra do
+     capítulo. `--qtoolbar-h` é medida no cliente. */
+  scroll-margin-block-start: var(--qtoolbar-h, 3.5rem);
 }
 
 /* Tabela larga rola dentro do próprio bloco em vez de esticar a
@@ -937,16 +937,6 @@ h1, h2, h3 {
   font-size: 0.78em;
   font-style: italic;
   opacity: 0.55;
-}
-
-/* Na leitura, a navbar do app soma com a barra do capítulo. Rolando pra
-   baixo ela sobe pra fora da tela — só a barra do capítulo fica, que já
-   sobe pra colar no topo (o `.ReadingPosition` zera `--qnav-h` junto). */
-header.navbar {
-  transition: transform 0.25s ease;
-}
-header.navbar.qnav-hidden {
-  transform: translateY(-100%);
 }
 
 /* Marcação de trecho. `box-decoration-break: clone` faz a marca clonar
