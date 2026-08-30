@@ -158,3 +158,9 @@ if (process.env.NODE_ENV === "development") {
     window.liveReloader = reloader
   })
 }
+
+// Só em produção: em dev o service worker cachearia assets que o
+// live_reload sobrescreve a cada save, mascarando mudanças.
+if (process.env.NODE_ENV !== "development" && "serviceWorker" in navigator) {
+  window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js"))
+}

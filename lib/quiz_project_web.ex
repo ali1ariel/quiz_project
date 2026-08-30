@@ -19,7 +19,7 @@ defmodule QuizProjectWeb do
 
   def static_paths,
     do:
-      ~w(assets fonts images favicon.ico favicon.png favicon-32.png favicon-48.png robots.txt formato-importacao.md)
+      ~w(assets fonts images favicon.ico favicon.png favicon-32.png favicon-48.png robots.txt formato-importacao.md manifest.json sw.js)
 
   def router do
     quote do
