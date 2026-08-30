@@ -37,4 +37,29 @@ defmodule QuizProjectWeb.PageControllerTest do
     assert document |> LazyHTML.query("#endpoint-publish-version") |> Enum.any?()
     assert document |> LazyHTML.query("#erros table") |> Enum.any?()
   end
+
+  test "GET /privacy é pública e menciona o uso de dados do Google Calendar", %{conn: conn} do
+    conn = get(conn, ~p"/privacy")
+    html = html_response(conn, 200)
+
+    assert html =~ "Política de Privacidade"
+    assert html =~ "Google Calendar API"
+    assert html =~ "alisson.ariel@gmail.com"
+  end
+
+  test "GET /terms é pública e referencia a Política de Privacidade", %{conn: conn} do
+    conn = get(conn, ~p"/terms")
+    html = html_response(conn, 200)
+
+    assert html =~ "Termos de Serviço"
+    assert html =~ ~s(href="/privacy")
+  end
+
+  test "rodapé com links de Privacidade e Termos aparece em qualquer página", %{conn: conn} do
+    conn = get(conn, ~p"/")
+    html = html_response(conn, 200)
+
+    assert html =~ ~s(href="/privacy")
+    assert html =~ ~s(href="/terms")
+  end
 end

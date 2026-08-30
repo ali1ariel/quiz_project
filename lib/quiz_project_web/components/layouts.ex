@@ -354,6 +354,12 @@ defmodule QuizProjectWeb.Layouts do
       </div>
     </main>
 
+    <footer class="border-t border-base-300 px-4 py-6 text-center text-xs opacity-60 sm:px-6 lg:px-8">
+      <.link navigate={~p"/privacy"} class="hover:underline">Privacidade</.link>
+      <span class="px-2">·</span>
+      <.link navigate={~p"/terms"} class="hover:underline">Termos de Serviço</.link>
+    </footer>
+
     <.flash_group flash={@flash} />
     <.notification_stack notifications={@notifications} />
     """

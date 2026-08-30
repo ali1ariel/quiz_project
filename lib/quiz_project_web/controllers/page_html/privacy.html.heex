@@ -1,0 +1,126 @@
+<Layouts.app flash={@flash} current_user={assigns[:current_user]}>
+  <div class="mx-auto max-w-3xl space-y-8 py-10">
+    <div class="space-y-2 border-b border-base-300 pb-6">
+      <span class="text-xs font-semibold uppercase tracking-[0.18em] text-primary">Legal</span>
+      <h1 class="text-3xl font-bold tracking-tight">Política de Privacidade</h1>
+      <p class="text-sm opacity-60">Última atualização: 29 de agosto de 2026</p>
+    </div>
+
+    <div class="space-y-8 text-sm leading-7 opacity-90">
+      <section class="space-y-2">
+        <h2 class="text-lg font-bold">1. Quem somos</h2>
+        <p>
+          Quizzes (<span class="font-mono text-xs">quizzes.alissonmachado.dev</span>) é um serviço
+          mantido por Alisson Machado, pessoa física, para criação de quizzes, acompanhamento de
+          prioridades pessoais e organização de estudos. Dúvidas sobre esta política ou sobre seus
+          dados podem ser enviadas para
+          <a href="mailto:alisson.ariel@gmail.com" class="text-primary hover:underline">
+            alisson.ariel@gmail.com
+          </a>
+          .
+        </p>
+      </section>
+
+      <section class="space-y-2">
+        <h2 class="text-lg font-bold">2. Quais dados coletamos</h2>
+        <ul class="list-disc space-y-1.5 pl-5">
+          <li><span class="font-semibold">Conta:</span> nome e e-mail usados para login.</li>
+          <li>
+            <span class="font-semibold">Conteúdo que você cria:</span>
+            quizzes, respostas, materiais de estudo, prioridades e atividades registradas no app.
+          </li>
+          <li>
+            <span class="font-semibold">Google Agenda (opcional):</span>
+            se você conectar sua conta Google em Configurações, guardamos o e-mail da conta
+            conectada e os tokens de acesso necessários para ler e escrever eventos — sempre
+            criptografados em repouso, nunca em texto puro.
+          </li>
+        </ul>
+      </section>
+
+      <section class="space-y-2">
+        <h2 class="text-lg font-bold">3. Como usamos os dados do Google Calendar</h2>
+        <p>
+          Quando você conecta sua conta Google, o Quizzes cria um calendário secundário próprio,
+          separado da sua agenda pessoal ("QuizProject — Atividades"), e usa a Google Calendar API
+          só para espelhar nos dois sentidos as atividades que você marcar como "evento" dentro do
+          app — título, notas e data. Nenhum outro dado da sua conta Google é lido, e nenhum outro
+          calendário seu é tocado.
+        </p>
+        <p>
+          O uso e a transferência de informações recebidas das APIs do Google pelo Quizzes seguem
+          a
+          <a
+            href="https://developers.google.com/terms/api-services-user-data-policy"
+            target="_blank"
+            rel="noreferrer"
+            class="text-primary hover:underline"
+          >
+            Política de Dados do Usuário dos Serviços de API do Google
+          </a>
+          , incluindo os requisitos de Uso Limitado (Limited Use).
+        </p>
+      </section>
+
+      <section class="space-y-2">
+        <h2 class="text-lg font-bold">4. Com quem compartilhamos dados</h2>
+        <p>
+          Não vendemos nem compartilhamos seus dados com terceiros para fins de publicidade. Dados
+          podem passar por prestadores de serviço estritamente necessários para o funcionamento do
+          app:
+        </p>
+        <ul class="list-disc space-y-1.5 pl-5">
+          <li>Google Calendar API — só se você conectar sua conta, como descrito acima.</li>
+          <li>
+            Provedores de IA (OpenAI, Google Gemini ou Anthropic, conforme configurado) — usados
+            para gerar tags de questões e corrigir respostas discursivas, quando esse recurso é
+            usado. Só o texto necessário para a tarefa é enviado, nunca sua conta Google.
+          </li>
+          <li>Provedor de hospedagem (AWS) — onde a aplicação e o banco de dados rodam.</li>
+        </ul>
+      </section>
+
+      <section class="space-y-2">
+        <h2 class="text-lg font-bold">5. Retenção e exclusão</h2>
+        <p>
+          Você pode desconectar sua conta Google a qualquer momento em Configurações → Google
+          Agenda: isso apaga os tokens salvos e para a sincronização imediatamente. Os eventos já
+          criados no seu Google Agenda não são apagados por esta ação — continuam lá, só param de
+          ser atualizados pelo app.
+        </p>
+        <p>
+          Para excluir sua conta e todos os dados associados, envie um e-mail para
+          <a href="mailto:alisson.ariel@gmail.com" class="text-primary hover:underline">
+            alisson.ariel@gmail.com
+          </a>
+          a partir do endereço cadastrado na conta.
+        </p>
+      </section>
+
+      <section class="space-y-2">
+        <h2 class="text-lg font-bold">6. Seus direitos</h2>
+        <p>
+          Como titular dos dados (LGPD, Lei 13.709/2018), você pode a qualquer momento pedir
+          acesso, correção, portabilidade ou exclusão dos seus dados pessoais, pelo e-mail de
+          contato acima.
+        </p>
+      </section>
+
+      <section class="space-y-2">
+        <h2 class="text-lg font-bold">7. Cookies e sessão</h2>
+        <p>
+          Usamos apenas um cookie de sessão necessário para manter você autenticado. Não usamos
+          cookies de rastreamento de terceiros nem publicidade.
+        </p>
+      </section>
+
+      <section class="space-y-2">
+        <h2 class="text-lg font-bold">8. Alterações nesta política</h2>
+        <p>
+          Podemos atualizar esta página conforme o serviço evolui. Mudanças relevantes serão
+          refletidas na data no topo desta página.
+        </p>
+      </section>
+    </div>
+  </div>
+</Layouts.app>
