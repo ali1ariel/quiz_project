@@ -35,6 +35,10 @@ defmodule QuizProject.GoogleCalendar.OAuthTest do
     assert url =~ "client_id=test-client-id"
     assert url =~ "state=state-xyz"
     assert url =~ URI.encode_www_form("https://www.googleapis.com/auth/calendar")
+    # Precisa desse escopo também — sem ele, get_userinfo/1 (usado pra
+    # mostrar qual conta está conectada) leva 401 do Google mesmo com o
+    # token tendo acesso ao Calendar.
+    assert url =~ URI.encode_www_form("https://www.googleapis.com/auth/userinfo.email")
     assert url =~ "access_type=offline"
     assert url =~ "prompt=consent"
   end

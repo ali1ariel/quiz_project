@@ -5,14 +5,19 @@ defmodule QuizProject.GoogleCalendar.OAuth do
   token e revogação. Cliente HTTP é sempre `Req`, seguindo o padrão dos
   outros providers externos (ver `QuizProject.AI.Gemini`).
 
-  Escopo pedido é `.../auth/calendar` (não o mais restrito
+  Escopo pedido inclui `.../auth/calendar` (não o mais restrito
   `calendar.events`), porque a conexão inicial precisa de `calendars.insert`
-  pra criar o calendário secundário dedicado do usuário.
+  pra criar o calendário secundário dedicado do usuário, e
+  `.../auth/userinfo.email`, porque `GoogleCalendar.Client.get_userinfo/1`
+  chama o endpoint de userinfo pra mostrar qual conta está conectada em
+  Configurações — sem esse segundo escopo o Google rejeita essa chamada com
+  401 ("missing required authentication credential"), mesmo o token tendo
+  acesso ao Calendar.
   """
 
   require Logger
 
-  @scope "https://www.googleapis.com/auth/calendar"
+  @scope "https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/userinfo.email"
   @authorize_url "https://accounts.google.com/o/oauth2/v2/auth"
   @token_url "https://oauth2.googleapis.com/token"
   @revoke_url "https://oauth2.googleapis.com/revoke"
