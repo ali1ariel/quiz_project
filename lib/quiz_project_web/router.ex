@@ -29,6 +29,8 @@ defmodule QuizProjectWeb.Router do
 
     get "/", PageController, :home
     get "/api/docs", PageController, :api_docs
+    get "/privacy", PageController, :privacy
+    get "/terms", PageController, :terms
     get "/attempt/:id/og.png", OgController, :result
     delete "/logout", AuthController, :logout
 

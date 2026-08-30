@@ -1,0 +1,131 @@
+<Layouts.app flash={@flash} current_user={assigns[:current_user]}>
+  <div class="mx-auto max-w-3xl space-y-8 py-10">
+    <div class="space-y-2 border-b border-base-300 pb-6">
+      <span class="text-xs font-semibold uppercase tracking-[0.18em] text-primary">Legal</span>
+      <h1 class="text-3xl font-bold tracking-tight">Termos de Serviço</h1>
+      <p class="text-sm opacity-60">Última atualização: 29 de agosto de 2026</p>
+    </div>
+
+    <div class="space-y-8 text-sm leading-7 opacity-90">
+      <section class="space-y-2">
+        <h2 class="text-lg font-bold">1. Aceite</h2>
+        <p>
+          Ao criar uma conta ou usar o Quizzes (<span class="font-mono text-xs">quizzes.alissonmachado.dev</span>),
+          você concorda com estes Termos de Serviço e com a nossa
+          <.link navigate={~p"/privacy"} class="text-primary hover:underline">
+            Política de Privacidade
+          </.link>
+          . Se não concordar, não use o serviço.
+        </p>
+      </section>
+
+      <section class="space-y-2">
+        <h2 class="text-lg font-bold">2. O que é o serviço</h2>
+        <p>
+          O Quizzes é mantido por Alisson Machado, pessoa física, como projeto pessoal. Permite
+          criar e responder quizzes com correção automática, organizar materiais de estudo e
+          acompanhar prioridades e atividades pessoais — incluindo, opcionalmente, sincronização
+          de eventos com o Google Agenda.
+        </p>
+      </section>
+
+      <section class="space-y-2">
+        <h2 class="text-lg font-bold">3. Sua conta</h2>
+        <p>
+          Você é responsável por manter a confidencialidade da sua senha e por tudo que acontece
+          na sua conta. Avise imediatamente se suspeitar de uso não autorizado.
+        </p>
+      </section>
+
+      <section class="space-y-2">
+        <h2 class="text-lg font-bold">4. Seu conteúdo</h2>
+        <p>
+          Quizzes, respostas, materiais de estudo e atividades que você cria continuam sendo seus.
+          Ao publicar um quiz por link público, você autoriza que qualquer pessoa com o link possa
+          respondê-lo, sem precisar de conta.
+        </p>
+      </section>
+
+      <section class="space-y-2">
+        <h2 class="text-lg font-bold">5. Integração com o Google Agenda</h2>
+        <p>
+          A sincronização com o Google Calendar é opcional e depende de você conectar sua própria
+          conta Google. Ao conectar, você também está sujeito aos
+          <a
+            href="https://policies.google.com/terms"
+            target="_blank"
+            rel="noreferrer"
+            class="text-primary hover:underline"
+          >
+            Termos de Serviço do Google
+          </a>
+          . Você pode desconectar a qualquer momento em Configurações — ver detalhes na
+          <.link navigate={~p"/privacy"} class="text-primary hover:underline">
+            Política de Privacidade
+          </.link>
+          .
+        </p>
+      </section>
+
+      <section class="space-y-2">
+        <h2 class="text-lg font-bold">6. Uso aceitável</h2>
+        <p>
+          Não use o Quizzes para conteúdo ilegal, abusivo, ou para tentar acessar contas ou dados
+          de outras pessoas sem autorização.
+        </p>
+      </section>
+
+      <section class="space-y-2">
+        <h2 class="text-lg font-bold">7. Isenção de garantias</h2>
+        <p>
+          O serviço é fornecido "como está", sem garantias de disponibilidade contínua ou ausência
+          de erros. É um projeto pessoal, mantido por uma única pessoa, sem SLA formal.
+        </p>
+      </section>
+
+      <section class="space-y-2">
+        <h2 class="text-lg font-bold">8. Limitação de responsabilidade</h2>
+        <p>
+          Na medida permitida por lei, o mantenedor não se responsabiliza por danos indiretos
+          decorrentes do uso ou da impossibilidade de uso do serviço, incluindo perda de dados por
+          falha técnica.
+        </p>
+      </section>
+
+      <section class="space-y-2">
+        <h2 class="text-lg font-bold">9. Encerramento</h2>
+        <p>
+          Você pode encerrar sua conta a qualquer momento, pedindo exclusão pelo e-mail
+          <a href="mailto:alisson.ariel@gmail.com" class="text-primary hover:underline">
+            alisson.ariel@gmail.com
+          </a>
+          . Podemos suspender contas que violem estes termos.
+        </p>
+      </section>
+
+      <section class="space-y-2">
+        <h2 class="text-lg font-bold">10. Alterações</h2>
+        <p>
+          Estes termos podem ser atualizados conforme o serviço evolui. Mudanças relevantes serão
+          refletidas na data no topo desta página.
+        </p>
+      </section>
+
+      <section class="space-y-2">
+        <h2 class="text-lg font-bold">11. Lei aplicável</h2>
+        <p>Estes termos são regidos pelas leis do Brasil.</p>
+      </section>
+
+      <section class="space-y-2">
+        <h2 class="text-lg font-bold">12. Contato</h2>
+        <p>
+          Dúvidas sobre estes termos:
+          <a href="mailto:alisson.ariel@gmail.com" class="text-primary hover:underline">
+            alisson.ariel@gmail.com
+          </a>
+          .
+        </p>
+      </section>
+    </div>
+  </div>
+</Layouts.app>
