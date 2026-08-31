@@ -16,9 +16,13 @@ defmodule QuizProjectWeb.KanbanLive do
   (streak fica visível ao abrir a atividade, `ActivityModal`).
 
   Mudar de fluxo é arrastar (mesmo padrão de `PrioritiesLive.Ranking`, via
-  `Components.draggable/1` + `Components.drop_zone/1`, SortableJS); "feito"
-  não aceita drop — só os botões de resolução, que carregam uma intenção que
-  um simples arrastar não capta.
+  `Components.draggable/1` + `Components.drop_zone/1`, SortableJS) nas 3
+  colunas, inclusive "Feito" — arrastar pra lá equivale a "Concluir"
+  (`move_to_feito/2`); os botões de resolução continuam existindo pra quem
+  quer "Não cumprida"/"Descartar", intenções que um simples arrastar não
+  capta. Arrastar pra fora de "Feito" reabre a atividade antes de aplicar o
+  novo flow (`move_to_todo/2`, `move_to_fazendo/2`), já que as actions de
+  destino exigem uma atividade ainda não resolvida.
   """
   use QuizProjectWeb, :live_view
 
@@ -43,9 +47,15 @@ defmodule QuizProjectWeb.KanbanLive do
        page_title: "Hoje",
        modal_activity_id: nil,
        snooze_activity: nil,
+       capture_expanded?: false,
+       capture_title: "",
+       capture_notes: "",
        capture_type: "tarefa",
        capture_frequency: "daily",
        capture_category_id: nil,
+       capture_item_id: nil,
+       capture_tasks: [],
+       capture_task_draft: "",
        attach_category_by_activity: %{}
      )
      |> load_data()}
@@ -65,12 +75,48 @@ defmodule QuizProjectWeb.KanbanLive do
   def handle_event("capture_form_change", params, socket) do
     category_id = params |> Map.get("category_id", "") |> blank_to_nil()
 
+    capture_item_id =
+      if category_id == socket.assigns.capture_category_id do
+        params |> Map.get("item_id", "") |> blank_to_nil() || socket.assigns.capture_item_id
+      else
+        general_item_id(socket.assigns.items_by_category, category_id)
+      end
+
     {:noreply,
      assign(socket,
+       capture_title: Map.get(params, "title", ""),
+       capture_notes: Map.get(params, "notes", ""),
        capture_type: Map.get(params, "type", "tarefa"),
        capture_frequency: Map.get(params, "frequency", "daily"),
-       capture_category_id: category_id
+       capture_category_id: category_id,
+       capture_item_id: capture_item_id,
+       capture_task_draft: Map.get(params, "task_draft", "")
      )}
+  end
+
+  @impl true
+  def handle_event("toggle_capture_expanded", _params, socket) do
+    {:noreply, update(socket, :capture_expanded?, &(!&1))}
+  end
+
+  @impl true
+  def handle_event("add_capture_task", _params, socket) do
+    title = String.trim(socket.assigns.capture_task_draft || "")
+
+    if title == "" do
+      {:noreply, socket}
+    else
+      {:noreply,
+       socket
+       |> update(:capture_tasks, &(&1 ++ [title]))
+       |> assign(capture_task_draft: "")}
+    end
+  end
+
+  @impl true
+  def handle_event("remove_capture_task", %{"index" => index}, socket) do
+    index = String.to_integer(index)
+    {:noreply, update(socket, :capture_tasks, &List.delete_at(&1, index))}
   end
 
   @impl true
@@ -93,7 +139,12 @@ defmodule QuizProjectWeb.KanbanLive do
         create_habit_capture(socket, user, title, item_id, params)
 
       true ->
-        create_loose_capture(socket, user, title, item_id, event_attrs(is_event?, params))
+        extra_attrs =
+          event_attrs(is_event?, params)
+          |> Map.merge(max_deadline_attrs(params))
+          |> Map.merge(notes_attrs(params))
+
+        create_loose_capture(socket, user, title, item_id, extra_attrs)
     end
   end
 
@@ -103,8 +154,9 @@ defmodule QuizProjectWeb.KanbanLive do
 
     with {:ok, activity} <- Priorities.get_activity(id, user) do
       case value do
-        "fazendo" -> Priorities.start_activity(activity, user)
-        "todo" -> Priorities.back_to_todo_activity(activity, user)
+        "fazendo" -> move_to_fazendo(activity, user)
+        "todo" -> move_to_todo(activity, user)
+        "feito" -> move_to_feito(activity, user)
         _ -> :ok
       end
     end
@@ -228,6 +280,20 @@ defmodule QuizProjectWeb.KanbanLive do
   defp blank_to_nil(""), do: nil
   defp blank_to_nil(value), do: value
 
+  defp reset_capture_assigns do
+    [
+      capture_expanded?: false,
+      capture_title: "",
+      capture_notes: "",
+      capture_type: "tarefa",
+      capture_frequency: "daily",
+      capture_category_id: nil,
+      capture_item_id: nil,
+      capture_tasks: [],
+      capture_task_draft: ""
+    ]
+  end
+
   defp create_habit_capture(socket, user, title, item_id, params) do
     with {:ok, %Priorities.Item{} = item} <- Priorities.resolve_attach_item(item_id, user) do
       attrs = Map.merge(%{title: title, item_id: item.id}, build_habit_attrs(params))
@@ -239,11 +305,7 @@ defmodule QuizProjectWeb.KanbanLive do
           {:noreply,
            socket
            |> put_flash(:info, "Hábito criado.")
-           |> assign(
-             capture_type: "tarefa",
-             capture_frequency: "daily",
-             capture_category_id: nil
-           )
+           |> assign(reset_capture_assigns())
            |> load_data()}
 
         _ ->
@@ -259,7 +321,11 @@ defmodule QuizProjectWeb.KanbanLive do
       {:ok, item} ->
         base = if item, do: %{title: title, item_id: item.id}, else: %{title: title}
         attrs = Map.merge(base, extra_attrs)
-        {:ok, _activity} = Priorities.create_activity(user, attrs)
+        {:ok, activity} = Priorities.create_activity(user, attrs)
+
+        Enum.each(socket.assigns.capture_tasks, fn task_title ->
+          Priorities.create_activity_task(activity, task_title, user)
+        end)
 
         flash =
           if Map.get(extra_attrs, :kind) == :evento, do: "Evento criado.", else: "Capturado."
@@ -267,7 +333,7 @@ defmodule QuizProjectWeb.KanbanLive do
         {:noreply,
          socket
          |> put_flash(:info, flash)
-         |> assign(capture_category_id: nil, capture_type: "tarefa")
+         |> assign(reset_capture_assigns())
          |> load_data()}
 
       _ ->
@@ -287,6 +353,20 @@ defmodule QuizProjectWeb.KanbanLive do
     end
   end
 
+  defp max_deadline_attrs(params) do
+    case params |> Map.get("max_deadline", "") |> Date.from_iso8601() do
+      {:ok, date} -> %{max_deadline: date}
+      _ -> %{}
+    end
+  end
+
+  defp notes_attrs(params) do
+    case params |> Map.get("notes", "") |> String.trim() do
+      "" -> %{}
+      notes -> %{notes: notes}
+    end
+  end
+
   defp build_habit_attrs(%{"frequency" => "weekly"} = params) do
     %{frequency: :weekly, weekdays: parse_int_list(params["weekdays"]), month_days: []}
   end
@@ -301,6 +381,27 @@ defmodule QuizProjectWeb.KanbanLive do
 
   defp parse_int_list(nil), do: []
   defp parse_int_list(values) when is_list(values), do: Enum.map(values, &String.to_integer/1)
+
+  # Arrastar pra fora de Feito precisa reabrir antes — `back_to_todo`/`start`
+  # só aceitam atividade já em `fazendo`/`pendente`, então uma atividade
+  # resolvida (`flow == :feito`) sempre passa por `reopen` primeiro.
+  defp move_to_todo(%{flow: :feito} = activity, user), do: Priorities.reopen_activity(activity, user)
+  defp move_to_todo(activity, user), do: Priorities.back_to_todo_activity(activity, user)
+
+  defp move_to_fazendo(%{flow: :feito} = activity, user) do
+    with {:ok, reopened} <- Priorities.reopen_activity(activity, user) do
+      Priorities.start_activity(reopened, user)
+    end
+  end
+
+  defp move_to_fazendo(activity, user), do: Priorities.start_activity(activity, user)
+
+  # `:complete` não tem validação de estado (aceita reaplicar de qualquer
+  # flow) — sem essa guarda, só reordenar dentro de Feito (mesma zona,
+  # SortableJS ainda dispara `move_flow`) reverteria silenciosamente uma
+  # atividade "não cumprida"/"descartada" pra "concluída".
+  defp move_to_feito(%{flow: :feito}, _user), do: :ok
+  defp move_to_feito(activity, user), do: Priorities.complete_activity(activity, user)
 
   defp resolve(socket, id, fun) do
     user = socket.assigns.current_user
@@ -329,6 +430,18 @@ defmodule QuizProjectWeb.KanbanLive do
 
   defp category_by_id(categories, id), do: Enum.find(categories, &(&1.id == id))
 
+  defp general_item_id(_items_by_category, nil), do: nil
+
+  defp general_item_id(items_by_category, category_id) do
+    items_by_category
+    |> Map.get(category_id, [])
+    |> Enum.find(& &1.general)
+    |> case do
+      nil -> nil
+      item -> item.id
+    end
+  end
+
   @impl true
   def render(assigns) do
     ~H"""
@@ -349,148 +462,268 @@ defmodule QuizProjectWeb.KanbanLive do
 
         <Components.kanban_sub_nav active={:today} />
 
-        <div id="loose-captures" class="space-y-3 rounded-3xl border border-base-300 bg-base-100 p-4">
-          <div class="flex items-center justify-between gap-3">
-            <h2 class="flex items-center gap-2 text-lg font-bold">
-              <.icon name="hero-inbox" class="size-5 opacity-60" /> Capturas soltas
+        <div class="space-y-3">
+          <div class="card qcard space-y-4 p-5">
+            <h2 class="flex items-center gap-2 text-base font-bold">
+              <.icon name="hero-inbox" class="size-5 opacity-50" /> Criar atividade
             </h2>
-            <span
-              :if={@loose_captures != []}
-              class="rounded-full bg-error/10 px-2.5 py-0.5 text-xs font-bold text-error"
+
+            <form
+              id="capture-form"
+              phx-submit="create_capture"
+              phx-change="capture_form_change"
+              class="space-y-4"
             >
-              {length(@loose_captures)}
-            </span>
+              <div class="flex items-center gap-2">
+                <div class="relative min-w-48 flex-1">
+                  <.icon
+                    name="hero-inbox"
+                    class="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-base-content/45"
+                  />
+                  <input
+                    type="text"
+                    name="title"
+                    value={@capture_title}
+                    placeholder="Anotar algo rápido..."
+                    class="input w-full rounded-full py-[0.8rem] pl-11 pr-4 text-[0.975rem]"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  class="btn btn-primary rounded-full px-[1.4rem] py-[0.8rem] text-[0.9rem]"
+                >
+                  {cond do
+                    @capture_type == "habito" -> "Criar hábito"
+                    @capture_type == "evento" -> "Criar evento"
+                    true -> "Registrar"
+                  end}
+                </button>
+                <button
+                  type="button"
+                  phx-click="toggle_capture_expanded"
+                  class="btn btn-ghost rounded-full p-[0.8rem]"
+                  aria-expanded={to_string(@capture_expanded?)}
+                  title={if @capture_expanded?, do: "Menos opções", else: "Mais opções"}
+                >
+                  <.icon
+                    name="hero-adjustments-horizontal"
+                    class={["size-5 transition-transform", @capture_expanded? && "rotate-180"]}
+                  />
+                </button>
+              </div>
+
+              <div :if={@capture_expanded?} class="space-y-4 border-t border-base-300 pt-4">
+                <div class="flex flex-wrap items-end gap-3">
+                  <div class="w-40">
+                    <.input
+                      type="select"
+                      name="category_id"
+                      label="Categoria"
+                      value={@capture_category_id || ""}
+                      options={Enum.map(@categories, &{&1.name, &1.id})}
+                      prompt="Fica solta"
+                    />
+                  </div>
+                  <div class="w-48">
+                    <.input
+                      type="select"
+                      name="item_id"
+                      label="Prioridade"
+                      value={@capture_item_id || ""}
+                      options={
+                        if @capture_category_id,
+                          do:
+                            Components.attach_item_options(
+                              Map.get(@items_by_category, @capture_category_id, []),
+                              category_by_id(@categories, @capture_category_id)
+                            ),
+                          else: []
+                      }
+                      prompt={if @capture_category_id, do: nil, else: "Escolha a categoria"}
+                      disabled={is_nil(@capture_category_id)}
+                    />
+                  </div>
+                  <div class="w-40">
+                    <.input type="date" name="max_deadline" label="Prazo máximo" value="" />
+                  </div>
+                </div>
+
+                <div class="border-t border-base-200"></div>
+
+                <div class="fieldset mb-2">
+                  <span class="label mb-1">Tipo</span>
+                  <div class="flex flex-wrap gap-2">
+                    <label
+                      :for={
+                        {label_text, value, icon} <- [
+                          {"Atividade", "tarefa", "hero-check-circle"},
+                          {"Hábito", "habito", "hero-arrow-path"},
+                          {"Evento", "evento", "hero-calendar-days"}
+                        ]
+                      }
+                      class="flex cursor-pointer select-none items-center gap-1.5 rounded-full border border-base-300 bg-base-100 px-4 py-1.5 text-sm font-semibold opacity-70 transition hover:opacity-100 has-checked:border-primary has-checked:bg-primary has-checked:text-primary-content has-checked:opacity-100"
+                    >
+                      <input
+                        type="radio"
+                        name="type"
+                        value={value}
+                        checked={@capture_type == value}
+                        class="hidden"
+                      />
+                      <.icon name={icon} class="size-4" /> {label_text}
+                    </label>
+                  </div>
+                </div>
+
+                <div
+                  :if={@capture_type == "evento"}
+                  class="flex flex-wrap items-center gap-2 rounded-xl bg-primary/5 p-3 text-sm"
+                >
+                  <span class="font-semibold">Data do evento:</span>
+                  <input
+                    type="date"
+                    name="event_date"
+                    value={Date.to_iso8601(Date.utc_today())}
+                    class="input input-sm w-40 rounded-lg text-center"
+                  />
+                  <span class="text-xs opacity-60">
+                    — vira evento sincronizado com o Google Agenda, se conectado (ver Configurações).
+                  </span>
+                </div>
+
+                <div
+                  :if={@capture_type == "habito"}
+                  class="space-y-3 rounded-xl bg-primary/5 p-3"
+                >
+                  <.input
+                    type="select"
+                    name="frequency"
+                    label="Frequência"
+                    value={@capture_frequency}
+                    options={[
+                      {"Diário", "daily"},
+                      {"Dias da semana", "weekly"},
+                      {"Dias do mês", "monthly"}
+                    ]}
+                  />
+
+                  <div :if={@capture_frequency == "weekly"} class="fieldset mb-2">
+                    <span class="label mb-1">Quais dias</span>
+                    <Components.day_toggle_group
+                      name="weekdays[]"
+                      selected={[]}
+                      options={[
+                        {"Segunda", "1"},
+                        {"Terça", "2"},
+                        {"Quarta", "3"},
+                        {"Quinta", "4"},
+                        {"Sexta", "5"},
+                        {"Sábado", "6"},
+                        {"Domingo", "7"}
+                      ]}
+                    />
+                  </div>
+
+                  <div :if={@capture_frequency == "monthly"} class="fieldset mb-2">
+                    <span class="label mb-1">Quais dias do mês</span>
+                    <Components.day_toggle_group
+                      name="month_days[]"
+                      selected={[]}
+                      options={Enum.map(1..31, &{to_string(&1), to_string(&1)})}
+                      class="grid grid-cols-6 gap-1.5 sm:grid-cols-7"
+                    />
+                  </div>
+                </div>
+
+                <div class="border-t border-base-200"></div>
+
+                <.input
+                  type="textarea"
+                  name="notes"
+                  label="Descrição (opcional)"
+                  value={@capture_notes}
+                  rows="2"
+                  placeholder="Mais contexto sobre essa atividade..."
+                />
+
+                <div class="space-y-2 rounded-xl border border-dashed border-base-300 p-3">
+                  <span class="text-xs font-semibold uppercase tracking-wide opacity-60">
+                    Checklist (opcional)
+                  </span>
+
+                  <ul :if={@capture_tasks != []} class="space-y-1">
+                    <li
+                      :for={{task_title, index} <- Enum.with_index(@capture_tasks)}
+                      class="flex items-center gap-2"
+                    >
+                      <span class="size-4 shrink-0 rounded-full border-2 border-base-content/40" />
+                      <span class="flex-1 text-sm">{task_title}</span>
+                      <button
+                        type="button"
+                        phx-click="remove_capture_task"
+                        phx-value-index={index}
+                        class="shrink-0 opacity-50 hover:opacity-100"
+                        aria-label="Remover subitem"
+                      >
+                        <.icon name="hero-x-mark" class="size-3.5" />
+                      </button>
+                    </li>
+                  </ul>
+
+                  <div class="flex items-end gap-2">
+                    <div class="flex-1">
+                      <.input
+                        type="text"
+                        name="task_draft"
+                        label="Novo subitem"
+                        value={@capture_task_draft}
+                        placeholder="Ex: Separar os materiais"
+                        onkeydown="if(event.key === 'Enter') event.preventDefault();"
+                        phx-keydown="add_capture_task"
+                        phx-key="Enter"
+                      />
+                    </div>
+                    <div class="fieldset mb-2">
+                      <label>
+                        <span class="label mb-1 invisible">Adicionar</span>
+                        <button
+                          type="button"
+                          phx-click="add_capture_task"
+                          class="btn btn-soft btn-sm rounded-full px-4"
+                        >
+                          Adicionar
+                        </button>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </form>
           </div>
 
-          <form
-            id="capture-form"
-            phx-submit="create_capture"
-            phx-change="capture_form_change"
-            class="space-y-3"
-          >
-            <div class="flex flex-wrap items-end gap-3">
-              <div class="min-w-48 flex-1">
-                <.input type="text" name="title" value="" placeholder="Anotar algo rápido..." />
-              </div>
-              <div class="w-40">
-                <.input
-                  type="select"
-                  name="category_id"
-                  label="Categoria"
-                  value={@capture_category_id || ""}
-                  options={Enum.map(@categories, &{&1.name, &1.id})}
-                  prompt="Fica solta"
-                />
-              </div>
-              <div class="w-48">
-                <.input
-                  type="select"
-                  name="item_id"
-                  label="Prioridade"
-                  value=""
-                  options={
-                    if @capture_category_id,
-                      do:
-                        Components.attach_item_options(
-                          Map.get(@items_by_category, @capture_category_id, []),
-                          category_by_id(@categories, @capture_category_id)
-                        ),
-                      else: []
-                  }
-                  prompt={if @capture_category_id, do: "Escolha", else: "Escolha a categoria"}
-                  disabled={is_nil(@capture_category_id)}
-                />
-              </div>
-              <div class="w-40">
-                <.input
-                  type="select"
-                  name="type"
-                  label="Tipo"
-                  value={@capture_type}
-                  options={[{"Atividade", "tarefa"}, {"Hábito", "habito"}, {"Evento", "evento"}]}
-                />
-              </div>
-              <div class="fieldset mb-2">
-                <label>
-                  <span class="label mb-1 invisible">Registrar</span>
-                  <button type="submit" class="btn btn-primary btn-sm rounded-full px-5">
-                    {cond do
-                      @capture_type == "habito" -> "Criar hábito"
-                      @capture_type == "evento" -> "Criar evento"
-                      true -> "Registrar"
-                    end}
-                  </button>
-                </label>
-              </div>
+          <div id="loose-captures" class="space-y-2">
+            <div class="flex items-center justify-between gap-3 px-1">
+              <h3 class="flex items-center gap-2 text-xs font-bold uppercase tracking-wide opacity-50">
+                Capturas soltas
+              </h3>
+              <span
+                :if={@loose_captures != []}
+                class="rounded-full bg-error/10 px-2.5 py-0.5 text-xs font-bold text-error"
+              >
+                {length(@loose_captures)}
+              </span>
             </div>
 
-            <div :if={@capture_type == "evento"} class="rounded-2xl border border-base-300 p-3">
-              <.input
-                type="date"
-                name="event_date"
-                label="Data do evento"
-                value={Date.to_iso8601(Date.utc_today())}
-              />
-              <p class="mt-1 text-xs opacity-60">
-                Vira evento sincronizado com o Google Agenda, se conectado (ver Configurações).
-              </p>
-            </div>
+            <p :if={@loose_captures == []} class="px-1 text-sm opacity-50">
+              Nada solto — tudo categorizado.
+            </p>
 
             <div
-              :if={@capture_type == "habito"}
-              class="space-y-3 rounded-2xl border border-base-300 p-3"
+              :for={activity <- @loose_captures}
+              id={"loose-capture-#{activity.id}"}
+              class="space-y-2"
             >
-              <.input
-                type="select"
-                name="frequency"
-                label="Frequência"
-                value={@capture_frequency}
-                options={[
-                  {"Diário", "daily"},
-                  {"Dias da semana", "weekly"},
-                  {"Dias do mês", "monthly"}
-                ]}
-              />
-
-              <div :if={@capture_frequency == "weekly"} class="fieldset mb-2">
-                <span class="label mb-1">Quais dias</span>
-                <Components.day_toggle_group
-                  name="weekdays[]"
-                  selected={[]}
-                  options={[
-                    {"Segunda", "1"},
-                    {"Terça", "2"},
-                    {"Quarta", "3"},
-                    {"Quinta", "4"},
-                    {"Sexta", "5"},
-                    {"Sábado", "6"},
-                    {"Domingo", "7"}
-                  ]}
-                />
-              </div>
-
-              <div :if={@capture_frequency == "monthly"} class="fieldset mb-2">
-                <span class="label mb-1">Quais dias do mês</span>
-                <Components.day_toggle_group
-                  name="month_days[]"
-                  selected={[]}
-                  options={Enum.map(1..31, &{to_string(&1), to_string(&1)})}
-                  class="grid grid-cols-6 gap-1.5 sm:grid-cols-7"
-                />
-              </div>
-            </div>
-          </form>
-
-          <p :if={@loose_captures == []} class="text-sm opacity-50">
-            Nada solto — tudo categorizado.
-          </p>
-
-          <div
-            :for={activity <- @loose_captures}
-            id={"loose-capture-#{activity.id}"}
-            class="space-y-2"
-          >
-            <Components.activity_card activity={activity} show_age?={true}>
+              <Components.activity_card activity={activity} show_age?={true}>
               <:actions>
                 <button
                   phx-click="complete_activity"
@@ -554,7 +787,8 @@ defmodule QuizProjectWeb.KanbanLive do
                   />
                 </form>
               </:actions>
-            </Components.activity_card>
+              </Components.activity_card>
+            </div>
           </div>
         </div>
 
@@ -577,7 +811,7 @@ defmodule QuizProjectWeb.KanbanLive do
               mode="move"
               event="move_flow"
               value="todo"
-              class="min-h-16 space-y-2 rounded-2xl border border-dashed border-base-300 p-2"
+              class="h-[64rem] space-y-2 overflow-y-auto rounded-2xl border border-dashed border-base-300 px-3 py-2"
             >
               <p :if={@todo_activities == []} class="py-4 text-center text-xs opacity-40">
                 Nada por aqui
@@ -604,7 +838,7 @@ defmodule QuizProjectWeb.KanbanLive do
               mode="move"
               event="move_flow"
               value="fazendo"
-              class="min-h-16 space-y-2 rounded-2xl border border-dashed border-base-300 p-2"
+              class="h-[64rem] space-y-2 overflow-y-auto rounded-2xl border border-dashed border-base-300 px-3 py-2"
             >
               <p :if={@fazendo_activities == []} class="py-4 text-center text-xs opacity-40">
                 Nada em andamento
@@ -624,24 +858,37 @@ defmodule QuizProjectWeb.KanbanLive do
           </div>
 
           <div class="space-y-2">
-            <h3 class="text-xs font-bold uppercase tracking-wide opacity-50">Feito</h3>
-            <div class="min-h-16 space-y-2 rounded-2xl border border-base-200 bg-base-200/40 p-2">
+            <h3 class="text-xs font-bold uppercase tracking-wide text-success opacity-70">Feito</h3>
+            <Components.drop_zone
+              id="today-feito"
+              drag_group="today-flow"
+              mode="move"
+              event="move_flow"
+              value="feito"
+              class="h-[64rem] space-y-2 overflow-y-auto rounded-2xl border border-dashed border-success/40 bg-success/5 px-3 py-2"
+            >
               <p :if={@feito_activities == []} class="py-4 text-center text-xs opacity-40">
                 Nada concluído ainda
               </p>
-              <Components.activity_card :for={activity <- @feito_activities} activity={activity}>
-                <:actions>
-                  <button
-                    phx-click="reopen_activity"
-                    phx-value-id={activity.id}
-                    class="btn btn-ghost btn-xs"
-                    title="Reabrir — volta pra a fazer"
-                  >
-                    <.icon name="hero-arrow-uturn-left" class="size-4 opacity-50" /> Reabrir
-                  </button>
-                </:actions>
-              </Components.activity_card>
-            </div>
+              <Components.draggable
+                :for={activity <- @feito_activities}
+                id={"activity-drag-#{activity.id}"}
+                drag_id={activity.id}
+              >
+                <Components.activity_card activity={activity}>
+                  <:actions>
+                    <button
+                      phx-click="reopen_activity"
+                      phx-value-id={activity.id}
+                      class="btn btn-ghost btn-xs"
+                      title="Reabrir — volta pra a fazer"
+                    >
+                      <.icon name="hero-arrow-uturn-left" class="size-4 opacity-50" /> Reabrir
+                    </button>
+                  </:actions>
+                </Components.activity_card>
+              </Components.draggable>
+            </Components.drop_zone>
           </div>
         </div>
       </div>
@@ -664,22 +911,6 @@ defmodule QuizProjectWeb.KanbanLive do
   defp resolve_buttons(assigns) do
     ~H"""
     <button
-      phx-click="complete_activity"
-      phx-value-id={@activity.id}
-      class="btn btn-ghost btn-xs"
-      title="Concluir"
-    >
-      <.icon name="hero-check" class="size-4 text-success" />
-    </button>
-    <button
-      phx-click="mark_not_done"
-      phx-value-id={@activity.id}
-      class="btn btn-ghost btn-xs"
-      title="Não cumprida"
-    >
-      <.icon name="hero-x-mark" class="size-4 text-warning" />
-    </button>
-    <button
       :if={is_nil(@activity.habit_id)}
       phx-click="open_snooze"
       phx-value-id={@activity.id}
@@ -692,7 +923,7 @@ defmodule QuizProjectWeb.KanbanLive do
     >
       <.icon
         name={if @activity.kind == :evento, do: "hero-calendar-days", else: "hero-clock"}
-        class="size-4 opacity-60"
+        class="size-4 text-info"
       />
     </button>
     <button
@@ -701,7 +932,7 @@ defmodule QuizProjectWeb.KanbanLive do
       class="btn btn-ghost btn-xs"
       title="Descartar"
     >
-      <.icon name="hero-trash" class="size-4 opacity-50" />
+      <.icon name="hero-trash" class="size-4 text-error" />
     </button>
     """
   end

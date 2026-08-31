@@ -145,6 +145,7 @@ defmodule QuizProjectWeb.Router do
       live "/priorities", PrioritiesLive.Index
       live "/priorities/ranking", PrioritiesLive.Ranking
       live "/priorities/items", PrioritiesLive.Browse
+      live "/priorities/archived", PrioritiesLive.Browse, :archived
       live "/priorities/:id", PrioritiesLive.Show
     end
   end

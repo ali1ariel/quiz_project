@@ -549,7 +549,7 @@ defmodule QuizProjectWeb.PrioritiesLive.Components do
     """
   end
 
-  @doc "Sub-navegação entre as 3 telas de Prioridades, usada no topo de cada uma."
+  @doc "Sub-navegação entre as 4 telas de Prioridades, usada no topo de cada uma."
   attr :active, :atom, required: true
 
   def sub_nav(assigns) do
@@ -581,6 +581,15 @@ defmodule QuizProjectWeb.PrioritiesLive.Components do
         ]}
       >
         Todos os itens
+      </.link>
+      <.link
+        navigate={~p"/priorities/archived"}
+        class={[
+          "rounded-full px-4 py-1.5 transition [transform:translateZ(0)]",
+          tab_class(@active == :archived)
+        ]}
+      >
+        Arquivados
       </.link>
     </nav>
     """
@@ -682,46 +691,45 @@ defmodule QuizProjectWeb.PrioritiesLive.Components do
         @category &&
           "border-#{card_border_side(@activity)}: 4px solid var(--color-#{elem(@category, 1)});"
       }
-      class="card qcard flex flex-col gap-2 border border-base-300 bg-base-100 p-3"
+      class="card qcard mx-2 flex flex-col items-center gap-2 border border-base-300 bg-base-100 p-3 text-center"
     >
-      <div class="flex items-start justify-between gap-2">
-        <button
-          :if={@clickable_title?}
-          type="button"
-          phx-click="open_activity"
-          phx-value-id={@activity.id}
-          class="line-clamp-2 text-left text-sm font-semibold leading-snug hover:underline"
-        >
-          {@activity.title}
-        </button>
-        <span
-          :if={!@clickable_title?}
-          class="line-clamp-2 text-left text-sm font-semibold leading-snug"
-        >
-          {@activity.title}
-        </span>
-        <span
-          :if={@show_age? && age_alert(@activity.logical_date) != :ok}
-          class={[
-            "shrink-0 rounded-full px-2 py-0.5 text-[0.65rem] font-bold",
-            age_alert(@activity.logical_date) == :urgent &&
-              "bg-error text-error-content",
-            age_alert(@activity.logical_date) == :warning &&
-              "bg-warning text-warning-content"
-          ]}
-        >
-          {age_label(@activity.logical_date)}
-        </span>
-      </div>
+      <button
+        :if={@clickable_title?}
+        type="button"
+        phx-click="open_activity"
+        phx-value-id={@activity.id}
+        class="line-clamp-2 text-center text-sm font-semibold leading-snug hover:underline"
+      >
+        {@activity.title}
+      </button>
+      <span
+        :if={!@clickable_title?}
+        class="line-clamp-2 text-center text-sm font-semibold leading-snug"
+      >
+        {@activity.title}
+      </span>
+
+      <span
+        :if={@show_age? && age_alert(@activity.logical_date) != :ok}
+        class={[
+          "shrink-0 rounded-full px-2 py-0.5 text-[0.65rem] font-bold",
+          age_alert(@activity.logical_date) == :urgent &&
+            "bg-error text-error-content",
+          age_alert(@activity.logical_date) == :warning &&
+            "bg-warning text-warning-content"
+        ]}
+      >
+        {age_label(@activity.logical_date)}
+      </span>
 
       <span
         :if={@category && elem(@category, 0)}
-        class="self-start rounded-full bg-base-200 px-2 py-0.5 text-[0.65rem] font-semibold opacity-70"
+        class="rounded-full bg-base-200 px-2 py-0.5 text-[0.65rem] font-semibold opacity-70"
       >
         {elem(@category, 0)}
       </span>
 
-      <div :if={@actions != []} class="flex flex-wrap items-center gap-2 pt-1">
+      <div :if={@actions != []} class="flex w-full flex-wrap items-center justify-end gap-2 pt-1">
         {render_slot(@actions)}
       </div>
     </div>

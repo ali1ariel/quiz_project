@@ -523,6 +523,7 @@ defmodule QuizProject.Priorities do
     query =
       case Keyword.get(opts, :archived, false) do
         true -> query
+        :only -> Ash.Query.filter(query, not is_nil(archived_at))
         false -> Ash.Query.filter(query, is_nil(archived_at))
       end
 

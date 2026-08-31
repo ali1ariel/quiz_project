@@ -29,7 +29,7 @@ defmodule QuizProjectWeb.Layouts do
 
   attr :current_user, :map, default: nil, doc: "usuário logado, se houver"
 
-  attr :wide, :boolean, default: false, doc: "usa container largo para telas densas"
+  attr :wide, :boolean, default: true, doc: "usa container largo (padrão); false volta pro estreito"
 
   attr :sticky_header?, :boolean,
     default: true,

@@ -1312,9 +1312,10 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
           phx-target={@myself}
           class="flex items-center gap-2 text-left text-sm"
         >
-          <.icon
-            name={if task.done, do: "hero-check-circle-solid", else: "hero-circle"}
-            class={["size-4", task.done && "text-primary"]}
+          <.icon :if={task.done} name="hero-check-circle-solid" class="size-4 text-primary" />
+          <span
+            :if={!task.done}
+            class="size-4 shrink-0 rounded-full border-2 border-base-content/40"
           />
           <span class={task.done && "opacity-50 line-through"}>{task.title}</span>
         </button>
