@@ -81,10 +81,29 @@ defmodule QuizProjectWeb.KanbanLive.CalendarTest do
       {:ok, _pending} =
         Priorities.create_activity(user, %{title: "Ainda em aberto", item_id: item.id})
 
-      {:ok, view, html} = live(conn, ~p"/today/calendar")
+      {:ok, view, _html} = live(conn, ~p"/today/calendar")
 
-      refute html =~ "Ainda em aberto"
+      refute has_element?(view, "#calendar-day-activities", "Ainda em aberto")
       refute has_element?(view, "button[phx-value-status='concluida']")
+    end
+
+    test "logs do dia mostram a criação de uma atividade mesmo antes dela ser resolvida", %{
+      conn: conn,
+      user: user
+    } do
+      cat = category(user)
+      item = manual_item(user, cat, "Item")
+
+      {:ok, _pending} =
+        Priorities.create_activity(user, %{title: "Ainda em aberto", item_id: item.id})
+
+      {:ok, view, _html} = live(conn, ~p"/today/calendar")
+
+      assert has_element?(
+               view,
+               "#calendar-day-logs",
+               "Atividade \"Ainda em aberto\" criada."
+             )
     end
 
     test "dá pra navegar e clicar num dia de um mês futuro", %{conn: conn, user: user} do
