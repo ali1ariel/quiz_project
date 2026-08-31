@@ -153,6 +153,69 @@ defmodule QuizProjectWeb.KanbanLiveTest do
       assert Priorities.get_activity(act.id, user) |> elem(1) |> Map.get(:flow) == :todo
     end
 
+    test "move_flow com value feito arrasta a atividade pra Feito, igual clicar em Concluir", %{
+      conn: conn,
+      user: user
+    } do
+      item = manual_item(user, category(user), "Projeto")
+      act = activity(user, item, "Escrever spec")
+
+      {:ok, view, _html} = live(conn, ~p"/today")
+
+      render_click(view, "move_flow", %{"id" => act.id, "value" => "feito"})
+
+      {:ok, updated} = Priorities.get_activity(act.id, user)
+      assert updated.status == :concluida
+      assert updated.flow == :feito
+    end
+
+    test "reordenar dentro de Feito (mesmo value feito de novo) não reverte não-cumprida/descartada pra concluída",
+         %{conn: conn, user: user} do
+      item = manual_item(user, category(user), "Projeto")
+      act = activity(user, item, "Terminar isso")
+      {:ok, act} = Priorities.mark_activity_not_done(act, user)
+
+      {:ok, view, _html} = live(conn, ~p"/today")
+
+      # SortableJS dispara move_flow igual pra reordenar dentro da mesma
+      # coluna — não pode reaplicar "Concluir" numa atividade que já foi
+      # resolvida como "não cumprida".
+      render_click(view, "move_flow", %{"id" => act.id, "value" => "feito"})
+
+      {:ok, updated} = Priorities.get_activity(act.id, user)
+      assert updated.status == :nao_cumprida
+      assert updated.flow == :feito
+    end
+
+    test "arrastar de Feito pra A fazer reabre a atividade", %{conn: conn, user: user} do
+      item = manual_item(user, category(user), "Projeto")
+      act = activity(user, item, "Terminar isso")
+      {:ok, act} = Priorities.complete_activity(act, user)
+
+      {:ok, view, _html} = live(conn, ~p"/today")
+
+      render_click(view, "move_flow", %{"id" => act.id, "value" => "todo"})
+
+      {:ok, updated} = Priorities.get_activity(act.id, user)
+      assert updated.status == :pendente
+      assert updated.flow == :todo
+      assert is_nil(updated.resolved_date)
+    end
+
+    test "arrastar de Feito pra Fazendo reabre e já inicia a atividade", %{conn: conn, user: user} do
+      item = manual_item(user, category(user), "Projeto")
+      act = activity(user, item, "Terminar isso")
+      {:ok, act} = Priorities.complete_activity(act, user)
+
+      {:ok, view, _html} = live(conn, ~p"/today")
+
+      render_click(view, "move_flow", %{"id" => act.id, "value" => "fazendo"})
+
+      {:ok, updated} = Priorities.get_activity(act.id, user)
+      assert updated.status == :pendente
+      assert updated.flow == :fazendo
+    end
+
     test "sem limite de WIP: duas atividades podem ir pra fazendo ao mesmo tempo", %{
       conn: conn,
       user: user
@@ -426,7 +489,6 @@ defmodule QuizProjectWeb.KanbanLiveTest do
         })
 
       assert html =~ "Ler página 40"
-      assert html =~ "Livros"
       assert Priorities.list_loose_captures(user) == []
 
       [activity] = Priorities.list_activities_for_item(geral.id, user)
@@ -633,6 +695,9 @@ defmodule QuizProjectWeb.KanbanLiveTest do
       cat = category(user, "Saúde")
       item = manual_item(user, cat, "Rotina")
       {:ok, view, _html} = live(conn, ~p"/today")
+
+      # Categoria/prioridade/tipo ficam atrás de "Mais opções" por padrão.
+      render_click(view, "toggle_capture_expanded", %{})
 
       # O campo de frequência só existe no DOM depois do phx-change revelar a
       # seção de hábito (mesmo padrão do form de tipo de item em `Index`), e a

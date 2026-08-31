@@ -1,7 +1,9 @@
 defmodule QuizProjectWeb.PrioritiesLive.Browse do
   @moduledoc """
   Listagem flat de todos os itens, com filtro por categoria (primária ou
-  secundária), tag, tipo e arquivamento.
+  secundária), tag, tipo e arquivamento. `live_action == :archived`
+  (rota `/priorities/archived`) mostra só os arquivados, sem o checkbox de
+  filtro — é a aba "Arquivados" da sub-navegação.
   """
   use QuizProjectWeb, :live_view
 
@@ -14,11 +16,12 @@ defmodule QuizProjectWeb.PrioritiesLive.Browse do
   @impl true
   def mount(_params, _session, socket) do
     user = socket.assigns.current_user
+    archived? = socket.assigns.live_action == :archived
 
     {:ok,
      socket
      |> assign(
-       page_title: "Todos os itens",
+       page_title: if(archived?, do: "Arquivados", else: "Todos os itens"),
        categories: Priorities.list_categories(user),
        tags: Priorities.list_tags(user),
        filters: %{category_id: nil, tag_id: nil, item_type: nil, archived: false},
@@ -66,12 +69,13 @@ defmodule QuizProjectWeb.PrioritiesLive.Browse do
   defp load_items(socket) do
     user = socket.assigns.current_user
     f = socket.assigns.filters
+    archived? = socket.assigns.live_action == :archived
 
     opts = [
       category_id: f.category_id,
       tag_id: f.tag_id,
       item_type: f.item_type,
-      archived: f.archived
+      archived: if(archived?, do: :only, else: f.archived)
     ]
 
     assign(socket, items: Priorities.filter_items(user, opts))
@@ -103,13 +107,15 @@ defmodule QuizProjectWeb.PrioritiesLive.Browse do
     >
       <div class="space-y-6">
         <div class="border-b border-base-300 pb-4">
-          <h1 class="text-2xl font-bold tracking-tight">Todos os itens</h1>
+          <h1 class="text-2xl font-bold tracking-tight">{@page_title}</h1>
           <p class="text-sm opacity-70">
-            Todos os seus itens, de qualquer categoria, filtráveis por categoria, tag e tipo.
+            {if @live_action == :archived,
+              do: "Itens arquivados, de qualquer categoria.",
+              else: "Todos os seus itens, de qualquer categoria, filtráveis por categoria, tag e tipo."}
           </p>
         </div>
 
-        <Components.sub_nav active={:browse} />
+        <Components.sub_nav active={if @live_action == :archived, do: :archived, else: :browse} />
 
         <form
           id="browse-filters"
@@ -141,6 +147,7 @@ defmodule QuizProjectWeb.PrioritiesLive.Browse do
             prompt="Todos"
           />
           <.input
+            :if={@live_action != :archived}
             type="checkbox"
             name="archived"
             label="Incluir arquivados"

@@ -25,18 +25,16 @@ defmodule QuizProjectWeb.ActivityModal do
   end
 
   @impl true
-  def handle_event("update_activity", %{"title" => title, "notes" => notes}, socket) do
+  def handle_event("update_activity", %{"title" => title, "notes" => notes} = params, socket) do
     user = socket.assigns.current_user
     title = String.trim(title)
 
     if title == "" do
       {:noreply, notify_flash(socket, :error, "O título não pode ficar em branco.")}
     else
-      case Priorities.update_activity(
-             socket.assigns.activity,
-             %{title: title, notes: notes},
-             user
-           ) do
+      attrs = %{title: title, notes: notes, max_deadline: parse_max_deadline(params)}
+
+      case Priorities.update_activity(socket.assigns.activity, attrs, user) do
         {:ok, _} ->
           {:noreply,
            socket |> notify_flash(:info, "Salvo.") |> load_activity(socket.assigns.activity.id)}
@@ -168,6 +166,13 @@ defmodule QuizProjectWeb.ActivityModal do
   defp parse_int_list(nil), do: []
   defp parse_int_list(values) when is_list(values), do: Enum.map(values, &String.to_integer/1)
 
+  defp parse_max_deadline(params) do
+    case params |> Map.get("max_deadline", "") |> Date.from_iso8601() do
+      {:ok, date} -> date
+      _ -> nil
+    end
+  end
+
   # `put_flash/3` num LiveComponent só grava no `assigns.flash` isolado do
   # componente, que nunca é renderizado — quem mostra `@flash` é o
   # `Layouts.app` do LiveView pai. Por isso o flash sai daqui como mensagem
@@ -222,6 +227,12 @@ defmodule QuizProjectWeb.ActivityModal do
                 rows="3"
                 placeholder="Mais contexto sobre essa atividade..."
               />
+              <.input
+                type="date"
+                name="max_deadline"
+                label="Prazo máximo"
+                value={@activity.max_deadline}
+              />
               <div class="flex justify-end">
                 <button type="submit" class="btn btn-primary btn-sm rounded-full px-5">
                   Salvar
@@ -252,8 +263,13 @@ defmodule QuizProjectWeb.ActivityModal do
                     class="flex flex-1 items-center gap-2 text-left text-sm"
                   >
                     <.icon
-                      name={if task.done, do: "hero-check-circle-solid", else: "hero-circle"}
-                      class={["size-4 shrink-0", task.done && "text-primary"]}
+                      :if={task.done}
+                      name="hero-check-circle-solid"
+                      class="size-4 shrink-0 text-primary"
+                    />
+                    <span
+                      :if={!task.done}
+                      class="size-4 shrink-0 rounded-full border-2 border-base-content/40"
                     />
                     <span class={task.done && "opacity-50 line-through"}>{task.title}</span>
                   </button>

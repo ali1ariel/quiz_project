@@ -44,6 +44,7 @@ defmodule QuizProject.Priorities.Activity do
         :title,
         :notes,
         :logical_date,
+        :max_deadline,
         :position,
         :kind,
         :google_event_id,
@@ -65,7 +66,7 @@ defmodule QuizProject.Priorities.Activity do
     end
 
     update :update do
-      accept [:title, :notes]
+      accept [:title, :notes, :max_deadline]
     end
 
     update :reposition do
@@ -306,6 +307,10 @@ defmodule QuizProject.Priorities.Activity do
     # `Priorities.list_today_activities/1`). Só faz sentido pra atividade
     # presa a item — hábito já tem sua própria noção de dia devido.
     attribute :snoozed_until, :date
+
+    # Data limite opcional pra atividade, editável em qualquer momento
+    # (diferente de `logical_date`, que é o dia lógico gravado na criação).
+    attribute :max_deadline, :date
 
     attribute :position, :integer do
       allow_nil? false
