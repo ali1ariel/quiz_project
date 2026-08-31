@@ -13,6 +13,13 @@ defmodule QuizProjectWeb.KanbanLive.Calendar do
   ação daqui é corrigir o desfecho de algo já resolvido — `Priorities.correct_activity_status/3`,
   que não mexe em `resolved_date` nem reabre a atividade, só troca entre
   concluída/não cumprida sem tirá-la do dia em que está.
+
+  "Logs do dia" é uma seção à parte, abaixo das atividades do dia: lista,
+  em ordem cronológica reversa, todo evento de histórico (`Priorities.ActivityLog`)
+  acontecido naquele dia — criação, mudança de coluna, checklist mexido,
+  etc. — independente de a atividade em si aparecer ou não na lista acima
+  (ex: uma atividade só criada hoje, ainda pendente, não aparece nas
+  atividades do dia, mas a criação dela aparece no log).
   """
   use QuizProjectWeb, :live_view
 
@@ -67,8 +74,19 @@ defmodule QuizProjectWeb.KanbanLive.Calendar do
     assign(socket,
       weeks: Date.range(grid_start, grid_end) |> Enum.chunk_every(7),
       by_date: by_date,
-      selected_activities: Map.get(by_date, socket.assigns.selected_date, [])
+      selected_activities: Map.get(by_date, socket.assigns.selected_date, []),
+      selected_logs: load_logs(socket.assigns.current_user, socket.assigns.selected_date)
     )
+  end
+
+  defp load_logs(_user, nil), do: []
+
+  defp load_logs(user, date), do: Priorities.list_activity_logs_for_date(user, date)
+
+  # `Clock`/`inserted_at` gravam em UTC — mesmo deslocamento fixo de
+  # Brasília (ver `QuizProject.Priorities.Clock`) só pra exibir a hora.
+  defp local_time(datetime) do
+    datetime |> DateTime.add(-3, :hour) |> Calendar.strftime("%H:%M:%S")
   end
 
   defp activity_date(%{
@@ -232,7 +250,11 @@ defmodule QuizProjectWeb.KanbanLive.Calendar do
             Nada registrado nesse dia.
           </p>
 
-          <div :if={@selected_activities != []} class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <div
+            :if={@selected_activities != []}
+            id="calendar-day-activities"
+            class="grid grid-cols-1 gap-2 sm:grid-cols-2"
+          >
             <Components.activity_card
               :for={activity <- @selected_activities}
               activity={activity}
@@ -243,6 +265,22 @@ defmodule QuizProjectWeb.KanbanLive.Calendar do
               </:actions>
             </Components.activity_card>
           </div>
+        </div>
+
+        <div :if={@selected_date} class="space-y-3 rounded-3xl border border-base-300 bg-base-100 p-4">
+          <h2 class="text-sm font-bold uppercase tracking-wide opacity-60">Logs do dia</h2>
+
+          <p :if={@selected_logs == []} class="text-sm opacity-50">
+            Nada aconteceu nesse dia.
+          </p>
+
+          <ul :if={@selected_logs != []} id="calendar-day-logs" class="space-y-2">
+            <li :for={log <- @selected_logs} class="flex items-baseline gap-2 text-sm">
+              <span class="shrink-0 opacity-40">•</span>
+              <span class="shrink-0 font-mono text-xs opacity-50">{local_time(log.inserted_at)}</span>
+              <span class="opacity-90">{log.message}</span>
+            </li>
+          </ul>
         </div>
       </div>
     </Layouts.app>

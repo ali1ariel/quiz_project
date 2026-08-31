@@ -14,6 +14,7 @@ defmodule QuizProject.Priorities do
   alias QuizProject.AdaptiveStudy
   alias QuizProject.Attempts
   alias QuizProject.Priorities.Activity
+  alias QuizProject.Priorities.ActivityLog
   alias QuizProject.Priorities.ActivityTask
   alias QuizProject.Priorities.Category
   alias QuizProject.Priorities.Clock
@@ -39,6 +40,7 @@ defmodule QuizProject.Priorities do
     resource FieldDefinition
     resource FieldValue
     resource Activity
+    resource ActivityLog
     resource ActivityTask
     resource ItemLink
     resource Habit
@@ -780,6 +782,13 @@ defmodule QuizProject.Priorities do
       |> Ash.Changeset.for_create(:create, Map.put(attrs, :position, position), authorize?: false)
       |> Ash.create()
       |> sync_google_out(:insert)
+      |> log_activity_result(fn activity ->
+        cond do
+          activity.habit_id -> nil
+          activity.kind == :evento -> "Evento \"#{activity.title}\" criado."
+          true -> "Atividade \"#{activity.title}\" criada."
+        end
+      end)
     end
   end
 
@@ -826,8 +835,48 @@ defmodule QuizProject.Priorities do
       |> Ash.Changeset.for_update(:update, attrs, authorize?: false)
       |> Ash.update()
       |> sync_google_out(:patch)
+      |> log_activity_update(activity)
     end
   end
+
+  # `update_activity/3` mexe em três campos independentes num só submit —
+  # loga uma entrada por campo que de fato mudou, em vez de uma frase genérica
+  # "atividade atualizada" que não diz o quê. `old` é a atividade antes do
+  # update (pra pegar o título anterior no caso de renomear).
+  defp log_activity_update({:ok, %Activity{} = new} = result, %Activity{} = old) do
+    if old.title != new.title do
+      log_activity_event(new, "Atividade \"#{old.title}\" renomeada para \"#{new.title}\".")
+    end
+
+    if old.notes != new.notes do
+      log_activity_event(new, describe_notes_change(new.title, old.notes, new.notes))
+    end
+
+    if old.max_deadline != new.max_deadline do
+      log_activity_event(new, describe_deadline_change(new.title, new.max_deadline))
+    end
+
+    result
+  end
+
+  defp log_activity_update(result, _old), do: result
+
+  defp describe_notes_change(title, old_notes, new_notes) do
+    cond do
+      blank?(old_notes) -> "Descrição adicionada em \"#{title}\"."
+      blank?(new_notes) -> "Descrição de \"#{title}\" removida."
+      true -> "Descrição de \"#{title}\" atualizada."
+    end
+  end
+
+  defp blank?(nil), do: true
+  defp blank?(""), do: true
+  defp blank?(_), do: false
+
+  defp describe_deadline_change(title, nil), do: "Prazo máximo de \"#{title}\" removido."
+
+  defp describe_deadline_change(title, date),
+    do: "Prazo máximo de \"#{title}\" definido para #{Calendar.strftime(date, "%d/%m/%Y")}."
 
   def reposition_activity(activity, position, actor) do
     with :ok <- authorize_owner(activity, actor) do
@@ -844,18 +893,31 @@ defmodule QuizProject.Priorities do
       activity
       |> Ash.Changeset.for_update(:assign_item, %{item_id: item.id}, authorize?: false)
       |> Ash.update()
+      |> log_activity_result(fn activity ->
+        "Atividade \"#{activity.title}\" anexada à prioridade \"#{item.title}\"."
+      end)
     end
   end
 
   def start_activity(activity, actor) do
     with :ok <- authorize_owner(activity, actor) do
-      activity |> Ash.Changeset.for_update(:start, %{}, authorize?: false) |> Ash.update()
+      activity
+      |> Ash.Changeset.for_update(:start, %{}, authorize?: false)
+      |> Ash.update()
+      |> log_activity_result(fn activity ->
+        "Atividade \"#{activity.title}\" movida para Fazendo."
+      end)
     end
   end
 
   def back_to_todo_activity(activity, actor) do
     with :ok <- authorize_owner(activity, actor) do
-      activity |> Ash.Changeset.for_update(:back_to_todo, %{}, authorize?: false) |> Ash.update()
+      activity
+      |> Ash.Changeset.for_update(:back_to_todo, %{}, authorize?: false)
+      |> Ash.update()
+      |> log_activity_result(fn activity ->
+        "Atividade \"#{activity.title}\" movida para A fazer."
+      end)
     end
   end
 
@@ -865,6 +927,7 @@ defmodule QuizProject.Priorities do
       |> Ash.Changeset.for_update(:complete, %{}, authorize?: false)
       |> Ash.update()
       |> sync_google_out(:patch)
+      |> log_activity_result(fn activity -> "Atividade \"#{activity.title}\" concluída." end)
     end
   end
 
@@ -874,6 +937,9 @@ defmodule QuizProject.Priorities do
       |> Ash.Changeset.for_update(:mark_not_done, %{}, authorize?: false)
       |> Ash.update()
       |> sync_google_out(:patch)
+      |> log_activity_result(fn activity ->
+        "Atividade \"#{activity.title}\" marcada como não cumprida."
+      end)
     end
   end
 
@@ -883,6 +949,7 @@ defmodule QuizProject.Priorities do
       |> Ash.Changeset.for_update(:discard, %{}, authorize?: false)
       |> Ash.update()
       |> sync_google_out(:patch)
+      |> log_activity_result(fn activity -> "Atividade \"#{activity.title}\" descartada." end)
     end
   end
 
@@ -893,6 +960,7 @@ defmodule QuizProject.Priorities do
       |> Ash.Changeset.for_update(:reopen, %{}, authorize?: false)
       |> Ash.update()
       |> sync_google_out(:patch)
+      |> log_activity_result(fn activity -> "Atividade \"#{activity.title}\" reaberta." end)
     end
   end
 
@@ -903,6 +971,10 @@ defmodule QuizProject.Priorities do
       activity
       |> Ash.Changeset.for_update(:correct_status, %{status: status}, authorize?: false)
       |> Ash.update()
+      |> log_activity_result(fn activity ->
+        status_label = if status == :concluida, do: "concluída", else: "não cumprida"
+        "Desfecho de \"#{activity.title}\" corrigido para #{status_label}."
+      end)
     end
   end
 
@@ -913,6 +985,9 @@ defmodule QuizProject.Priorities do
       |> Ash.Changeset.for_update(:snooze, %{until: until}, authorize?: false)
       |> Ash.update()
       |> sync_google_out(:patch)
+      |> log_activity_result(fn activity ->
+        "Atividade \"#{activity.title}\" adiada até #{Calendar.strftime(until, "%d/%m/%Y")}."
+      end)
     end
   end
 
@@ -928,6 +1003,9 @@ defmodule QuizProject.Priorities do
       |> Ash.Changeset.for_update(:reschedule, %{date: date}, authorize?: false)
       |> Ash.update()
       |> sync_google_out(:patch)
+      |> log_activity_result(fn activity ->
+        "Evento \"#{activity.title}\" reagendado para #{Calendar.strftime(date, "%d/%m/%Y")}."
+      end)
     end
   end
 
@@ -938,6 +1016,9 @@ defmodule QuizProject.Priorities do
       |> Ash.Changeset.for_update(:clear_snooze, %{}, authorize?: false)
       |> Ash.update()
       |> sync_google_out(:patch)
+      |> log_activity_result(fn activity ->
+        "Atividade \"#{activity.title}\" com adiamento cancelado."
+      end)
     end
   end
 
@@ -994,6 +1075,66 @@ defmodule QuizProject.Priorities do
   defp do_sync_google_out(activity, :patch),
     do: QuizProject.GoogleCalendar.sync_out_update(activity)
 
+  @doc """
+  Logs de eventos do dia (fuso de Brasília), mais recente primeiro — base
+  da seção "Logs do dia" do Calendário (`QuizProjectWeb.KanbanLive.Calendar`).
+  """
+  def list_activity_logs_for_date(%{id: user_id}, date) do
+    ActivityLog
+    |> Ash.Query.filter(user_id == ^user_id and logical_date == ^date)
+    |> Ash.Query.sort(inserted_at: :desc)
+    |> Ash.read!(authorize?: false)
+  end
+
+  @doc """
+  Histórico completo de uma atividade específica (todos os dias), mais
+  recente primeiro — botão "Histórico" do `ActivityModal`. Sem checagem de
+  dono própria: quem chama já resolveu a atividade via `get_activity/2`,
+  mesma convenção de `list_activity_tasks/1`.
+  """
+  def list_activity_logs(activity_id) do
+    ActivityLog
+    |> Ash.Query.filter(activity_id == ^activity_id)
+    |> Ash.Query.sort(inserted_at: :desc)
+    |> Ash.read!(authorize?: false)
+  end
+
+  # Grava um log de histórico depois de uma mutação de negócio bem-sucedida,
+  # sem alterar o resultado que segue no pipe — mesmo padrão de
+  # `sync_google_out/2`. `message_fn` recebe a atividade já atualizada e
+  # devolve a frase pronta pra exibir, ou `nil` pra pular (ex: instância de
+  # hábito gerada automaticamente, que não vira log).
+  defp log_activity_result({:ok, %Activity{} = activity} = result, message_fn) do
+    case message_fn.(activity) do
+      nil -> :ok
+      message -> log_activity_event(activity, message)
+    end
+
+    result
+  end
+
+  defp log_activity_result(result, _message_fn), do: result
+
+  # Mesma ideia de `log_activity_result/2`, pra mutação de `ActivityTask`
+  # (checklist) — o resultado ali é o subitem, não a atividade, então quem
+  # chama passa a atividade dona e a mensagem já pronta.
+  defp log_task_event({:ok, _task} = result, %Activity{} = activity, message) do
+    log_activity_event(activity, message)
+    result
+  end
+
+  defp log_task_event(result, _activity, _message), do: result
+
+  defp log_activity_event(%Activity{} = activity, message) do
+    ActivityLog
+    |> Ash.Changeset.for_create(
+      :create,
+      %{user_id: activity.user_id, activity_id: activity.id, message: message},
+      authorize?: false
+    )
+    |> Ash.create()
+  end
+
   @doc "Limpa `snoozed_until` de atividades cujo adiamento já venceu — chamado no mount da Tela do dia, mesma lógica de auto-limpeza de `close_overdue_habit_instances/2`."
   def clear_expired_snoozes(%{id: user_id}) do
     today = Clock.today()
@@ -1028,20 +1169,33 @@ defmodule QuizProject.Priorities do
         authorize?: false
       )
       |> Ash.create()
+      |> log_task_event(activity, "Checklist \"#{title}\" adicionado em \"#{activity.title}\".")
     end
   end
 
   def toggle_activity_task(task, activity, actor) do
     with :ok <- authorize_owner(activity, actor) do
+      done? = !task.done
+
+      message =
+        if done?,
+          do: "Checklist \"#{task.title}\" concluído em \"#{activity.title}\".",
+          else: "Checklist \"#{task.title}\" reaberto em \"#{activity.title}\"."
+
       task
-      |> Ash.Changeset.for_update(:update, %{done: !task.done}, authorize?: false)
+      |> Ash.Changeset.for_update(:update, %{done: done?}, authorize?: false)
       |> Ash.update()
+      |> log_task_event(activity, message)
     end
   end
 
   def delete_activity_task(task, activity, actor) do
     with :ok <- authorize_owner(activity, actor) do
       Ash.destroy(task, authorize?: false, return_destroyed?: true)
+      |> log_task_event(
+        activity,
+        "Checklist \"#{task.title}\" removido de \"#{activity.title}\"."
+      )
     end
   end
 

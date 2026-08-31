@@ -638,6 +638,34 @@ defmodule QuizProjectWeb.KanbanLiveTest do
       assert Priorities.list_activity_tasks(act.id) == []
     end
 
+    test "aba Histórico mostra os logs da atividade, separada da aba Detalhes", %{
+      conn: conn,
+      user: user
+    } do
+      item = manual_item(user, category(user), "Projeto")
+      act = activity(user, item, "Escrever spec")
+
+      {:ok, view, _html} = live(conn, ~p"/today")
+      render_click(view, "open_activity", %{"id" => act.id})
+
+      refute has_element?(view, "#activity-logs")
+      assert has_element?(view, "#update-activity-form")
+
+      view
+      |> element("button[phx-click='switch_tab'][phx-value-tab='historico']")
+      |> render_click()
+
+      assert has_element?(view, "#activity-logs", "Atividade \"Escrever spec\" criada.")
+      refute has_element?(view, "#update-activity-form")
+
+      view
+      |> element("button[phx-click='switch_tab'][phx-value-tab='detalhes']")
+      |> render_click()
+
+      assert has_element?(view, "#update-activity-form")
+      refute has_element?(view, "#activity-logs")
+    end
+
     test "close_activity_modal fecha o modal", %{conn: conn, user: user} do
       item = manual_item(user, category(user), "Projeto")
       act = activity(user, item, "Escrever spec")

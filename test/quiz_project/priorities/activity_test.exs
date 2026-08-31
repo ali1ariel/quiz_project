@@ -545,6 +545,207 @@ defmodule QuizProject.Priorities.ActivityTest do
     end
   end
 
+  describe "histórico (logs)" do
+    defp messages(user, date \\ Date.utc_today()) do
+      user |> Priorities.list_activity_logs_for_date(date) |> Enum.map(& &1.message)
+    end
+
+    test "criar atividade solta registra log de criação", %{user: user} do
+      {:ok, _activity} = Priorities.create_activity(user, %{title: "Ler capítulo 1"})
+
+      assert messages(user) == ["Atividade \"Ler capítulo 1\" criada."]
+    end
+
+    test "criar evento registra log com rótulo de evento", %{user: user} do
+      {:ok, _activity} =
+        Priorities.create_activity(user, %{title: "Reunião", kind: :evento})
+
+      assert messages(user) == ["Evento \"Reunião\" criado."]
+    end
+
+    test "instância de hábito gerada automaticamente não vira log", %{user: user} do
+      item = manual_item(user, category(user))
+      {:ok, habit} = Priorities.create_habit(user, %{title: "Beber água", item_id: item.id})
+
+      :ok = Priorities.ensure_today_habit_instance(habit, user)
+
+      assert messages(user) == []
+    end
+
+    test "transições de flow e resolução registram log com o título atual", %{user: user} do
+      item = manual_item(user, category(user))
+      {:ok, activity} = Priorities.create_activity(user, %{title: "Estudar", item_id: item.id})
+
+      {:ok, activity} = Priorities.start_activity(activity, user)
+      {:ok, activity} = Priorities.back_to_todo_activity(activity, user)
+      {:ok, activity} = Priorities.start_activity(activity, user)
+      {:ok, activity} = Priorities.complete_activity(activity, user)
+      {:ok, activity} = Priorities.reopen_activity(activity, user)
+      {:ok, activity} = Priorities.mark_activity_not_done(activity, user)
+      {:ok, activity} = Priorities.reopen_activity(activity, user)
+      {:ok, _activity} = Priorities.discard_activity(activity, user)
+
+      assert messages(user) == [
+               "Atividade \"Estudar\" descartada.",
+               "Atividade \"Estudar\" reaberta.",
+               "Atividade \"Estudar\" marcada como não cumprida.",
+               "Atividade \"Estudar\" reaberta.",
+               "Atividade \"Estudar\" concluída.",
+               "Atividade \"Estudar\" movida para Fazendo.",
+               "Atividade \"Estudar\" movida para A fazer.",
+               "Atividade \"Estudar\" movida para Fazendo.",
+               "Atividade \"Estudar\" criada."
+             ]
+    end
+
+    test "anexar captura solta a uma prioridade registra log com o nome da prioridade", %{
+      user: user
+    } do
+      item = manual_item(user, category(user), "Projeto X")
+      {:ok, activity} = Priorities.create_activity(user, %{title: "Captura"})
+
+      {:ok, _activity} = Priorities.assign_activity_to_item(activity, item, user)
+
+      assert "Atividade \"Captura\" anexada à prioridade \"Projeto X\"." in messages(user)
+    end
+
+    test "adiar e cancelar adiamento registram log", %{user: user} do
+      item = manual_item(user, category(user))
+      {:ok, activity} = Priorities.create_activity(user, %{title: "Tarefa", item_id: item.id})
+      until = Date.add(Date.utc_today(), 3)
+
+      {:ok, activity} = Priorities.snooze_activity(activity, until, user)
+      {:ok, _activity} = Priorities.clear_activity_snooze(activity, user)
+
+      data_formatada = Calendar.strftime(until, "%d/%m/%Y")
+
+      assert messages(user) == [
+               "Atividade \"Tarefa\" com adiamento cancelado.",
+               "Atividade \"Tarefa\" adiada até #{data_formatada}.",
+               "Atividade \"Tarefa\" criada."
+             ]
+    end
+
+    test "reagendar evento registra log com a nova data", %{user: user} do
+      {:ok, activity} = Priorities.create_activity(user, %{title: "Reunião", kind: :evento})
+      nova_data = Date.add(Date.utc_today(), 7)
+
+      {:ok, _activity} = Priorities.reschedule_activity(activity, nova_data, user)
+
+      data_formatada = Calendar.strftime(nova_data, "%d/%m/%Y")
+      assert "Evento \"Reunião\" reagendado para #{data_formatada}." in messages(user)
+    end
+
+    test "corrigir desfecho registra log", %{user: user} do
+      {:ok, activity} = Priorities.create_activity(user, %{title: "Tarefa"})
+      {:ok, activity} = Priorities.complete_activity(activity, user)
+
+      {:ok, _activity} = Priorities.correct_activity_status(activity, :nao_cumprida, user)
+
+      assert "Desfecho de \"Tarefa\" corrigido para não cumprida." in messages(user)
+    end
+
+    test "checklist registra criação, conclusão/reabertura e remoção", %{user: user} do
+      {:ok, activity} = Priorities.create_activity(user, %{title: "Organizar mudança"})
+      {:ok, task} = Priorities.create_activity_task(activity, "Separar caixas", user)
+
+      {:ok, task} = Priorities.toggle_activity_task(task, activity, user)
+      {:ok, task} = Priorities.toggle_activity_task(task, activity, user)
+      {:ok, _} = Priorities.delete_activity_task(task, activity, user)
+
+      assert messages(user) == [
+               "Checklist \"Separar caixas\" removido de \"Organizar mudança\".",
+               "Checklist \"Separar caixas\" reaberto em \"Organizar mudança\".",
+               "Checklist \"Separar caixas\" concluído em \"Organizar mudança\".",
+               "Checklist \"Separar caixas\" adicionado em \"Organizar mudança\".",
+               "Atividade \"Organizar mudança\" criada."
+             ]
+    end
+
+    test "list_activity_logs_for_date só traz logs do dono, na data pedida", %{
+      user: user,
+      other: other
+    } do
+      {:ok, _} = Priorities.create_activity(user, %{title: "Minha"})
+      {:ok, _} = Priorities.create_activity(other, %{title: "Alheia"})
+
+      assert messages(user) == ["Atividade \"Minha\" criada."]
+      assert messages(other) == ["Atividade \"Alheia\" criada."]
+      assert Priorities.list_activity_logs_for_date(user, Date.add(Date.utc_today(), -1)) == []
+    end
+
+    test "adicionar, mudar e remover a descrição cada um registra seu próprio log", %{
+      user: user
+    } do
+      {:ok, activity} = Priorities.create_activity(user, %{title: "Tarefa"})
+
+      {:ok, activity} =
+        Priorities.update_activity(
+          activity,
+          %{title: "Tarefa", notes: "Primeira descrição"},
+          user
+        )
+
+      {:ok, activity} =
+        Priorities.update_activity(activity, %{title: "Tarefa", notes: "Segunda descrição"}, user)
+
+      {:ok, _activity} = Priorities.update_activity(activity, %{title: "Tarefa", notes: ""}, user)
+
+      assert messages(user) == [
+               "Descrição de \"Tarefa\" removida.",
+               "Descrição de \"Tarefa\" atualizada.",
+               "Descrição adicionada em \"Tarefa\".",
+               "Atividade \"Tarefa\" criada."
+             ]
+    end
+
+    test "renomear e mudar o prazo máximo também registram log", %{user: user} do
+      {:ok, activity} = Priorities.create_activity(user, %{title: "Original"})
+      prazo = Date.add(Date.utc_today(), 5)
+
+      {:ok, activity} =
+        Priorities.update_activity(activity, %{title: "Renomeada", max_deadline: prazo}, user)
+
+      {:ok, _activity} =
+        Priorities.update_activity(activity, %{title: "Renomeada", max_deadline: nil}, user)
+
+      data_formatada = Calendar.strftime(prazo, "%d/%m/%Y")
+
+      assert messages(user) == [
+               "Prazo máximo de \"Renomeada\" removido.",
+               "Prazo máximo de \"Renomeada\" definido para #{data_formatada}.",
+               "Atividade \"Original\" renomeada para \"Renomeada\".",
+               "Atividade \"Original\" criada."
+             ]
+    end
+
+    test "salvar sem mudar nada não gera log extra", %{user: user} do
+      {:ok, activity} = Priorities.create_activity(user, %{title: "Estável", notes: "Igual"})
+
+      {:ok, _activity} =
+        Priorities.update_activity(activity, %{title: "Estável", notes: "Igual"}, user)
+
+      assert messages(user) == ["Atividade \"Estável\" criada."]
+    end
+
+    test "list_activity_logs traz o histórico completo de uma atividade, em qualquer dia", %{
+      user: user
+    } do
+      {:ok, activity} = Priorities.create_activity(user, %{title: "Ler"})
+      {:ok, outra} = Priorities.create_activity(user, %{title: "Outra"})
+      {:ok, _} = Priorities.update_activity(activity, %{title: "Ler", notes: "Capítulo 1"}, user)
+
+      logs = Priorities.list_activity_logs(activity.id)
+
+      assert Enum.map(logs, & &1.message) == [
+               "Descrição adicionada em \"Ler\".",
+               "Atividade \"Ler\" criada."
+             ]
+
+      refute Enum.any?(logs, &(&1.activity_id == outra.id))
+    end
+  end
+
   describe "sincronização com Google Calendar" do
     test "list_pending_activities_from só traz eventos pendentes, nunca tarefas comuns", %{
       user: user

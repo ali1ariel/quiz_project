@@ -21,7 +21,18 @@ defmodule QuizProjectWeb.ActivityModal do
      socket
      |> assign(assigns)
      |> assign_new(:habit_frequency_form_value, fn -> nil end)
+     |> assign_new(:active_tab, fn -> :detalhes end)
      |> load_activity(assigns.activity_id)}
+  end
+
+  @impl true
+  def handle_event("switch_tab", %{"tab" => "historico"}, socket) do
+    {:noreply, assign(socket, active_tab: :historico)}
+  end
+
+  @impl true
+  def handle_event("switch_tab", %{"tab" => _tab}, socket) do
+    {:noreply, assign(socket, active_tab: :detalhes)}
   end
 
   @impl true
@@ -189,8 +200,17 @@ defmodule QuizProjectWeb.ActivityModal do
     assign(socket,
       activity: activity,
       tasks: Priorities.list_activity_tasks(activity.id),
+      activity_logs: Priorities.list_activity_logs(activity.id),
       habit_streak: if(activity.habit_id, do: Priorities.habit_streak(activity.habit_id))
     )
+  end
+
+  # `Clock`/`inserted_at` gravam em UTC — mesmo deslocamento fixo de
+  # Brasília (ver `QuizProject.Priorities.Clock`) só pra exibir a hora.
+  # Mostra a data também: diferente do Calendário (que já sabe o dia por
+  # estar dentro dele), este histórico cruza vários dias.
+  defp local_datetime(datetime) do
+    datetime |> DateTime.add(-3, :hour) |> Calendar.strftime("%d/%m %H:%M:%S")
   end
 
   @impl true
@@ -211,108 +231,159 @@ defmodule QuizProjectWeb.ActivityModal do
             </button>
           </div>
 
-          <div class="flex-1 space-y-6 overflow-y-auto p-6">
-            <form
-              id="update-activity-form"
-              phx-submit="update_activity"
+          <div class="flex shrink-0 gap-4 border-b border-base-300 px-6">
+            <button
+              type="button"
+              phx-click="switch_tab"
+              phx-value-tab="detalhes"
               phx-target={@myself}
-              class="space-y-3"
+              class={[
+                "-mb-px border-b-2 px-1 py-2.5 text-sm font-semibold transition",
+                if(@active_tab == :detalhes,
+                  do: "border-primary text-primary",
+                  else: "border-transparent opacity-60 hover:opacity-100"
+                )
+              ]}
             >
-              <.input type="text" name="title" label="Título" value={@activity.title} required />
-              <.input
-                type="textarea"
-                name="notes"
-                label="Descrição (opcional)"
-                value={@activity.notes}
-                rows="3"
-                placeholder="Mais contexto sobre essa atividade..."
-              />
-              <.input
-                type="date"
-                name="max_deadline"
-                label="Prazo máximo"
-                value={@activity.max_deadline}
-              />
-              <div class="flex justify-end">
-                <button type="submit" class="btn btn-primary btn-sm rounded-full px-5">
-                  Salvar
-                </button>
-              </div>
-            </form>
+              Detalhes
+            </button>
+            <button
+              type="button"
+              phx-click="switch_tab"
+              phx-value-tab="historico"
+              phx-target={@myself}
+              class={[
+                "-mb-px border-b-2 px-1 py-2.5 text-sm font-semibold transition",
+                if(@active_tab == :historico,
+                  do: "border-primary text-primary",
+                  else: "border-transparent opacity-60 hover:opacity-100"
+                )
+              ]}
+            >
+              Histórico
+            </button>
+          </div>
 
-            <div :if={@activity.habit_id} class="border-t border-base-200 pt-4">
-              <Components.habit_section
-                habit={@activity.habit}
-                myself={@myself}
-                habit_streak={@habit_streak}
-                habit_frequency_form_value={@habit_frequency_form_value}
-                occurrence_date={@activity.logical_date}
-              />
-            </div>
-
-            <div class="space-y-3 border-t border-base-200 pt-4">
-              <h2 class="text-sm font-bold uppercase tracking-wide opacity-60">Checklist</h2>
-
-              <ul :if={@tasks != []} class="space-y-1">
-                <li :for={task <- @tasks} class="group flex items-center gap-2">
-                  <button
-                    id={"toggle-activity-task-#{task.id}"}
-                    phx-click="toggle_task"
-                    phx-value-id={task.id}
-                    phx-target={@myself}
-                    class="flex flex-1 items-center gap-2 text-left text-sm"
-                  >
-                    <.icon
-                      :if={task.done}
-                      name="hero-check-circle-solid"
-                      class="size-4 shrink-0 text-primary"
-                    />
-                    <span
-                      :if={!task.done}
-                      class="size-4 shrink-0 rounded-full border-2 border-base-content/40"
-                    />
-                    <span class={task.done && "opacity-50 line-through"}>{task.title}</span>
-                  </button>
-                  <button
-                    id={"delete-activity-task-#{task.id}"}
-                    phx-click="delete_task"
-                    phx-value-id={task.id}
-                    phx-target={@myself}
-                    class="shrink-0 opacity-0 transition group-hover:opacity-50 hover:opacity-100!"
-                    aria-label="Excluir subitem"
-                    title="Excluir subitem"
-                  >
-                    <.icon name="hero-x-mark" class="size-3.5" />
-                  </button>
-                </li>
-              </ul>
-
-              <p :if={@tasks == []} class="text-xs opacity-60">Nenhum subitem ainda.</p>
-
+          <div class="flex-1 overflow-y-auto p-6">
+            <div :if={@active_tab == :detalhes} class="space-y-6">
               <form
-                id="create-activity-task-form"
-                phx-submit="create_task"
+                id="update-activity-form"
+                phx-submit="update_activity"
                 phx-target={@myself}
-                class="flex items-end gap-2"
+                class="space-y-3"
               >
-                <div class="flex-1">
-                  <.input
-                    type="text"
-                    name="title"
-                    label="Novo subitem"
-                    value=""
-                    placeholder="Ex: Separar os materiais"
-                  />
-                </div>
-                <div class="fieldset mb-2">
-                  <label>
-                    <span class="label mb-1 invisible">Adicionar</span>
-                    <button type="submit" class="btn btn-soft btn-sm rounded-full px-4">
-                      Adicionar
-                    </button>
-                  </label>
+                <.input type="text" name="title" label="Título" value={@activity.title} required />
+                <.input
+                  type="textarea"
+                  name="notes"
+                  label="Descrição (opcional)"
+                  value={@activity.notes}
+                  rows="3"
+                  placeholder="Mais contexto sobre essa atividade..."
+                />
+                <.input
+                  type="date"
+                  name="max_deadline"
+                  label="Prazo máximo"
+                  value={@activity.max_deadline}
+                />
+                <div class="flex justify-end">
+                  <button type="submit" class="btn btn-primary btn-sm rounded-full px-5">
+                    Salvar
+                  </button>
                 </div>
               </form>
+
+              <div :if={@activity.habit_id} class="border-t border-base-200 pt-4">
+                <Components.habit_section
+                  habit={@activity.habit}
+                  myself={@myself}
+                  habit_streak={@habit_streak}
+                  habit_frequency_form_value={@habit_frequency_form_value}
+                  occurrence_date={@activity.logical_date}
+                />
+              </div>
+
+              <div class="space-y-3 border-t border-base-200 pt-4">
+                <h2 class="text-sm font-bold uppercase tracking-wide opacity-60">Checklist</h2>
+
+                <ul :if={@tasks != []} class="space-y-1">
+                  <li :for={task <- @tasks} class="group flex items-center gap-2">
+                    <button
+                      id={"toggle-activity-task-#{task.id}"}
+                      phx-click="toggle_task"
+                      phx-value-id={task.id}
+                      phx-target={@myself}
+                      class="flex flex-1 items-center gap-2 text-left text-sm"
+                    >
+                      <.icon
+                        :if={task.done}
+                        name="hero-check-circle-solid"
+                        class="size-4 shrink-0 text-primary"
+                      />
+                      <span
+                        :if={!task.done}
+                        class="size-4 shrink-0 rounded-full border-2 border-base-content/40"
+                      />
+                      <span class={task.done && "opacity-50 line-through"}>{task.title}</span>
+                    </button>
+                    <button
+                      id={"delete-activity-task-#{task.id}"}
+                      phx-click="delete_task"
+                      phx-value-id={task.id}
+                      phx-target={@myself}
+                      class="shrink-0 opacity-0 transition group-hover:opacity-50 hover:opacity-100!"
+                      aria-label="Excluir subitem"
+                      title="Excluir subitem"
+                    >
+                      <.icon name="hero-x-mark" class="size-3.5" />
+                    </button>
+                  </li>
+                </ul>
+
+                <p :if={@tasks == []} class="text-xs opacity-60">Nenhum subitem ainda.</p>
+
+                <form
+                  id="create-activity-task-form"
+                  phx-submit="create_task"
+                  phx-target={@myself}
+                  class="flex items-end gap-2"
+                >
+                  <div class="flex-1">
+                    <.input
+                      type="text"
+                      name="title"
+                      label="Novo subitem"
+                      value=""
+                      placeholder="Ex: Separar os materiais"
+                    />
+                  </div>
+                  <div class="fieldset mb-2">
+                    <label>
+                      <span class="label mb-1 invisible">Adicionar</span>
+                      <button type="submit" class="btn btn-soft btn-sm rounded-full px-4">
+                        Adicionar
+                      </button>
+                    </label>
+                  </div>
+                </form>
+              </div>
+            </div>
+
+            <div :if={@active_tab == :historico} id="activity-logs">
+              <p :if={@activity_logs == []} class="text-sm opacity-60">
+                Nenhum evento registrado ainda.
+              </p>
+
+              <ul :if={@activity_logs != []} class="space-y-2">
+                <li :for={log <- @activity_logs} class="flex items-baseline gap-2 text-sm">
+                  <span class="shrink-0 opacity-40">•</span>
+                  <span class="shrink-0 font-mono text-xs opacity-50">
+                    {local_datetime(log.inserted_at)}
+                  </span>
+                  <span class="opacity-90">{log.message}</span>
+                </li>
+              </ul>
             </div>
           </div>
         </div>
