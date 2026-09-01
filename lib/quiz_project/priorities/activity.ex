@@ -31,6 +31,8 @@ defmodule QuizProject.Priorities.Activity do
       reference :item, on_delete: :nilify, on_update: :update
       reference :habit, on_delete: :nilify, on_update: :update
     end
+
+    identity_wheres_to_sql unique_task_per_day: "kind = 'tarefa'"
   end
 
   actions do
@@ -355,5 +357,13 @@ defmodule QuizProject.Priorities.Activity do
 
   identities do
     identity :unique_google_event_id, [:google_event_id]
+
+    # Rede de segurança contra duplo-submit (ver `phx-disable-with` nos forms
+    # de criação) — só cobre `:tarefa` porque evento/captura solta pode ter o
+    # mesmo título repetido de propósito no mesmo dia (ex: duas reuniões
+    # "Reunião"), então essa constraint restringiria um uso legítimo lá.
+    identity :unique_task_per_day, [:user_id, :item_id, :habit_id, :title, :logical_date],
+      where: expr(kind == :tarefa),
+      nils_distinct?: false
   end
 end

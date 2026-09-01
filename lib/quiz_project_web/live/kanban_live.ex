@@ -491,6 +491,7 @@ defmodule QuizProjectWeb.KanbanLive do
                 <button
                   type="submit"
                   class="btn btn-primary rounded-full px-[1.4rem] py-[0.8rem] text-[0.9rem]"
+                  phx-disable-with="Registrando..."
                 >
                   {cond do
                     @capture_type == "habito" -> "Criar hábito"

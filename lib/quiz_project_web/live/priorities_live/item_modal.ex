@@ -1074,7 +1074,11 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
             <div class="fieldset mb-2">
               <label>
                 <span class="label mb-1 invisible">Adicionar</span>
-                <button type="submit" class="btn btn-primary btn-sm rounded-full px-4">
+                <button
+                  type="submit"
+                  class="btn btn-primary btn-sm rounded-full px-4"
+                  phx-disable-with="Adicionando..."
+                >
                   {cond do
                     @new_activity_type == "habito" -> "Criar hábito"
                     @new_activity_type == "evento" -> "Criar evento"
