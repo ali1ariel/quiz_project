@@ -5,6 +5,7 @@ defmodule QuizProject.PrioritiesTest do
   alias QuizProject.AdaptiveStudy
   alias QuizProject.Attempts
   alias QuizProject.Priorities
+  alias QuizProject.Priorities.Clock
   alias QuizProject.Quizzes
 
   setup do
@@ -1054,6 +1055,118 @@ defmodule QuizProject.PrioritiesTest do
     test "recusa ator que não é dono", %{user: user, other: other} do
       cat = category(user)
       assert {:error, :unauthorized} = Priorities.reposition_category(cat, 1, other)
+    end
+  end
+
+  describe "histórico (logs) de categoria e prioridade" do
+    defp messages(user, date \\ Clock.today()) do
+      user |> Priorities.list_history_logs_for_date(date) |> Enum.map(& &1.message)
+    end
+
+    test "criar categoria registra log, sem logar o item Geral que a acompanha", %{user: user} do
+      _cat = category(user, "Corpo")
+
+      assert messages(user) == ["Categoria \"Corpo\" criada."]
+    end
+
+    test "criar prioridade registra log", %{user: user} do
+      cat = category(user)
+      {:ok, _item} = Priorities.create_item(user, cat, %{item_type: :manual, title: "Academia"})
+
+      assert "Prioridade \"Academia\" criada." in messages(user)
+    end
+
+    test "renomear e mudar a descrição da prioridade registram log próprio por campo", %{
+      user: user
+    } do
+      item = manual_item(user, category(user), "Original")
+
+      {:ok, item} =
+        Priorities.update_item(item, %{title: "Renomeado", notes: "contexto"}, user)
+
+      {:ok, _item} = Priorities.update_item(item, %{title: "Renomeado", notes: ""}, user)
+
+      assert messages(user) == [
+               "Descrição de \"Renomeado\" removida.",
+               "Descrição adicionada em \"Renomeado\".",
+               "Prioridade \"Original\" renomeada para \"Renomeado\".",
+               "Prioridade \"Original\" criada.",
+               "Categoria \"Categoria\" criada."
+             ]
+    end
+
+    test "arquivar, desarquivar e excluir a prioridade registram log", %{user: user} do
+      item = manual_item(user, category(user), "Academia")
+
+      {:ok, item} = Priorities.archive_item(item, user)
+      {:ok, item} = Priorities.unarchive_item(item, user)
+      {:ok, _} = Priorities.delete_item(item, user)
+
+      assert [
+               "Prioridade \"Academia\" excluída.",
+               "Prioridade \"Academia\" desarquivada.",
+               "Prioridade \"Academia\" arquivada."
+               | _resto
+             ] = messages(user)
+    end
+
+    test "mudar de tipo e definir tier registram log", %{user: user} do
+      item = manual_item(user, category(user), "Curso de Elixir")
+
+      {:ok, item} = Priorities.change_item_type(item, %{item_type: :course}, user)
+
+      {:ok, _item} = Priorities.set_tier(item, :S, user)
+
+      assert "Prioridade \"Curso de Elixir\" mudou de Manual para Curso." in messages(user)
+      assert "Prioridade \"Curso de Elixir\" recebeu tier S." in messages(user)
+    end
+
+    test "tag e categoria secundária registram log", %{user: user} do
+      primaria = category(user, "Primária")
+      secundaria = category(user, "Secundária")
+      item = manual_item(user, primaria, "Item")
+      {:ok, tag} = Priorities.find_or_create_tag(user, "importante")
+
+      {:ok, item} = Priorities.add_tag_to_item(item, tag, user)
+      {:ok, item} = Priorities.remove_tag_from_item(item, tag, user)
+      {:ok, item} = Priorities.add_secondary_category(item, secundaria, user)
+      {:ok, _item} = Priorities.remove_secondary_category(item, secundaria, user)
+
+      assert "Tag \"importante\" adicionada em \"Item\"." in messages(user)
+      assert "Tag \"importante\" removida de \"Item\"." in messages(user)
+      assert "Prioridade \"Item\" também anexada à categoria \"Secundária\"." in messages(user)
+      assert "Prioridade \"Item\" desanexada da categoria \"Secundária\"." in messages(user)
+    end
+
+    test "checklist da prioridade registra criação e conclusão/reabertura", %{user: user} do
+      item = manual_item(user, category(user), "Organizar mudança")
+      {:ok, task} = Priorities.create_task(item, "Separar caixas", user)
+
+      {:ok, task} = Priorities.toggle_task(task, item, user)
+      {:ok, _task} = Priorities.toggle_task(task, item, user)
+
+      assert messages(user) == [
+               "Checklist \"Separar caixas\" reaberto em \"Organizar mudança\".",
+               "Checklist \"Separar caixas\" concluído em \"Organizar mudança\".",
+               "Checklist \"Separar caixas\" adicionado em \"Organizar mudança\".",
+               "Prioridade \"Organizar mudança\" criada.",
+               "Categoria \"Categoria\" criada."
+             ]
+    end
+
+    test "logs de atividade, categoria e prioridade convivem no mesmo dia, só do dono", %{
+      user: user,
+      other: other
+    } do
+      cat = category(user)
+      item = manual_item(user, cat, "Item")
+      {:ok, _activity} = Priorities.create_activity(user, %{title: "Tarefa", item_id: item.id})
+      {:ok, _} = Priorities.create_category(other, %{name: "Alheia"})
+
+      assert "Categoria \"Categoria\" criada." in messages(user)
+      assert "Prioridade \"Item\" criada." in messages(user)
+      assert "Atividade \"Tarefa\" criada." in messages(user)
+      refute "Categoria \"Alheia\" criada." in messages(user)
     end
   end
 end

@@ -32,7 +32,7 @@
           "global": null,
           "strategy": null
         },
-        "name": "priority_activity_logs_user_id_fkey",
+        "name": "priority_history_logs_user_id_fkey",
         "on_delete": "delete",
         "on_update": "update",
         "primary_key?": true,
@@ -45,7 +45,7 @@
       "type": "uuid"
     },
     {
-      "allow_nil?": false,
+      "allow_nil?": true,
       "default": "nil",
       "generated?": false,
       "precision": null,
@@ -64,8 +64,8 @@
           "global": null,
           "strategy": null
         },
-        "name": "priority_activity_logs_activity_id_fkey",
-        "on_delete": "delete",
+        "name": "priority_history_logs_activity_id_fkey",
+        "on_delete": "nilify",
         "on_update": "update",
         "primary_key?": true,
         "schema": "public",
@@ -74,6 +74,70 @@
       "scale": null,
       "size": null,
       "source": "activity_id",
+      "type": "uuid"
+    },
+    {
+      "allow_nil?": true,
+      "default": "nil",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": {
+        "deferrable": false,
+        "destination_attribute": "id",
+        "destination_attribute_default": null,
+        "destination_attribute_generated": null,
+        "index?": false,
+        "index_where": null,
+        "match_type": null,
+        "match_with": null,
+        "multitenancy": {
+          "attribute": null,
+          "global": null,
+          "strategy": null
+        },
+        "name": "priority_history_logs_category_id_fkey",
+        "on_delete": "nilify",
+        "on_update": "update",
+        "primary_key?": true,
+        "schema": "public",
+        "table": "priority_categories"
+      },
+      "scale": null,
+      "size": null,
+      "source": "category_id",
+      "type": "uuid"
+    },
+    {
+      "allow_nil?": true,
+      "default": "nil",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": {
+        "deferrable": false,
+        "destination_attribute": "id",
+        "destination_attribute_default": null,
+        "destination_attribute_generated": null,
+        "index?": false,
+        "index_where": null,
+        "match_type": null,
+        "match_with": null,
+        "multitenancy": {
+          "attribute": null,
+          "global": null,
+          "strategy": null
+        },
+        "name": "priority_history_logs_item_id_fkey",
+        "on_delete": "nilify",
+        "on_update": "update",
+        "primary_key?": true,
+        "schema": "public",
+        "table": "priority_items"
+      },
+      "scale": null,
+      "size": null,
+      "source": "item_id",
       "type": "uuid"
     },
     {
@@ -131,7 +195,7 @@
   "custom_indexes": [],
   "custom_statements": [],
   "has_create_action": true,
-  "hash": "280F234E3ED1932501B4F5BA255F97E15EBFB4493EC510F175820FF5F1393D10",
+  "hash": "E70CFD3A7A6C75CF72C16422C98FB33E684E43F279F462FF4026AB6386796C38",
   "identities": [],
   "multitenancy": {
     "attribute": null,
@@ -140,5 +204,5 @@
   },
   "repo": "Elixir.QuizProject.Repo",
   "schema": null,
-  "table": "priority_activity_logs"
+  "table": "priority_history_logs"
 }

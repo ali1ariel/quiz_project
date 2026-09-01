@@ -3,6 +3,7 @@ defmodule QuizProject.Priorities.ActivityTest do
 
   alias QuizProject.Accounts
   alias QuizProject.Priorities
+  alias QuizProject.Priorities.Clock
 
   setup do
     {:ok, user} =
@@ -546,8 +547,15 @@ defmodule QuizProject.Priorities.ActivityTest do
   end
 
   describe "histórico (logs)" do
-    defp messages(user, date \\ Date.utc_today()) do
-      user |> Priorities.list_activity_logs_for_date(date) |> Enum.map(& &1.message)
+    defp messages(user, date \\ Clock.today()) do
+      user |> Priorities.list_history_logs_for_date(date) |> Enum.map(& &1.message)
+    end
+
+    # Igual a `messages/2`, mas escopado a uma atividade só — usado quando o
+    # teste também cria categoria/prioridade como fixture e não quer que o
+    # log delas (agora também registrado) apareça na asserção.
+    defp activity_messages(activity) do
+      activity.id |> Priorities.list_activity_logs() |> Enum.map(& &1.message)
     end
 
     test "criar atividade solta registra log de criação", %{user: user} do
@@ -567,9 +575,10 @@ defmodule QuizProject.Priorities.ActivityTest do
       item = manual_item(user, category(user))
       {:ok, habit} = Priorities.create_habit(user, %{title: "Beber água", item_id: item.id})
 
+      before = messages(user)
       :ok = Priorities.ensure_today_habit_instance(habit, user)
 
-      assert messages(user) == []
+      assert messages(user) == before
     end
 
     test "transições de flow e resolução registram log com o título atual", %{user: user} do
@@ -583,9 +592,9 @@ defmodule QuizProject.Priorities.ActivityTest do
       {:ok, activity} = Priorities.reopen_activity(activity, user)
       {:ok, activity} = Priorities.mark_activity_not_done(activity, user)
       {:ok, activity} = Priorities.reopen_activity(activity, user)
-      {:ok, _activity} = Priorities.discard_activity(activity, user)
+      {:ok, activity} = Priorities.discard_activity(activity, user)
 
-      assert messages(user) == [
+      assert activity_messages(activity) == [
                "Atividade \"Estudar\" descartada.",
                "Atividade \"Estudar\" reaberta.",
                "Atividade \"Estudar\" marcada como não cumprida.",
@@ -615,11 +624,11 @@ defmodule QuizProject.Priorities.ActivityTest do
       until = Date.add(Date.utc_today(), 3)
 
       {:ok, activity} = Priorities.snooze_activity(activity, until, user)
-      {:ok, _activity} = Priorities.clear_activity_snooze(activity, user)
+      {:ok, activity} = Priorities.clear_activity_snooze(activity, user)
 
       data_formatada = Calendar.strftime(until, "%d/%m/%Y")
 
-      assert messages(user) == [
+      assert activity_messages(activity) == [
                "Atividade \"Tarefa\" com adiamento cancelado.",
                "Atividade \"Tarefa\" adiada até #{data_formatada}.",
                "Atividade \"Tarefa\" criada."
@@ -662,7 +671,7 @@ defmodule QuizProject.Priorities.ActivityTest do
              ]
     end
 
-    test "list_activity_logs_for_date só traz logs do dono, na data pedida", %{
+    test "list_history_logs_for_date só traz logs do dono, na data pedida", %{
       user: user,
       other: other
     } do
@@ -671,7 +680,7 @@ defmodule QuizProject.Priorities.ActivityTest do
 
       assert messages(user) == ["Atividade \"Minha\" criada."]
       assert messages(other) == ["Atividade \"Alheia\" criada."]
-      assert Priorities.list_activity_logs_for_date(user, Date.add(Date.utc_today(), -1)) == []
+      assert Priorities.list_history_logs_for_date(user, Date.add(Clock.today(), -1)) == []
     end
 
     test "adicionar, mudar e remover a descrição cada um registra seu próprio log", %{

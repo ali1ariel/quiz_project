@@ -14,7 +14,6 @@ defmodule QuizProject.Priorities do
   alias QuizProject.AdaptiveStudy
   alias QuizProject.Attempts
   alias QuizProject.Priorities.Activity
-  alias QuizProject.Priorities.ActivityLog
   alias QuizProject.Priorities.ActivityTask
   alias QuizProject.Priorities.Category
   alias QuizProject.Priorities.Clock
@@ -23,6 +22,7 @@ defmodule QuizProject.Priorities do
   alias QuizProject.Priorities.Habit
   alias QuizProject.Priorities.HabitOverride
   alias QuizProject.Priorities.HabitRecurrence
+  alias QuizProject.Priorities.HistoryLog
   alias QuizProject.Priorities.Item
   alias QuizProject.Priorities.ItemCategory
   alias QuizProject.Priorities.ItemLink
@@ -40,8 +40,8 @@ defmodule QuizProject.Priorities do
     resource FieldDefinition
     resource FieldValue
     resource Activity
-    resource ActivityLog
     resource ActivityTask
+    resource HistoryLog
     resource ItemLink
     resource Habit
     resource HabitOverride
@@ -77,6 +77,7 @@ defmodule QuizProject.Priorities do
            )
            |> Ash.create() do
       create_general_item(category)
+      log_category_event(category, "Categoria \"#{category.name}\" criada.")
       {:ok, category}
     end
   end
@@ -199,6 +200,7 @@ defmodule QuizProject.Priorities do
         authorize?: false
       )
       |> Ash.create()
+      |> log_item_result(fn item -> "Prioridade \"#{item.title}\" criada." end)
     end
   end
 
@@ -251,25 +253,55 @@ defmodule QuizProject.Priorities do
 
   def update_item(item, attrs, actor) do
     with :ok <- authorize_owner(item, actor) do
-      item |> Ash.Changeset.for_update(:update, attrs, authorize?: false) |> Ash.update()
+      item
+      |> Ash.Changeset.for_update(:update, attrs, authorize?: false)
+      |> Ash.update()
+      |> log_item_update(item)
     end
   end
 
+  # Mesma ideia de `log_activity_update/2`: `update_item/3` mexe em título e
+  # descrição num só submit, loga uma entrada por campo que de fato mudou.
+  defp log_item_update({:ok, %Item{} = new} = result, %Item{} = old) do
+    if old.title != new.title do
+      log_item_event(new, "Prioridade \"#{old.title}\" renomeada para \"#{new.title}\".")
+    end
+
+    if old.notes != new.notes do
+      log_item_event(new, describe_notes_change(new.title, old.notes, new.notes))
+    end
+
+    result
+  end
+
+  defp log_item_update(result, _old), do: result
+
   def archive_item(item, actor) do
     with :ok <- authorize_owner(item, actor) do
-      item |> Ash.Changeset.for_update(:archive, %{}, authorize?: false) |> Ash.update()
+      item
+      |> Ash.Changeset.for_update(:archive, %{}, authorize?: false)
+      |> Ash.update()
+      |> log_item_result(fn item -> "Prioridade \"#{item.title}\" arquivada." end)
     end
   end
 
   def unarchive_item(item, actor) do
     with :ok <- authorize_owner(item, actor) do
-      item |> Ash.Changeset.for_update(:unarchive, %{}, authorize?: false) |> Ash.update()
+      item
+      |> Ash.Changeset.for_update(:unarchive, %{}, authorize?: false)
+      |> Ash.update()
+      |> log_item_result(fn item -> "Prioridade \"#{item.title}\" desarquivada." end)
     end
   end
 
   @doc "Exclui o item definitivamente (não é reversível como arquivar/desarquivar)."
   def delete_item(item, actor) do
     with :ok <- authorize_owner(item, actor) do
+      # Loga antes de destruir: `item_id` do log é `on_delete: :nilify`, não
+      # `:delete` (o log sobrevive à entidade), mas inserir uma referência
+      # pra uma linha que já não existe mais violaria a FK — só dá pra
+      # apontar pro item enquanto ele ainda está de pé.
+      log_item_event(item, "Prioridade \"#{item.title}\" excluída.")
       Ash.destroy(item, authorize?: false, return_destroyed?: true)
     end
   end
@@ -287,11 +319,24 @@ defmodule QuizProject.Priorities do
   def change_item_type(item, attrs, actor) do
     with :ok <- authorize_owner(item, actor),
          :ok <- validate_cross_reference(attrs, actor) do
+      old_type = item.item_type
+
       item
       |> Ash.Changeset.for_update(:change_type, attrs, authorize?: false)
       |> Ash.update()
+      |> log_item_result(fn item ->
+        if item.item_type != old_type do
+          "Prioridade \"#{item.title}\" mudou de #{item_type_label(old_type)} para #{item_type_label(item.item_type)}."
+        end
+      end)
     end
   end
+
+  defp item_type_label(:book), do: "Livro"
+  defp item_type_label(:quiz_goal), do: "Meta de quiz"
+  defp item_type_label(:course), do: "Curso"
+  defp item_type_label(:checklist), do: "Checklist"
+  defp item_type_label(:manual), do: "Manual"
 
   def reposition_item(item, position, actor) do
     with :ok <- authorize_owner(item, actor) do
@@ -307,6 +352,12 @@ defmodule QuizProject.Priorities do
       item
       |> Ash.Changeset.for_update(:set_tier, %{tier: tier}, authorize?: false)
       |> Ash.update()
+      |> log_item_result(fn item ->
+        case item.tier do
+          nil -> "Prioridade \"#{item.title}\" perdeu o tier."
+          tier -> "Prioridade \"#{item.title}\" recebeu tier #{tier}."
+        end
+      end)
     end
   end
 
@@ -372,14 +423,23 @@ defmodule QuizProject.Priorities do
         authorize?: false
       )
       |> Ash.create()
+      |> log_item_task_event(item, "Checklist \"#{title}\" adicionado em \"#{item.title}\".")
     end
   end
 
   def toggle_task(task, item, actor) do
     with :ok <- authorize_owner(item, actor) do
+      done? = !task.done
+
+      message =
+        if done?,
+          do: "Checklist \"#{task.title}\" concluído em \"#{item.title}\".",
+          else: "Checklist \"#{task.title}\" reaberto em \"#{item.title}\"."
+
       task
-      |> Ash.Changeset.for_update(:update, %{done: !task.done}, authorize?: false)
+      |> Ash.Changeset.for_update(:update, %{done: done?}, authorize?: false)
       |> Ash.update()
+      |> log_item_task_event(item, message)
     end
   end
 
@@ -406,6 +466,7 @@ defmodule QuizProject.Priorities do
       item
       |> Ash.Changeset.for_update(:add_tag, %{tag_id: tag.id}, authorize?: false)
       |> Ash.update()
+      |> log_item_result(fn item -> "Tag \"#{tag.name}\" adicionada em \"#{item.title}\"." end)
     end
   end
 
@@ -414,6 +475,7 @@ defmodule QuizProject.Priorities do
       item
       |> Ash.Changeset.for_update(:remove_tag, %{tag_id: tag.id}, authorize?: false)
       |> Ash.update()
+      |> log_item_result(fn item -> "Tag \"#{tag.name}\" removida de \"#{item.title}\"." end)
     end
   end
 
@@ -428,6 +490,9 @@ defmodule QuizProject.Priorities do
         authorize?: false
       )
       |> Ash.update()
+      |> log_item_result(fn item ->
+        "Prioridade \"#{item.title}\" também anexada à categoria \"#{category.name}\"."
+      end)
     end
   end
 
@@ -441,6 +506,9 @@ defmodule QuizProject.Priorities do
         authorize?: false
       )
       |> Ash.update()
+      |> log_item_result(fn item ->
+        "Prioridade \"#{item.title}\" desanexada da categoria \"#{category.name}\"."
+      end)
     end
   end
 
@@ -1076,11 +1144,12 @@ defmodule QuizProject.Priorities do
     do: QuizProject.GoogleCalendar.sync_out_update(activity)
 
   @doc """
-  Logs de eventos do dia (fuso de Brasília), mais recente primeiro — base
-  da seção "Logs do dia" do Calendário (`QuizProjectWeb.KanbanLive.Calendar`).
+  Logs de eventos do dia (fuso de Brasília), de atividade, categoria ou
+  prioridade misturados, mais recente primeiro — base da seção "Logs do
+  dia" do Calendário (`QuizProjectWeb.KanbanLive.Calendar`).
   """
-  def list_activity_logs_for_date(%{id: user_id}, date) do
-    ActivityLog
+  def list_history_logs_for_date(%{id: user_id}, date) do
+    HistoryLog
     |> Ash.Query.filter(user_id == ^user_id and logical_date == ^date)
     |> Ash.Query.sort(inserted_at: :desc)
     |> Ash.read!(authorize?: false)
@@ -1093,9 +1162,39 @@ defmodule QuizProject.Priorities do
   mesma convenção de `list_activity_tasks/1`.
   """
   def list_activity_logs(activity_id) do
-    ActivityLog
+    HistoryLog
     |> Ash.Query.filter(activity_id == ^activity_id)
     |> Ash.Query.sort(inserted_at: :desc)
+    |> Ash.read!(authorize?: false)
+  end
+
+  @doc """
+  Histórico completo de uma prioridade específica (todos os dias), mais
+  recente primeiro — aba "Histórico" do `ItemModal`. Mesma convenção de
+  `list_activity_logs/1`: sem checagem de dono própria, quem chama já
+  resolveu o item via `get_item/2`.
+  """
+  def list_item_logs(item_id) do
+    HistoryLog
+    |> Ash.Query.filter(item_id == ^item_id)
+    |> Ash.Query.sort(inserted_at: :desc)
+    |> Ash.read!(authorize?: false)
+  end
+
+  @priorities_history_limit 200
+
+  @doc """
+  Histórico de todas as categorias e prioridades do usuário, mais recente
+  primeiro, limitado às últimas #{@priorities_history_limit} entradas —
+  página "Histórico" de Prioridades (`PrioritiesLive.History`). Exclui log
+  de atividade de propósito: esse já tem lugar próprio, a seção "Logs do
+  dia" do Calendário do Kanban.
+  """
+  def list_priorities_history(%{id: user_id}) do
+    HistoryLog
+    |> Ash.Query.filter(user_id == ^user_id and (not is_nil(category_id) or not is_nil(item_id)))
+    |> Ash.Query.sort(inserted_at: :desc)
+    |> Ash.Query.limit(@priorities_history_limit)
     |> Ash.read!(authorize?: false)
   end
 
@@ -1126,12 +1225,43 @@ defmodule QuizProject.Priorities do
   defp log_task_event(result, _activity, _message), do: result
 
   defp log_activity_event(%Activity{} = activity, message) do
-    ActivityLog
-    |> Ash.Changeset.for_create(
-      :create,
-      %{user_id: activity.user_id, activity_id: activity.id, message: message},
-      authorize?: false
-    )
+    create_history_log(%{user_id: activity.user_id, activity_id: activity.id, message: message})
+  end
+
+  # Mesmos três padrões acima (`log_activity_result/2`, `log_task_event/3`,
+  # `log_activity_event/2`), só que pra mutação de `Item` — "prioridade" na
+  # UI. Categoria tem uma única mutação logada (`create_category/2`), sem
+  # variações suficientes pra justificar um wrapper próprio: chama
+  # `log_category_event/2` direto.
+  defp log_item_result({:ok, %Item{} = item} = result, message_fn) do
+    case message_fn.(item) do
+      nil -> :ok
+      message -> log_item_event(item, message)
+    end
+
+    result
+  end
+
+  defp log_item_result(result, _message_fn), do: result
+
+  defp log_item_task_event({:ok, _task} = result, %Item{} = item, message) do
+    log_item_event(item, message)
+    result
+  end
+
+  defp log_item_task_event(result, _item, _message), do: result
+
+  defp log_item_event(%Item{} = item, message) do
+    create_history_log(%{user_id: item.user_id, item_id: item.id, message: message})
+  end
+
+  defp log_category_event(%Category{} = category, message) do
+    create_history_log(%{user_id: category.user_id, category_id: category.id, message: message})
+  end
+
+  defp create_history_log(attrs) do
+    HistoryLog
+    |> Ash.Changeset.for_create(:create, attrs, authorize?: false)
     |> Ash.create()
   end
 
