@@ -15,11 +15,13 @@ defmodule QuizProjectWeb.KanbanLive.Calendar do
   concluída/não cumprida sem tirá-la do dia em que está.
 
   "Logs do dia" é uma seção à parte, abaixo das atividades do dia: lista,
-  em ordem cronológica reversa, todo evento de histórico (`Priorities.ActivityLog`)
-  acontecido naquele dia — criação, mudança de coluna, checklist mexido,
-  etc. — independente de a atividade em si aparecer ou não na lista acima
-  (ex: uma atividade só criada hoje, ainda pendente, não aparece nas
-  atividades do dia, mas a criação dela aparece no log).
+  em ordem cronológica reversa, todo evento de histórico (`Priorities.HistoryLog`)
+  acontecido naquele dia — de atividade, categoria ou prioridade misturados
+  (criação, mudança de coluna, arquivamento, tag, checklist mexido, etc.) —
+  independente de a entidade em si aparecer ou não na lista de atividades
+  acima (ex: uma atividade só criada hoje, ainda pendente, não aparece nas
+  atividades do dia, mas a criação dela aparece no log; categoria e
+  prioridade nunca aparecem na lista de atividades, só no log).
   """
   use QuizProjectWeb, :live_view
 
@@ -81,7 +83,7 @@ defmodule QuizProjectWeb.KanbanLive.Calendar do
 
   defp load_logs(_user, nil), do: []
 
-  defp load_logs(user, date), do: Priorities.list_activity_logs_for_date(user, date)
+  defp load_logs(user, date), do: Priorities.list_history_logs_for_date(user, date)
 
   # `Clock`/`inserted_at` gravam em UTC — mesmo deslocamento fixo de
   # Brasília (ver `QuizProject.Priorities.Clock`) só pra exibir a hora.

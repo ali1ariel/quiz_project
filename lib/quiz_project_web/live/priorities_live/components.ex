@@ -549,7 +549,7 @@ defmodule QuizProjectWeb.PrioritiesLive.Components do
     """
   end
 
-  @doc "Sub-navegação entre as 4 telas de Prioridades, usada no topo de cada uma."
+  @doc "Sub-navegação entre as 5 telas de Prioridades, usada no topo de cada uma."
   attr :active, :atom, required: true
 
   def sub_nav(assigns) do
@@ -590,6 +590,15 @@ defmodule QuizProjectWeb.PrioritiesLive.Components do
         ]}
       >
         Arquivados
+      </.link>
+      <.link
+        navigate={~p"/priorities/history"}
+        class={[
+          "rounded-full px-4 py-1.5 transition [transform:translateZ(0)]",
+          tab_class(@active == :history)
+        ]}
+      >
+        Histórico
       </.link>
     </nav>
     """

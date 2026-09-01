@@ -170,6 +170,33 @@ defmodule QuizProjectWeb.PrioritiesLiveTest do
       assert reaberta.status == :pendente
     end
 
+    test "aba Histórico mostra os logs da prioridade, separada de Detalhes e Atividades", %{
+      conn: conn,
+      user: user
+    } do
+      cat = category(user)
+      item = manual_item(user, cat, "Projeto")
+      {:ok, view, _html} = live(conn, ~p"/priorities")
+
+      render_click(view, "open_item", %{"id" => item.id})
+      refute has_element?(view, "#item-logs")
+      assert has_element?(view, "#update-item-form")
+
+      view |> element("button[phx-value-tab=\"historico\"]") |> render_click()
+
+      assert has_element?(view, "#item-logs", "Prioridade \"Projeto\" criada.")
+      refute has_element?(view, "#update-item-form")
+
+      view |> element("button[phx-value-tab=\"details\"]") |> render_click()
+
+      view
+      |> element("#update-item-form")
+      |> render_submit(%{"title" => "Projeto", "notes" => "contexto"})
+
+      view |> element("button[phx-value-tab=\"historico\"]") |> render_click()
+      assert has_element?(view, "#item-logs", "Descrição adicionada em \"Projeto\".")
+    end
+
     test "aba Atividades com \"É um evento?\" marcado cria uma atividade do tipo evento com a data escolhida",
          %{conn: conn, user: user} do
       cat = category(user)
@@ -410,6 +437,76 @@ defmodule QuizProjectWeb.PrioritiesLiveTest do
 
       assert html =~ "Com tag"
       refute html =~ "Sem tag"
+    end
+  end
+
+  describe "History" do
+    test "vazio convida a explorar, sem erro", %{conn: conn} do
+      {:ok, _view, html} = live(conn, ~p"/priorities/history")
+
+      assert html =~ "Nada registrado ainda."
+    end
+
+    test "mostra logs de categoria e prioridade, na ordem certa, só do dono", %{
+      conn: conn,
+      user: user
+    } do
+      cat = category(user, "Corpo")
+      item = manual_item(user, cat, "Academia")
+      {:ok, _item} = Priorities.archive_item(item, user)
+
+      {:ok, other} =
+        QuizProject.Accounts.register_user(%{email: "outra@teste.com", password: "senha12345"},
+          authorize?: false
+        )
+
+      {:ok, _} = Priorities.create_category(other, %{name: "Alheia"})
+
+      {:ok, view, html} = live(conn, ~p"/priorities/history")
+
+      assert has_element?(view, "#priorities-history-days", "Prioridade \"Academia\" arquivada.")
+      assert has_element?(view, "#priorities-history-days", "Categoria \"Corpo\" criada.")
+      refute has_element?(view, "#priorities-history-days", "Categoria \"Alheia\" criada.")
+
+      # os três eventos do dono (categoria criada, prioridade criada,
+      # prioridade arquivada) caem todos no mesmo dia — só um acordeon.
+      document = LazyHTML.from_fragment(html)
+      days = LazyHTML.query(document, "#priorities-history-days > details")
+      assert Enum.count(days) == 1
+    end
+
+    test "cada dia é um acordeon minimizado por padrão, com a contagem de eventos", %{
+      conn: conn,
+      user: user
+    } do
+      cat = category(user)
+      _item = manual_item(user, cat, "Academia")
+
+      {:ok, view, _html} = live(conn, ~p"/priorities/history")
+
+      refute has_element?(view, "details[open]")
+      assert has_element?(view, "details.collapse")
+      # categoria criada + prioridade criada = 2 eventos no mesmo dia.
+      assert has_element?(view, "summary", "2")
+    end
+
+    test "não mostra log de atividade — esse fica só no Calendário do Kanban", %{
+      conn: conn,
+      user: user
+    } do
+      cat = category(user)
+      item = manual_item(user, cat)
+      {:ok, _activity} = Priorities.create_activity(user, %{title: "Tarefa", item_id: item.id})
+
+      {:ok, view, _html} = live(conn, ~p"/priorities/history")
+
+      refute has_element?(view, "#priorities-history-days", "Atividade \"Tarefa\" criada.")
+    end
+
+    test "sub-navegação marca Histórico como aba ativa", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/priorities/history")
+
+      assert has_element?(view, "a.bg-primary", "Histórico")
     end
   end
 end

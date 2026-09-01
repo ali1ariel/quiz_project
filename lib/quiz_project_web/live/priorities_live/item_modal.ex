@@ -436,6 +436,7 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
   end
 
   defp parse_tab("activities"), do: :activities
+  defp parse_tab("historico"), do: :historico
   defp parse_tab(_), do: :details
 
   # `put_flash/3` num LiveComponent só grava no `assigns.flash` isolado do
@@ -466,8 +467,16 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
       other_categories:
         Enum.reject(Priorities.list_categories(user), &(&1.id == item.category_id)),
       field_definitions: Priorities.list_field_definitions(user),
-      activities: Priorities.list_activities_for_item(item.id, user)
+      activities: Priorities.list_activities_for_item(item.id, user),
+      item_logs: Priorities.list_item_logs(item.id)
     )
+  end
+
+  # `Clock`/`inserted_at` gravam em UTC — mesmo deslocamento fixo de
+  # Brasília (ver `QuizProject.Priorities.Clock`) só pra exibir a hora.
+  # Mostra a data também: o histórico cruza vários dias.
+  defp local_datetime(datetime) do
+    datetime |> DateTime.add(-3, :hour) |> Calendar.strftime("%d/%m %H:%M:%S")
   end
 
   defp parse_int(nil), do: nil
@@ -564,7 +573,12 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
     <div id={@id}>
       <div :if={@standalone} class="mx-auto max-w-3xl space-y-6">
         <.item_header item={@item} myself={@myself} />
-        <.item_tabs myself={@myself} active_tab={@active_tab} activities={@activities} />
+        <.item_tabs
+          myself={@myself}
+          active_tab={@active_tab}
+          activities={@activities}
+          item_logs={@item_logs}
+        />
         <.content_body
           myself={@myself}
           item={@item}
@@ -582,6 +596,7 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
           new_activity_title={@new_activity_title}
           new_activity_type={@new_activity_type}
           new_activity_frequency={@new_activity_frequency}
+          item_logs={@item_logs}
         />
       </div>
 
@@ -605,7 +620,12 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
                 </button>
               </:extra_actions>
             </.item_header>
-            <.item_tabs myself={@myself} active_tab={@active_tab} activities={@activities} />
+            <.item_tabs
+              myself={@myself}
+              active_tab={@active_tab}
+              activities={@activities}
+              item_logs={@item_logs}
+            />
           </div>
 
           <div class="flex-1 space-y-6 overflow-y-auto p-6">
@@ -626,6 +646,7 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
               new_activity_title={@new_activity_title}
               new_activity_type={@new_activity_type}
               new_activity_frequency={@new_activity_frequency}
+              item_logs={@item_logs}
             />
           </div>
         </div>
@@ -689,6 +710,7 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
   attr :myself, :any, required: true
   attr :active_tab, :atom, required: true
   attr :activities, :list, required: true
+  attr :item_logs, :list, required: true
 
   defp item_tabs(assigns) do
     ~H"""
@@ -724,6 +746,21 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
         Atividades
         <span :if={@activities != []} class="ml-0.5 opacity-70">({length(@activities)})</span>
       </button>
+      <button
+        type="button"
+        phx-click="switch_tab"
+        phx-value-tab="historico"
+        phx-target={@myself}
+        class={[
+          "rounded-full px-4 py-1.5 transition [transform:translateZ(0)]",
+          if(@active_tab == :historico,
+            do: "bg-primary text-primary-content shadow-sm",
+            else: "bg-base-200 opacity-70 hover:opacity-100"
+          )
+        ]}
+      >
+        Histórico
+      </button>
     </nav>
     """
   end
@@ -744,6 +781,7 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
   attr :new_activity_title, :string, required: true
   attr :new_activity_type, :string, required: true
   attr :new_activity_frequency, :string, required: true
+  attr :item_logs, :list, required: true
 
   defp content_body(assigns) do
     ~H"""
@@ -1175,6 +1213,26 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
                 <.icon name="hero-arrow-uturn-left" class="size-4 opacity-50" />
               </button>
             </div>
+          </li>
+        </ul>
+      </section>
+    </div>
+
+    <div :if={@active_tab == :historico} id="item-logs" class="space-y-4">
+      <section class="card qcard space-y-3 border border-base-300 bg-base-100 p-5">
+        <h2 class="text-sm font-bold uppercase tracking-wide opacity-60">Histórico</h2>
+
+        <p :if={@item_logs == []} class="text-xs opacity-60">
+          Nenhum evento registrado ainda.
+        </p>
+
+        <ul :if={@item_logs != []} class="space-y-1.5">
+          <li :for={log <- @item_logs} class="flex items-baseline gap-2 text-sm">
+            <span class="shrink-0 opacity-40">•</span>
+            <span class="shrink-0 font-mono text-xs opacity-50">
+              {local_datetime(log.inserted_at)}
+            </span>
+            <span class="opacity-90">{log.message}</span>
           </li>
         </ul>
       </section>
