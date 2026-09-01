@@ -594,12 +594,14 @@ defmodule QuizProject.Priorities.ActivityTest do
       {:ok, activity} = Priorities.reopen_activity(activity, user)
       {:ok, activity} = Priorities.discard_activity(activity, user)
 
+      dia = Calendar.strftime(Clock.today(), "%d/%m")
+
       assert activity_messages(activity) == [
-               "Atividade \"Estudar\" descartada.",
-               "Atividade \"Estudar\" reaberta.",
-               "Atividade \"Estudar\" marcada como não cumprida.",
-               "Atividade \"Estudar\" reaberta.",
-               "Atividade \"Estudar\" concluída.",
+               "Atividade \"Estudar\" (#{dia}) descartada.",
+               "Atividade \"Estudar\" (#{dia}) reaberta.",
+               "Atividade \"Estudar\" (#{dia}) marcada como não cumprida.",
+               "Atividade \"Estudar\" (#{dia}) reaberta.",
+               "Atividade \"Estudar\" (#{dia}) concluída.",
                "Atividade \"Estudar\" movida para Fazendo.",
                "Atividade \"Estudar\" movida para A fazer.",
                "Atividade \"Estudar\" movida para Fazendo.",
@@ -627,9 +629,10 @@ defmodule QuizProject.Priorities.ActivityTest do
       {:ok, activity} = Priorities.clear_activity_snooze(activity, user)
 
       data_formatada = Calendar.strftime(until, "%d/%m/%Y")
+      dia = Calendar.strftime(Clock.today(), "%d/%m")
 
       assert activity_messages(activity) == [
-               "Atividade \"Tarefa\" com adiamento cancelado.",
+               "Atividade \"Tarefa\" (#{dia}) com adiamento cancelado.",
                "Atividade \"Tarefa\" adiada até #{data_formatada}.",
                "Atividade \"Tarefa\" criada."
              ]
@@ -651,7 +654,50 @@ defmodule QuizProject.Priorities.ActivityTest do
 
       {:ok, _activity} = Priorities.correct_activity_status(activity, :nao_cumprida, user)
 
-      assert "Desfecho de \"Tarefa\" corrigido para não cumprida." in messages(user)
+      dia = Calendar.strftime(Clock.today(), "%d/%m")
+      assert "Desfecho de \"Tarefa\" (#{dia}) corrigido para não cumprida." in messages(user)
+    end
+
+    test "corrigir desfecho de hábito inclui o dia do card, pra não confundir com o de hoje (mesmo título)",
+         %{user: user} do
+      item = manual_item(user, category(user))
+      {:ok, habit} = Priorities.create_habit(user, %{title: "Beber água", item_id: item.id})
+      ontem = Date.add(Clock.today(), -1)
+
+      {:ok, _hoje} = Priorities.create_activity(user, %{title: "Beber água", habit_id: habit.id})
+
+      {:ok, ontem_instancia} =
+        Priorities.create_activity(user, %{
+          title: "Beber água",
+          habit_id: habit.id,
+          logical_date: ontem
+        })
+
+      {:ok, ontem_instancia} = Priorities.complete_activity(ontem_instancia, user)
+      {:ok, _} = Priorities.correct_activity_status(ontem_instancia, :nao_cumprida, user)
+
+      dia_ontem = Calendar.strftime(ontem, "%d/%m")
+
+      assert "Desfecho de \"Beber água\" (#{dia_ontem}) corrigido para não cumprida." in messages(
+               user
+             )
+
+      refute "Desfecho de \"Beber água\" corrigido para não cumprida." in messages(user)
+    end
+
+    test "resolver uma atividade de outro dia mostra o dia dela no log, não o de hoje", %{
+      user: user
+    } do
+      item = manual_item(user, category(user))
+      ontem = Date.add(Clock.today(), -1)
+
+      {:ok, activity} =
+        Priorities.create_activity(user, %{title: "Tarefa", item_id: item.id, logical_date: ontem})
+
+      {:ok, _} = Priorities.discard_activity(activity, user)
+
+      dia = Calendar.strftime(ontem, "%d/%m")
+      assert "Atividade \"Tarefa\" (#{dia}) descartada." in activity_messages(activity)
     end
 
     test "checklist registra criação, conclusão/reabertura e remoção", %{user: user} do

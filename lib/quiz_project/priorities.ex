@@ -995,7 +995,9 @@ defmodule QuizProject.Priorities do
       |> Ash.Changeset.for_update(:complete, %{}, authorize?: false)
       |> Ash.update()
       |> sync_google_out(:patch)
-      |> log_activity_result(fn activity -> "Atividade \"#{activity.title}\" concluída." end)
+      |> log_activity_result(fn activity ->
+        "Atividade \"#{activity.title}\"#{day_disambiguator(activity)} concluída."
+      end)
     end
   end
 
@@ -1006,7 +1008,7 @@ defmodule QuizProject.Priorities do
       |> Ash.update()
       |> sync_google_out(:patch)
       |> log_activity_result(fn activity ->
-        "Atividade \"#{activity.title}\" marcada como não cumprida."
+        "Atividade \"#{activity.title}\"#{day_disambiguator(activity)} marcada como não cumprida."
       end)
     end
   end
@@ -1017,7 +1019,9 @@ defmodule QuizProject.Priorities do
       |> Ash.Changeset.for_update(:discard, %{}, authorize?: false)
       |> Ash.update()
       |> sync_google_out(:patch)
-      |> log_activity_result(fn activity -> "Atividade \"#{activity.title}\" descartada." end)
+      |> log_activity_result(fn activity ->
+        "Atividade \"#{activity.title}\"#{day_disambiguator(activity)} descartada."
+      end)
     end
   end
 
@@ -1028,7 +1032,9 @@ defmodule QuizProject.Priorities do
       |> Ash.Changeset.for_update(:reopen, %{}, authorize?: false)
       |> Ash.update()
       |> sync_google_out(:patch)
-      |> log_activity_result(fn activity -> "Atividade \"#{activity.title}\" reaberta." end)
+      |> log_activity_result(fn activity ->
+        "Atividade \"#{activity.title}\"#{day_disambiguator(activity)} reaberta."
+      end)
     end
   end
 
@@ -1041,7 +1047,8 @@ defmodule QuizProject.Priorities do
       |> Ash.update()
       |> log_activity_result(fn activity ->
         status_label = if status == :concluida, do: "concluída", else: "não cumprida"
-        "Desfecho de \"#{activity.title}\" corrigido para #{status_label}."
+        dia = Calendar.strftime(calendar_day(activity), "%d/%m")
+        "Desfecho de \"#{activity.title}\" (#{dia}) corrigido para #{status_label}."
       end)
     end
   end
@@ -1085,7 +1092,7 @@ defmodule QuizProject.Priorities do
       |> Ash.update()
       |> sync_google_out(:patch)
       |> log_activity_result(fn activity ->
-        "Atividade \"#{activity.title}\" com adiamento cancelado."
+        "Atividade \"#{activity.title}\"#{day_disambiguator(activity)} com adiamento cancelado."
       end)
     end
   end
@@ -1226,6 +1233,25 @@ defmodule QuizProject.Priorities do
 
   defp log_activity_event(%Activity{} = activity, message) do
     create_history_log(%{user_id: activity.user_id, activity_id: activity.id, message: message})
+  end
+
+  # Hábito repete o mesmo título todo dia — sem isso, resolver/reabrir/
+  # descartar uma instância de um dia que não é hoje pela aba "Atividades"
+  # do `ItemModal` (que lista o item inteiro, não só hoje) gera um log
+  # indistinguível do de hoje com o mesmo nome. `logical_date` é o dia que
+  # já aparece nessa mesma tela (`Calendar.strftime(activity.logical_date, ...)`
+  # na listagem de atividades do item), por isso é ele que desambigua aqui.
+  defp day_disambiguator(%Activity{logical_date: logical_date}) do
+    " (#{Calendar.strftime(logical_date, "%d/%m")})"
+  end
+
+  # Mesmo critério de `KanbanLive.Calendar.activity_date/1`: qual dia essa
+  # atividade "pertence" no Calendário — hábito/evento pelo dia marcado, o
+  # resto pelo dia em que foi resolvida. Só usado por `correct_activity_status/3`,
+  # a única ação que corrige uma atividade a partir do próprio Calendário
+  # (onde o card em questão está exatamente sob essa data).
+  defp calendar_day(%Activity{habit_id: habit_id, kind: kind} = activity) do
+    if habit_id || kind == :evento, do: activity.logical_date, else: activity.resolved_date
   end
 
   # Mesmos três padrões acima (`log_activity_result/2`, `log_task_event/3`,
