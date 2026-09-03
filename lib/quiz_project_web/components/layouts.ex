@@ -38,7 +38,7 @@ defmodule QuizProjectWeb.Layouts do
   attr :active_nav, :atom,
     default: nil,
     doc:
-      "destino principal ativo: :quizzes, :contents, :priorities, :kanban, :adaptive_study ou :account"
+      "destino principal ativo: :quizzes, :contents, :priorities, :kanban, :adaptive_study, :wish_store ou :account"
 
   attr :attempt_started_at, :any,
     default: nil,
@@ -127,6 +127,16 @@ defmodule QuizProjectWeb.Layouts do
           active?={@active_nav == :adaptive_study}
           title_active="Voltar para a lista de Estudo Adaptativo"
           title_inactive="Ingestão e curadoria de materiais de estudo com Mapa Mental"
+        />
+
+        <.nav_item
+          id="desktop-nav-wish-store"
+          navigate={~p"/wish-store"}
+          icon="hero-gift"
+          label="Wish Store"
+          active?={@active_nav == :wish_store}
+          title_active="Voltar para a Wish Store"
+          title_inactive="Carteira de pontos e recompensas"
         />
       </nav>
 
@@ -295,6 +305,20 @@ defmodule QuizProjectWeb.Layouts do
                   <span class="block text-sm font-semibold">Kanban</span>
                   <span class="block truncate text-[0.68rem] opacity-70">
                     Raias por prioridade, hoje
+                  </span>
+                </span>
+              </.link>
+              <.link
+                navigate={~p"/wish-store"}
+                class="flex items-center gap-3 rounded-2xl border border-transparent px-3 py-2.5 transition hover:border-base-300 hover:bg-base-100"
+              >
+                <span class="grid size-9 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+                  <.icon name="hero-gift" class="size-4" />
+                </span>
+                <span class="min-w-0 text-left">
+                  <span class="block text-sm font-semibold">Wish Store</span>
+                  <span class="block truncate text-[0.68rem] opacity-70">
+                    Carteira de pontos e recompensas
                   </span>
                 </span>
               </.link>

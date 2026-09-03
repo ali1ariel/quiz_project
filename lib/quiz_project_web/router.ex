@@ -148,6 +148,8 @@ defmodule QuizProjectWeb.Router do
       live "/priorities/archived", PrioritiesLive.Browse, :archived
       live "/priorities/history", PrioritiesLive.History
       live "/priorities/:id", PrioritiesLive.Show
+
+      live "/wish-store", WishStoreLive.Wallet
     end
   end
 
