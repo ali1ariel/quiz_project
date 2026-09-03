@@ -8,6 +8,8 @@ defmodule QuizProjectWeb.SettingsLiveTest do
 
   alias QuizProject.Accounts
   alias QuizProject.Accounts.User
+  alias QuizProject.Priorities
+  alias QuizProject.Store
 
   setup :register_and_log_in_user
 
@@ -145,6 +147,73 @@ defmodule QuizProjectWeb.SettingsLiveTest do
       refute has_element?(view, "#disconnect-google-calendar")
       assert has_element?(view, "#connect-google-calendar")
       assert {:error, :not_found} = Accounts.get_google_calendar_connection(user)
+    end
+  end
+
+  describe "aba da Loja" do
+    test "credita pontos com o gift card", %{conn: conn, user: user} do
+      {:ok, view, _html} = live(conn, ~p"/settings?tab=store&store_tab=gift_card")
+
+      assert has_element?(view, "#gift-card-form")
+
+      view
+      |> form("#gift-card-form", %{
+        "gift_card" => %{"amount" => "150", "reason" => "Compensação por bug"}
+      })
+      |> render_submit()
+
+      assert Priorities.wallet_balance(user) == 150
+
+      assert [entry] = Priorities.list_wallet_entries(user)
+      assert entry.source == :gift_card
+      assert entry.amount == 150
+      assert entry.description == "Compensação por bug"
+    end
+
+    test "recusa gift card sem motivo", %{conn: conn, user: user} do
+      {:ok, view, _html} = live(conn, ~p"/settings?tab=store&store_tab=gift_card")
+
+      view
+      |> form("#gift-card-form", %{"gift_card" => %{"amount" => "150", "reason" => ""}})
+      |> render_submit()
+
+      assert Priorities.wallet_balance(user) == 0
+    end
+
+    test "abre na sub-aba de produtos por padrão", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/settings?tab=store")
+
+      assert has_element?(view, "#store-products")
+      refute has_element?(view, "#store-gift-card")
+    end
+
+    test "sub-aba de produtos lista o catálogo e leva ao cadastro/edição", %{
+      conn: conn,
+      user: user
+    } do
+      {:ok, product} =
+        Store.create_product(user, %{name: "Vale-café", description: "Um café.", price: 100})
+
+      {:ok, view, _html} = live(conn, ~p"/settings?tab=store&store_tab=products")
+
+      assert has_element?(view, "#store-products")
+      assert render(view) =~ "Vale-café"
+
+      assert has_element?(
+               view,
+               ~s(a[href="/settings/products/new"])
+             )
+
+      assert has_element?(
+               view,
+               ~s(a#edit-store-product-#{product.id}[href="/settings/products/#{product.id}/edit"])
+             )
+    end
+
+    test "sub-aba de produtos vazia mostra mensagem", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/settings?tab=store&store_tab=products")
+
+      assert has_element?(view, "#store-products-empty")
     end
   end
 end
