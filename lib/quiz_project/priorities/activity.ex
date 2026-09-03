@@ -50,7 +50,8 @@ defmodule QuizProject.Priorities.Activity do
         :position,
         :kind,
         :google_event_id,
-        :google_updated_at
+        :google_updated_at,
+        :store_points
       ]
 
       validate fn changeset, _context ->
@@ -68,7 +69,7 @@ defmodule QuizProject.Priorities.Activity do
     end
 
     update :update do
-      accept [:title, :notes, :max_deadline]
+      accept [:title, :notes, :max_deadline, :store_points]
     end
 
     update :reposition do
@@ -337,6 +338,11 @@ defmodule QuizProject.Priorities.Activity do
     # nele — usado pra distinguir uma edição real feita no Google de um eco
     # da própria escrita de saída do app durante a reconciliação.
     attribute :google_updated_at, :utc_datetime_usec
+
+    attribute :store_points, :integer do
+      allow_nil? false
+      default 0
+    end
 
     timestamps()
   end

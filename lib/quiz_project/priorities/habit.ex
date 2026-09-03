@@ -38,11 +38,20 @@ defmodule QuizProject.Priorities.Habit do
     defaults [:read, :destroy]
 
     create :create do
-      accept [:user_id, :item_id, :title, :frequency, :weekdays, :month_days, :starts_on]
+      accept [
+        :user_id,
+        :item_id,
+        :title,
+        :frequency,
+        :weekdays,
+        :month_days,
+        :starts_on,
+        :store_points
+      ]
     end
 
     update :update do
-      accept [:title, :frequency, :weekdays, :month_days, :ends_on]
+      accept [:title, :frequency, :weekdays, :month_days, :ends_on, :store_points]
     end
 
     update :archive do
@@ -96,6 +105,11 @@ defmodule QuizProject.Priorities.Habit do
     # `nil` = sem limite. Ver moduledoc.
     attribute :starts_on, :date
     attribute :ends_on, :date
+
+    attribute :store_points, :integer do
+      allow_nil? false
+      default 0
+    end
 
     timestamps()
   end

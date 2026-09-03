@@ -21,6 +21,7 @@ defmodule QuizProjectWeb.PrioritiesLive.Index do
        show_new_category?: false,
        item_form_category_id: nil,
        item_form_type: "manual",
+       item_form_expanded?: false,
        modal_item_id: nil
      )
      |> load_data()}
@@ -62,7 +63,18 @@ defmodule QuizProjectWeb.PrioritiesLive.Index do
   @impl true
   def handle_event("toggle_item_form", %{"category_id" => id}, socket) do
     new_id = if socket.assigns.item_form_category_id == id, do: nil, else: id
-    {:noreply, assign(socket, item_form_category_id: new_id, item_form_type: "manual")}
+
+    {:noreply,
+     assign(socket,
+       item_form_category_id: new_id,
+       item_form_type: "manual",
+       item_form_expanded?: false
+     )}
+  end
+
+  @impl true
+  def handle_event("toggle_item_form_expanded", _params, socket) do
+    {:noreply, update(socket, :item_form_expanded?, &(!&1))}
   end
 
   @impl true
@@ -81,7 +93,7 @@ defmodule QuizProjectWeb.PrioritiesLive.Index do
       {:noreply,
        socket
        |> put_flash(:info, "Item adicionado.")
-       |> assign(item_form_category_id: nil, item_form_type: "manual")
+       |> assign(item_form_category_id: nil, item_form_type: "manual", item_form_expanded?: false)
        |> load_data()}
     else
       _ ->
@@ -161,8 +173,15 @@ defmodule QuizProjectWeb.PrioritiesLive.Index do
   end
 
   defp build_item_attrs(params) do
-    with {:ok, item_type} <- parse_item_type(params["item_type"]) do
-      base = %{item_type: item_type, title: String.trim(params["title"] || "")}
+    with {:ok, item_type} <- parse_item_type(params["item_type"]),
+         {:ok, tier} <- parse_tier(params["tier"] || "") do
+      base = %{
+        item_type: item_type,
+        title: String.trim(params["title"] || ""),
+        notes: params["notes"] || "",
+        store_points: parse_int(params["store_points"]) || 0,
+        tier: tier
+      }
 
       attrs =
         case item_type do
@@ -194,6 +213,12 @@ defmodule QuizProjectWeb.PrioritiesLive.Index do
     do: {:ok, String.to_existing_atom(value)}
 
   defp parse_item_type(_value), do: :error
+
+  @tiers ~w(S A B C D)
+
+  defp parse_tier(""), do: {:ok, nil}
+  defp parse_tier(value) when value in @tiers, do: {:ok, String.to_existing_atom(value)}
+  defp parse_tier(_value), do: :error
 
   defp blank_to_nil(nil), do: nil
   defp blank_to_nil(""), do: nil
@@ -368,6 +393,50 @@ defmodule QuizProjectWeb.PrioritiesLive.Index do
                     <.input type="text" name="course_access_link" label="Link de acesso" value="" />
                     <.input type="text" name="course_access_login" label="Login" value="" />
                     <.input type="text" name="course_access_password" label="Senha" value="" />
+                  </div>
+
+                  <button
+                    type="button"
+                    phx-click="toggle_item_form_expanded"
+                    class="flex items-center gap-1 text-xs font-semibold opacity-60 hover:opacity-100"
+                  >
+                    <.icon
+                      name="hero-chevron-right"
+                      class={["size-3.5 transition-transform", @item_form_expanded? && "rotate-90"]}
+                    /> Mais opções
+                  </button>
+
+                  <div
+                    :if={@item_form_expanded?}
+                    class="space-y-3 rounded-2xl border border-base-200 p-3"
+                  >
+                    <.input type="textarea" name="notes" label="Notas (opcional)" value="" rows="2" />
+                    <div class="flex flex-wrap items-end gap-4">
+                      <div class="w-28">
+                        <.input
+                          type="number"
+                          name="store_points"
+                          label="Pontos"
+                          value="0"
+                          min="0"
+                        />
+                      </div>
+                      <div class="fieldset mb-2">
+                        <span class="label mb-1">Tier</span>
+                        <div class="flex flex-wrap gap-3">
+                          <label class="flex items-center gap-1 text-sm">
+                            <input type="radio" name="tier" value="" class="radio radio-sm" checked />
+                            Sem tier
+                          </label>
+                          <label
+                            :for={t <- ~w(S A B C D)}
+                            class="flex items-center gap-1 text-sm font-semibold"
+                          >
+                            <input type="radio" name="tier" value={t} class="radio radio-sm" /> {t}
+                          </label>
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
                   <div class="flex justify-end gap-2">

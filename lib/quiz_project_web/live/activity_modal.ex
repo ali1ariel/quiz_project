@@ -43,7 +43,12 @@ defmodule QuizProjectWeb.ActivityModal do
     if title == "" do
       {:noreply, notify_flash(socket, :error, "O título não pode ficar em branco.")}
     else
-      attrs = %{title: title, notes: notes, max_deadline: parse_max_deadline(params)}
+      attrs = %{
+        title: title,
+        notes: notes,
+        max_deadline: parse_max_deadline(params),
+        store_points: parse_int(params["store_points"]) || 0
+      }
 
       case Priorities.update_activity(socket.assigns.activity, attrs, user) do
         {:ok, _} ->
@@ -57,7 +62,7 @@ defmodule QuizProjectWeb.ActivityModal do
   end
 
   @impl true
-  def handle_event("create_task", %{"title" => title}, socket) do
+  def handle_event("create_task", %{"title" => title} = params, socket) do
     title = String.trim(title)
 
     if title == "" do
@@ -67,7 +72,8 @@ defmodule QuizProjectWeb.ActivityModal do
         Priorities.create_activity_task(
           socket.assigns.activity,
           title,
-          socket.assigns.current_user
+          socket.assigns.current_user,
+          parse_int(params["store_points"]) || 0
         )
 
       {:noreply, load_activity(socket, socket.assigns.activity.id)}
@@ -109,6 +115,39 @@ defmodule QuizProjectWeb.ActivityModal do
   @impl true
   def handle_event("habit_frequency_form_change", %{"frequency" => freq}, socket) do
     {:noreply, assign(socket, habit_frequency_form_value: freq)}
+  end
+
+  @impl true
+  def handle_event("set_habit_store_points", %{"store_points" => value}, socket) do
+    user = socket.assigns.current_user
+    points = parse_int(value) || 0
+
+    case Priorities.set_habit_store_points(socket.assigns.activity.habit, points, user) do
+      {:ok, _} -> {:noreply, load_activity(socket, socket.assigns.activity.id)}
+      _ -> {:noreply, notify_flash(socket, :error, "Não foi possível salvar os pontos.")}
+    end
+  end
+
+  @impl true
+  def handle_event(
+        "set_activity_task_store_points",
+        %{"task_id" => id, "store_points" => value},
+        socket
+      ) do
+    task = Enum.find(socket.assigns.tasks, &(&1.id == id))
+    points = parse_int(value) || 0
+
+    if task do
+      {:ok, _} =
+        Priorities.set_activity_task_store_points(
+          task,
+          socket.assigns.activity,
+          points,
+          socket.assigns.current_user
+        )
+    end
+
+    {:noreply, load_activity(socket, socket.assigns.activity.id)}
   end
 
   @impl true
@@ -181,6 +220,16 @@ defmodule QuizProjectWeb.ActivityModal do
     case params |> Map.get("max_deadline", "") |> Date.from_iso8601() do
       {:ok, date} -> date
       _ -> nil
+    end
+  end
+
+  defp parse_int(nil), do: nil
+  defp parse_int(""), do: nil
+
+  defp parse_int(value) do
+    case Integer.parse(value) do
+      {int, _rest} -> int
+      :error -> nil
     end
   end
 
@@ -287,6 +336,15 @@ defmodule QuizProjectWeb.ActivityModal do
                   label="Prazo máximo"
                   value={@activity.max_deadline}
                 />
+                <div class="w-32">
+                  <.input
+                    type="number"
+                    name="store_points"
+                    label="Pontos"
+                    value={@activity.store_points}
+                    min="0"
+                  />
+                </div>
                 <div class="flex justify-end">
                   <button type="submit" class="btn btn-primary btn-sm rounded-full px-5">
                     Salvar
@@ -327,6 +385,22 @@ defmodule QuizProjectWeb.ActivityModal do
                       />
                       <span class={task.done && "opacity-50 line-through"}>{task.title}</span>
                     </button>
+                    <form
+                      id={"activity-task-points-#{task.id}"}
+                      phx-change="set_activity_task_store_points"
+                      phx-target={@myself}
+                      class="shrink-0"
+                    >
+                      <input type="hidden" name="task_id" value={task.id} />
+                      <input
+                        type="number"
+                        name="store_points"
+                        value={task.store_points}
+                        min="0"
+                        title="Pontos"
+                        class="input input-xs w-14 rounded-full text-center"
+                      />
+                    </form>
                     <button
                       id={"delete-activity-task-#{task.id}"}
                       phx-click="delete_task"
@@ -357,6 +431,9 @@ defmodule QuizProjectWeb.ActivityModal do
                       value=""
                       placeholder="Ex: Separar os materiais"
                     />
+                  </div>
+                  <div class="w-20">
+                    <.input type="number" name="store_points" label="Pontos" value="0" min="0" />
                   </div>
                   <div class="fieldset mb-2">
                     <label>

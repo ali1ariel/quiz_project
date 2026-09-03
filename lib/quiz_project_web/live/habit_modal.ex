@@ -33,6 +33,17 @@ defmodule QuizProjectWeb.HabitModal do
   end
 
   @impl true
+  def handle_event("set_habit_store_points", %{"store_points" => value}, socket) do
+    user = socket.assigns.current_user
+    points = parse_int(value) || 0
+
+    case Priorities.set_habit_store_points(socket.assigns.habit, points, user) do
+      {:ok, _} -> {:noreply, load_habit(socket, socket.assigns.habit.id)}
+      _ -> {:noreply, notify_flash(socket, :error, "Não foi possível salvar os pontos.")}
+    end
+  end
+
+  @impl true
   def handle_event("set_habit_frequency", %{"scope" => "from_here"} = params, socket) do
     habit = socket.assigns.habit
     user = socket.assigns.current_user
@@ -161,6 +172,16 @@ defmodule QuizProjectWeb.HabitModal do
 
   defp blank_to_nil(""), do: nil
   defp blank_to_nil(value), do: value
+
+  defp parse_int(nil), do: nil
+  defp parse_int(""), do: nil
+
+  defp parse_int(value) do
+    case Integer.parse(value) do
+      {int, _rest} -> int
+      :error -> nil
+    end
+  end
 
   defp format_date(date), do: Calendar.strftime(date, "%d/%m")
 

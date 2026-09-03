@@ -29,6 +29,7 @@ defmodule QuizProject.Priorities do
   alias QuizProject.Priorities.ItemTag
   alias QuizProject.Priorities.ItemTask
   alias QuizProject.Priorities.Tag
+  alias QuizProject.Priorities.WalletEntry
 
   resources do
     resource Category
@@ -45,6 +46,7 @@ defmodule QuizProject.Priorities do
     resource ItemLink
     resource Habit
     resource HabitOverride
+    resource WalletEntry
   end
 
   # Autorização
@@ -363,9 +365,12 @@ defmodule QuizProject.Priorities do
 
   def set_course_progress(item, attrs, actor) do
     with :ok <- authorize_owner(item, actor) do
+      old_percent = item |> progress_for_item() |> elem(1)
+
       item
       |> Ash.Changeset.for_update(:set_course_progress, attrs, authorize?: false)
       |> Ash.update()
+      |> sync_item_progress_wallet(old_percent)
     end
   end
 
@@ -379,27 +384,36 @@ defmodule QuizProject.Priorities do
 
   def set_manual_percent(item, percent, actor) do
     with :ok <- authorize_owner(item, actor) do
+      old_percent = item |> progress_for_item() |> elem(1)
+
       item
       |> Ash.Changeset.for_update(:set_manual_percent, %{manual_percent: percent},
         authorize?: false
       )
       |> Ash.update()
+      |> sync_item_progress_wallet(old_percent)
     end
   end
 
   def set_manual_steps(item, attrs, actor) do
     with :ok <- authorize_owner(item, actor) do
+      old_percent = item |> progress_for_item() |> elem(1)
+
       item
       |> Ash.Changeset.for_update(:set_manual_steps, attrs, authorize?: false)
       |> Ash.update()
+      |> sync_item_progress_wallet(old_percent)
     end
   end
 
   def set_manual_mode(item, attrs, actor) do
     with :ok <- authorize_owner(item, actor) do
+      old_percent = item |> progress_for_item() |> elem(1)
+
       item
       |> Ash.Changeset.for_update(:set_manual_mode, attrs, authorize?: false)
       |> Ash.update()
+      |> sync_item_progress_wallet(old_percent)
     end
   end
 
@@ -430,6 +444,7 @@ defmodule QuizProject.Priorities do
   def toggle_task(task, item, actor) do
     with :ok <- authorize_owner(item, actor) do
       done? = !task.done
+      old_percent = item |> progress_for_item() |> elem(1)
 
       message =
         if done?,
@@ -440,6 +455,7 @@ defmodule QuizProject.Priorities do
       |> Ash.Changeset.for_update(:update, %{done: done?}, authorize?: false)
       |> Ash.update()
       |> log_item_task_event(item, message)
+      |> sync_item_task_progress_wallet(item, old_percent)
     end
   end
 
@@ -998,6 +1014,7 @@ defmodule QuizProject.Priorities do
       |> log_activity_result(fn activity ->
         "Atividade \"#{activity.title}\"#{day_disambiguator(activity)} concluída."
       end)
+      |> sync_activity_wallet(activity)
     end
   end
 
@@ -1010,6 +1027,7 @@ defmodule QuizProject.Priorities do
       |> log_activity_result(fn activity ->
         "Atividade \"#{activity.title}\"#{day_disambiguator(activity)} marcada como não cumprida."
       end)
+      |> sync_activity_wallet(activity)
     end
   end
 
@@ -1022,6 +1040,7 @@ defmodule QuizProject.Priorities do
       |> log_activity_result(fn activity ->
         "Atividade \"#{activity.title}\"#{day_disambiguator(activity)} descartada."
       end)
+      |> sync_activity_wallet(activity)
     end
   end
 
@@ -1035,6 +1054,7 @@ defmodule QuizProject.Priorities do
       |> log_activity_result(fn activity ->
         "Atividade \"#{activity.title}\"#{day_disambiguator(activity)} reaberta."
       end)
+      |> sync_activity_wallet(activity)
     end
   end
 
@@ -1050,6 +1070,7 @@ defmodule QuizProject.Priorities do
         dia = Calendar.strftime(calendar_day(activity), "%d/%m")
         "Desfecho de \"#{activity.title}\" (#{dia}) corrigido para #{status_label}."
       end)
+      |> sync_activity_wallet(activity)
     end
   end
 
@@ -1314,14 +1335,19 @@ defmodule QuizProject.Priorities do
     |> Ash.read!(authorize?: false)
   end
 
-  def create_activity_task(activity, title, actor) do
+  def create_activity_task(activity, title, actor, store_points \\ 0) do
     with :ok <- authorize_owner(activity, actor) do
       position = next_activity_task_position(activity.id)
 
       ActivityTask
       |> Ash.Changeset.for_create(
         :create,
-        %{activity_id: activity.id, title: title, position: position},
+        %{
+          activity_id: activity.id,
+          title: title,
+          position: position,
+          store_points: store_points
+        },
         authorize?: false
       )
       |> Ash.create()
@@ -1342,6 +1368,7 @@ defmodule QuizProject.Priorities do
       |> Ash.Changeset.for_update(:update, %{done: done?}, authorize?: false)
       |> Ash.update()
       |> log_task_event(activity, message)
+      |> sync_activity_task_wallet(activity)
     end
   end
 
@@ -1352,6 +1379,14 @@ defmodule QuizProject.Priorities do
         activity,
         "Checklist \"#{task.title}\" removido de \"#{activity.title}\"."
       )
+    end
+  end
+
+  def set_activity_task_store_points(task, activity, points, actor) do
+    with :ok <- authorize_owner(activity, actor) do
+      task
+      |> Ash.Changeset.for_update(:update, %{store_points: points}, authorize?: false)
+      |> Ash.update()
     end
   end
 
@@ -1445,6 +1480,14 @@ defmodule QuizProject.Priorities do
   def set_habit_frequency(habit, attrs, actor) do
     with :ok <- authorize_owner(habit, actor) do
       habit |> Ash.Changeset.for_update(:update, attrs, authorize?: false) |> Ash.update()
+    end
+  end
+
+  def set_habit_store_points(habit, points, actor) do
+    with :ok <- authorize_owner(habit, actor) do
+      habit
+      |> Ash.Changeset.for_update(:update, %{store_points: points}, authorize?: false)
+      |> Ash.update()
     end
   end
 
@@ -1560,7 +1603,8 @@ defmodule QuizProject.Priorities do
         create_activity(actor, %{
           title: occurrence_title(habit, today),
           habit_id: habit.id,
-          logical_date: today
+          logical_date: today,
+          store_points: habit.store_points
         })
       end
 
@@ -1604,7 +1648,8 @@ defmodule QuizProject.Priorities do
             create_activity(actor, %{
               title: occurrence_title(habit, date),
               habit_id: habit.id,
-              logical_date: date
+              logical_date: date,
+              store_points: habit.store_points
             })
 
           mark_activity_not_done(activity, actor)
@@ -1846,5 +1891,148 @@ defmodule QuizProject.Priorities do
     Activity
     |> Ash.Query.filter(user_id == ^user_id and habit_id == ^habit_id and flow == ^flow)
     |> next_position_for()
+  end
+
+  # Carteira de pontos
+
+  @doc "Saldo atual da carteira de pontos do usuário — soma de todos os lançamentos."
+  def wallet_balance(%{id: user_id}) do
+    WalletEntry
+    |> Ash.Query.filter(user_id == ^user_id)
+    |> Ash.Query.select([:amount])
+    |> Ash.read!(authorize?: false)
+    |> Enum.reduce(0, &(&1.amount + &2))
+  end
+
+  @doc "Lançamentos da carteira de pontos do usuário, mais recente primeiro."
+  def list_wallet_entries(%{id: user_id}) do
+    WalletEntry
+    |> Ash.Query.filter(user_id == ^user_id)
+    |> Ash.Query.sort(inserted_at: :desc)
+    |> Ash.read!(authorize?: false)
+  end
+
+  # Sem lançamento pra valor zero — não há o que estornar nem creditar, e um
+  # registro de "+0 pontos" só inundaria o extrato à toa.
+  defp credit_wallet(_user_id, 0, _source, _source_id, _description), do: :ok
+
+  defp credit_wallet(user_id, amount, source, source_id, description) do
+    WalletEntry
+    |> Ash.Changeset.for_create(
+      :create,
+      %{
+        user_id: user_id,
+        amount: amount,
+        source: source,
+        source_id: source_id,
+        description: description
+      },
+      authorize?: false
+    )
+    |> Ash.create()
+  end
+
+  # Credita ao concluir uma atividade (inclusive instância de hábito, que é
+  # só uma `Activity` com `habit_id`) e estorna se ela deixar de estar
+  # concluída (reaberta, corrigida pra outro desfecho) — cobre `:complete`,
+  # `:mark_not_done`, `:discard`, `:reopen` e `:correct_status`, que são as
+  # únicas actions que mexem em `status`.
+  defp sync_activity_wallet({:ok, %Activity{} = new} = result, %Activity{} = old) do
+    cond do
+      old.status != :concluida and new.status == :concluida ->
+        credit_wallet(
+          new.user_id,
+          new.store_points,
+          :activity,
+          new.id,
+          "Atividade concluída: \"#{new.title}\""
+        )
+
+      old.status == :concluida and new.status != :concluida ->
+        credit_wallet(
+          new.user_id,
+          -new.store_points,
+          :activity,
+          new.id,
+          "Estorno — \"#{new.title}\" deixou de estar concluída"
+        )
+
+      true ->
+        :ok
+    end
+
+    result
+  end
+
+  defp sync_activity_wallet(result, _old), do: result
+
+  # Credita ao marcar um subitem de checklist de atividade como feito, e
+  # estorna ao desmarcar.
+  defp sync_activity_task_wallet({:ok, %ActivityTask{} = task} = result, %Activity{} = activity) do
+    if task.done do
+      credit_wallet(
+        activity.user_id,
+        task.store_points,
+        :activity_task,
+        task.id,
+        "Subitem concluído: \"#{task.title}\" (#{activity.title})"
+      )
+    else
+      credit_wallet(
+        activity.user_id,
+        -task.store_points,
+        :activity_task,
+        task.id,
+        "Estorno — subitem \"#{task.title}\" reaberto (#{activity.title})"
+      )
+    end
+
+    result
+  end
+
+  defp sync_activity_task_wallet(result, _activity), do: result
+
+  # Credita quando o progresso de uma prioridade cruza 100% (curso, checklist
+  # ou percentual/etapas manuais) e estorna se ela sair de 100% depois —
+  # `:book`/`:quiz_goal` ficam de fora porque o progresso deles é lido sob
+  # demanda de outro domínio (`AdaptiveStudy`/`Attempts`), sem um ponto único
+  # de mutação aqui pra pendurar o crédito.
+  defp sync_item_progress_wallet({:ok, %Item{} = new} = result, old_percent) do
+    do_sync_item_progress_wallet(new, old_percent, progress_for_item(new) |> elem(1))
+    result
+  end
+
+  defp sync_item_progress_wallet(result, _old_percent), do: result
+
+  defp sync_item_task_progress_wallet({:ok, _task} = result, %Item{} = item, old_percent) do
+    do_sync_item_progress_wallet(item, old_percent, progress_for_item(item) |> elem(1))
+    result
+  end
+
+  defp sync_item_task_progress_wallet(result, _item, _old_percent), do: result
+
+  defp do_sync_item_progress_wallet(item, old_percent, new_percent) do
+    cond do
+      old_percent != 100 and new_percent == 100 ->
+        credit_wallet(
+          item.user_id,
+          item.store_points,
+          :item,
+          item.id,
+          "Prioridade concluída: \"#{item.title}\""
+        )
+
+      old_percent == 100 and new_percent != 100 ->
+        credit_wallet(
+          item.user_id,
+          -item.store_points,
+          :item,
+          item.id,
+          "Estorno — \"#{item.title}\" saiu de 100%"
+        )
+
+      true ->
+        :ok
+    end
   end
 end
