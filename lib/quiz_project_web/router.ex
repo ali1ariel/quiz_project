@@ -105,6 +105,7 @@ defmodule QuizProjectWeb.Router do
 
     get "/contents/:id/book.css", BookStyleController, :show
     get "/contents/:id/images/*path", BookImageController, :show
+    get "/wish-store/products/:product_id/images/:id", ProductImageController, :show
 
     # Vínculo de conta (não login): fica junto de /settings, sob o pipeline
     # autenticado, não sob o pipeline de /login e /register.
@@ -122,6 +123,13 @@ defmodule QuizProjectWeb.Router do
       live "/today/upcoming", KanbanLive.Upcoming
       live "/today/calendar", KanbanLive.Calendar
       live "/settings", SettingsLive
+
+      # Única tela de cadastro/edição de produto do app — vinculada à lista
+      # de produtos de Configurações, não à Wish Store (ver
+      # `SettingsLive.ProductForm`). `/new` antes de `/:id/edit` pelo mesmo
+      # motivo dos grupos abaixo: o roteador casa na ordem declarada.
+      live "/settings/products/new", SettingsLive.ProductForm, :new
+      live "/settings/products/:id/edit", SettingsLive.ProductForm, :edit
       live "/quiz/:version_id/edit", QuizEditorLive
       live "/quiz/:quiz_id/manage", QuizManageLive
       live "/quiz/:quiz_id/evolution", QuizEvolutionLive
@@ -149,7 +157,12 @@ defmodule QuizProjectWeb.Router do
       live "/priorities/history", PrioritiesLive.History
       live "/priorities/:id", PrioritiesLive.Show
 
-      live "/wish-store", WishStoreLive.Wallet
+      # A loja é a tela padrão (`/wish-store`); a carteira é a aba secundária.
+      # `/wallet` vem antes de `/:id` pelo mesmo motivo dos grupos acima: o
+      # roteador casa na ordem em que as rotas são declaradas.
+      live "/wish-store", WishStoreLive.Store
+      live "/wish-store/wallet", WishStoreLive.Wallet
+      live "/wish-store/:id", WishStoreLive.Show
     end
   end
 

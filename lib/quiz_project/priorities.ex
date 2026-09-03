@@ -1912,11 +1912,45 @@ defmodule QuizProject.Priorities do
     |> Ash.read!(authorize?: false)
   end
 
+  @doc """
+  Debita pontos da carteira para um resgate da Wish Store
+  (`QuizProject.Store.redeem_product/2`). `{:error, :insufficient_balance}`
+  se o saldo não cobrir `amount` — chamada sempre dentro da transação do
+  resgate, então duas tentativas simultâneas não conseguem as duas passar.
+  """
+  def spend_points(%{id: user_id} = user, amount, source_id, description) when amount > 0 do
+    if wallet_balance(user) >= amount do
+      # `Store.redeem_product/2` chama isto de dentro do próprio
+      # `Repo.transaction` do resgate — sem `return_notifications?: true` a
+      # criação avisa (no log) que perdeu a notificação por estar aninhada
+      # numa transação que ela não controla; devolver e a chamadora
+      # despachar depois, fora da transação, é o jeito documentado do Ash de
+      # não perder isso.
+      credit_wallet(user_id, -amount, :redemption, source_id, description,
+        return_notifications?: true
+      )
+    else
+      {:error, :insufficient_balance}
+    end
+  end
+
+  @doc """
+  Credita pontos manualmente, com um motivo em texto — o "gift card" da tela
+  de Configurações, para ajustes que não vêm de nenhuma conclusão. Sem
+  entidade de origem: `source_id` é só um UUID gerado na hora (ver
+  `QuizProject.Priorities.WalletEntry`).
+  """
+  def grant_gift_card(%{id: user_id}, amount, reason) when amount > 0 do
+    credit_wallet(user_id, amount, :gift_card, Ash.UUID.generate(), reason)
+  end
+
+  defp credit_wallet(user_id, amount, source, source_id, description, opts \\ [])
+
   # Sem lançamento pra valor zero — não há o que estornar nem creditar, e um
   # registro de "+0 pontos" só inundaria o extrato à toa.
-  defp credit_wallet(_user_id, 0, _source, _source_id, _description), do: :ok
+  defp credit_wallet(_user_id, 0, _source, _source_id, _description, _opts), do: :ok
 
-  defp credit_wallet(user_id, amount, source, source_id, description) do
+  defp credit_wallet(user_id, amount, source, source_id, description, opts) do
     WalletEntry
     |> Ash.Changeset.for_create(
       :create,
@@ -1929,7 +1963,7 @@ defmodule QuizProject.Priorities do
       },
       authorize?: false
     )
-    |> Ash.create()
+    |> Ash.create(opts)
   end
 
   # Credita ao concluir uma atividade (inclusive instância de hábito, que é

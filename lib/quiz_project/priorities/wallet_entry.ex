@@ -7,9 +7,13 @@ defmodule QuizProject.Priorities.WalletEntry do
   um campo à parte, pra não divergir do histórico.
 
   `source`/`source_id` apontam pra quem gerou o lançamento (`Activity`,
-  `ActivityTask` ou `Item`) sem FK de verdade — são três tabelas possíveis
-  pra uma coluna só, e apagar a origem não deve apagar o lançamento (o
-  extrato continua de pé mesmo que a atividade não exista mais).
+  `ActivityTask`, `Item` ou, para um débito, `QuizProject.Store.Redemption`)
+  sem FK de verdade — são várias tabelas possíveis pra uma coluna só, e
+  apagar a origem não deve apagar o lançamento (o extrato continua de pé
+  mesmo que a atividade não exista mais). `:gift_card` é a exceção: não tem
+  entidade nenhuma por trás, só um crédito manual dado pela tela de
+  Configurações (`QuizProject.Priorities.grant_gift_card/3`) — `source_id`
+  aí é só um UUID gerado na hora, o motivo mora inteiro em `description`.
   """
   use Ash.Resource,
     domain: QuizProject.Priorities,
@@ -45,7 +49,7 @@ defmodule QuizProject.Priorities.WalletEntry do
 
     attribute :source, :atom do
       allow_nil? false
-      constraints one_of: ~w(activity activity_task item)a
+      constraints one_of: ~w(activity activity_task item redemption gift_card)a
     end
 
     attribute :source_id, :uuid do

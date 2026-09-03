@@ -44,3 +44,6 @@ npm-debug.log
 
 # Imagens extraídas dos EPUBs (regeneradas por reingestão)
 /priv/book_images/
+
+# Imagens de produto da Wish Store (ver QuizProject.Store.ImageStore)
+/priv/store_images/

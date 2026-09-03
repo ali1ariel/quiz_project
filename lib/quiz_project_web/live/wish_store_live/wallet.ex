@@ -5,8 +5,8 @@ defmodule QuizProjectWeb.WishStoreLive.Wallet do
   (desfazer qualquer um desses), mais recente primeiro —
   `Priorities.wallet_balance/1` e `Priorities.list_wallet_entries/1`.
 
-  Tela raiz da Wish Store (`/wish-store`) — hoje a única aba; futuras telas
-  da loja (resgate de pontos por recompensas) entram como abas irmãs, ver
+  Aba secundária da Wish Store (`/wish-store/wallet`) — a loja
+  (`WishStoreLive.Store`) é que é a tela padrão em `/wish-store`, ver
   `QuizProjectWeb.WishStoreLive.Components.sub_nav/1`.
 
   Só consulta: nenhum lançamento é criado ou editado por aqui, sempre pelas
