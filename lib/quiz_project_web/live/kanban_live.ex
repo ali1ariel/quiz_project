@@ -56,6 +56,7 @@ defmodule QuizProjectWeb.KanbanLive do
        capture_item_id: nil,
        capture_tasks: [],
        capture_task_draft: "",
+       capture_task_points_draft: "0",
        attach_category_by_activity: %{}
      )
      |> load_data()}
@@ -90,7 +91,8 @@ defmodule QuizProjectWeb.KanbanLive do
        capture_frequency: Map.get(params, "frequency", "daily"),
        capture_category_id: category_id,
        capture_item_id: capture_item_id,
-       capture_task_draft: Map.get(params, "task_draft", "")
+       capture_task_draft: Map.get(params, "task_draft", ""),
+       capture_task_points_draft: Map.get(params, "task_points_draft", "0")
      )}
   end
 
@@ -102,14 +104,17 @@ defmodule QuizProjectWeb.KanbanLive do
   @impl true
   def handle_event("add_capture_task", _params, socket) do
     title = String.trim(socket.assigns.capture_task_draft || "")
+    points = parse_int(socket.assigns.capture_task_points_draft) || 0
 
     if title == "" do
       {:noreply, socket}
     else
+      task = %{title: title, store_points: points}
+
       {:noreply,
        socket
-       |> update(:capture_tasks, &(&1 ++ [title]))
-       |> assign(capture_task_draft: "")}
+       |> update(:capture_tasks, &(&1 ++ [task]))
+       |> assign(capture_task_draft: "", capture_task_points_draft: "0")}
     end
   end
 
@@ -143,6 +148,7 @@ defmodule QuizProjectWeb.KanbanLive do
           event_attrs(is_event?, params)
           |> Map.merge(max_deadline_attrs(params))
           |> Map.merge(notes_attrs(params))
+          |> Map.merge(store_points_attrs(params))
 
         create_loose_capture(socket, user, title, item_id, extra_attrs)
     end
@@ -290,13 +296,17 @@ defmodule QuizProjectWeb.KanbanLive do
       capture_category_id: nil,
       capture_item_id: nil,
       capture_tasks: [],
-      capture_task_draft: ""
+      capture_task_draft: "",
+      capture_task_points_draft: "0"
     ]
   end
 
   defp create_habit_capture(socket, user, title, item_id, params) do
     with {:ok, %Priorities.Item{} = item} <- Priorities.resolve_attach_item(item_id, user) do
-      attrs = Map.merge(%{title: title, item_id: item.id}, build_habit_attrs(params))
+      attrs =
+        %{title: title, item_id: item.id}
+        |> Map.merge(build_habit_attrs(params))
+        |> Map.merge(store_points_attrs(params))
 
       case Priorities.create_habit(user, attrs) do
         {:ok, habit} ->
@@ -323,8 +333,8 @@ defmodule QuizProjectWeb.KanbanLive do
         attrs = Map.merge(base, extra_attrs)
         {:ok, activity} = Priorities.create_activity(user, attrs)
 
-        Enum.each(socket.assigns.capture_tasks, fn task_title ->
-          Priorities.create_activity_task(activity, task_title, user)
+        Enum.each(socket.assigns.capture_tasks, fn task ->
+          Priorities.create_activity_task(activity, task.title, user, task.store_points)
         end)
 
         flash =
@@ -364,6 +374,23 @@ defmodule QuizProjectWeb.KanbanLive do
     case params |> Map.get("notes", "") |> String.trim() do
       "" -> %{}
       notes -> %{notes: notes}
+    end
+  end
+
+  defp store_points_attrs(params) do
+    case params |> Map.get("store_points", "") |> Integer.parse() do
+      {points, _rest} -> %{store_points: points}
+      :error -> %{}
+    end
+  end
+
+  defp parse_int(nil), do: nil
+  defp parse_int(""), do: nil
+
+  defp parse_int(value) do
+    case Integer.parse(value) do
+      {int, _rest} -> int
+      :error -> nil
     end
   end
 
@@ -547,6 +574,9 @@ defmodule QuizProjectWeb.KanbanLive do
                   <div class="w-40">
                     <.input type="date" name="max_deadline" label="Prazo máximo" value="" />
                   </div>
+                  <div class="w-28">
+                    <.input type="number" name="store_points" label="Pontos" value="0" min="0" />
+                  </div>
                 </div>
 
                 <div class="border-t border-base-200"></div>
@@ -654,11 +684,14 @@ defmodule QuizProjectWeb.KanbanLive do
 
                   <ul :if={@capture_tasks != []} class="space-y-1">
                     <li
-                      :for={{task_title, index} <- Enum.with_index(@capture_tasks)}
+                      :for={{task, index} <- Enum.with_index(@capture_tasks)}
                       class="flex items-center gap-2"
                     >
                       <span class="size-4 shrink-0 rounded-full border-2 border-base-content/40" />
-                      <span class="flex-1 text-sm">{task_title}</span>
+                      <span class="flex-1 text-sm">{task.title}</span>
+                      <span class="shrink-0 text-xs font-semibold opacity-60">
+                        {task.store_points} pts
+                      </span>
                       <button
                         type="button"
                         phx-click="remove_capture_task"
@@ -682,6 +715,15 @@ defmodule QuizProjectWeb.KanbanLive do
                         onkeydown="if(event.key === 'Enter') event.preventDefault();"
                         phx-keydown="add_capture_task"
                         phx-key="Enter"
+                      />
+                    </div>
+                    <div class="w-20">
+                      <.input
+                        type="number"
+                        name="task_points_draft"
+                        label="Pontos"
+                        value={@capture_task_points_draft}
+                        min="0"
                       />
                     </div>
                     <div class="fieldset mb-2">

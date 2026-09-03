@@ -49,12 +49,14 @@ defmodule QuizProject.Priorities.Item do
         :course_access_login,
         :course_access_password,
         :manual_percent,
-        :general
+        :general,
+        :store_points,
+        :tier
       ]
     end
 
     update :update do
-      accept [:title, :notes]
+      accept [:title, :notes, :store_points]
     end
 
     # Único jeito de mudar `item_type` depois de criado. As validações
@@ -248,6 +250,11 @@ defmodule QuizProject.Priorities.Item do
 
     attribute :manual_total_steps, :integer
     attribute :manual_completed_steps, :integer, default: 0
+
+    attribute :store_points, :integer do
+      allow_nil? false
+      default 0
+    end
 
     timestamps()
   end

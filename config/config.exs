@@ -59,7 +59,8 @@ config :quiz_project,
     QuizProject.Attempts,
     QuizProject.Notifications,
     QuizProject.AdaptiveStudy,
-    QuizProject.Priorities
+    QuizProject.Priorities,
+    QuizProject.Store
   ],
   generators: [timestamp_type: :utc_datetime]
 
@@ -103,6 +104,10 @@ config :quiz_project, QuizProject.Mailer, adapter: Swoosh.Adapters.Local
 # pelo Postgres gastaria uma conexão do pool por arquivo. Em produção o caminho
 # precisa apontar para um volume que sobreviva ao deploy (veja runtime.exs).
 config :quiz_project, :book_images_dir, Path.expand("priv/book_images")
+
+# Mesmo racional das imagens de livro: bytes de imagem de produto da Wish
+# Store ficam em disco, não no banco (veja `QuizProject.Store.ImageStore`).
+config :quiz_project, :store_images_dir, Path.expand("priv/store_images")
 
 # Configure esbuild (the version is required)
 config :esbuild,

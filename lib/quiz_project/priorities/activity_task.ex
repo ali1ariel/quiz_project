@@ -20,11 +20,11 @@ defmodule QuizProject.Priorities.ActivityTask do
     defaults [:read, :destroy]
 
     create :create do
-      accept [:activity_id, :title, :position]
+      accept [:activity_id, :title, :position, :store_points]
     end
 
     update :update do
-      accept [:title, :done, :position]
+      accept [:title, :done, :position, :store_points]
     end
   end
 
@@ -42,6 +42,11 @@ defmodule QuizProject.Priorities.ActivityTask do
     end
 
     attribute :position, :integer do
+      allow_nil? false
+      default 0
+    end
+
+    attribute :store_points, :integer do
       allow_nil? false
       default 0
     end

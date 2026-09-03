@@ -28,6 +28,10 @@ if config_env() == :prod do
   config :quiz_project,
          :book_images_dir,
          System.get_env("BOOK_IMAGES_DIR") || "/var/lib/quiz_project/book_images"
+
+  config :quiz_project,
+         :store_images_dir,
+         System.get_env("STORE_IMAGES_DIR") || "/var/lib/quiz_project/store_images"
 end
 
 # Integração com IA: as API keys vêm de variáveis de ambiente do sistema

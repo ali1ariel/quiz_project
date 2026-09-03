@@ -29,7 +29,9 @@ defmodule QuizProjectWeb.Layouts do
 
   attr :current_user, :map, default: nil, doc: "usuário logado, se houver"
 
-  attr :wide, :boolean, default: true, doc: "usa container largo (padrão); false volta pro estreito"
+  attr :wide, :boolean,
+    default: true,
+    doc: "usa container largo (padrão); false volta pro estreito"
 
   attr :sticky_header?, :boolean,
     default: true,
@@ -38,7 +40,7 @@ defmodule QuizProjectWeb.Layouts do
   attr :active_nav, :atom,
     default: nil,
     doc:
-      "destino principal ativo: :quizzes, :contents, :priorities, :kanban, :adaptive_study ou :account"
+      "destino principal ativo: :quizzes, :contents, :priorities, :kanban, :adaptive_study, :wish_store ou :account"
 
   attr :attempt_started_at, :any,
     default: nil,
@@ -56,316 +58,345 @@ defmodule QuizProjectWeb.Layouts do
 
   def app(assigns) do
     ~H"""
-    <header class={[
-      "navbar px-4 sm:px-6 lg:px-8 border-b border-base-300 bg-base-100/95 backdrop-blur min-h-14 gap-2",
-      @sticky_header? && "sticky top-0 z-50"
-    ]}>
-      <div class="flex-1 min-w-0">
-        <.link navigate={~p"/"} class="flex w-fit items-center gap-2 font-bold text-lg">
-          <img src={~p"/images/logo.png"} alt="Quizzes" class="size-8 shrink-0 rounded-full" />
-          <span class="md:hidden lg:inline">Quiz<span class="text-primary">zes</span></span>
-        </.link>
-      </div>
+    <%!-- `min-h-dvh` + coluna flex: o rodapé fica sempre no fim da tela, mesmo
+         com pouco conteúdo — cresce com o `<main>` (`flex-1`) e só desce pela
+         página de verdade quando o conteúdo passa da viewport. --%>
+    <div class="flex min-h-dvh flex-col">
+      <header class={[
+        "navbar px-4 sm:px-6 lg:px-8 border-b border-base-300 bg-base-100/95 backdrop-blur min-h-14 gap-2 shrink-0",
+        @sticky_header? && "sticky top-0 z-50"
+      ]}>
+        <div class="flex-1 min-w-0">
+          <.link navigate={~p"/"} class="flex w-fit items-center gap-2 font-bold text-lg">
+            <img src={~p"/images/logo.png"} alt="Quizzes" class="size-8 shrink-0 rounded-full" />
+            <span class="md:hidden lg:inline">Quiz<span class="text-primary">zes</span></span>
+          </.link>
+        </div>
 
-      <%!-- navegação completa (desktop) --%>
-      <nav
-        :if={@current_user}
-        id="desktop-primary-nav"
-        class="absolute left-1/2 hidden -translate-x-1/2 items-center gap-2 md:flex"
-        aria-label="Navegação principal"
-      >
-        <%!-- O item ativo continua clicável, e não vira `<span>` estático: um
+        <%!-- navegação completa (desktop) --%>
+        <nav
+          :if={@current_user}
+          id="desktop-primary-nav"
+          class="absolute left-1/2 hidden -translate-x-1/2 items-center gap-2 md:flex"
+          aria-label="Navegação principal"
+        >
+          <%!-- O item ativo continua clicável, e não vira `<span>` estático: um
              menu com várias telas (Estudo Adaptativo, Conteúdos) é raiz de
              navegação própria, e clicar de novo nele é o atalho para voltar à
              raiz de onde se está, em vez de morrer sem fazer nada. --%>
-        <.nav_item
-          id="desktop-nav-quizzes"
-          navigate={~p"/dashboard"}
-          icon="hero-rectangle-stack"
-          label="Meus quizzes"
-          active?={@active_nav == :quizzes}
-          title_active="Voltar para Meus quizzes"
-          title_inactive="Criar, editar e acompanhar seus quizzes"
-        />
+          <.nav_item
+            id="desktop-nav-quizzes"
+            navigate={~p"/dashboard"}
+            icon="hero-rectangle-stack"
+            label="Meus quizzes"
+            active?={@active_nav == :quizzes}
+            title_active="Voltar para Meus quizzes"
+            title_inactive="Criar, editar e acompanhar seus quizzes"
+          />
 
-        <.nav_item
-          id="desktop-nav-contents"
-          navigate={~p"/contents"}
-          icon="hero-book-open"
-          label="Conteúdos"
-          active?={@active_nav == :contents}
-          title_active="Voltar para a biblioteca de Conteúdos"
-          title_inactive="Sua biblioteca de livros, focada na leitura"
-        />
+          <.nav_item
+            id="desktop-nav-contents"
+            navigate={~p"/contents"}
+            icon="hero-book-open"
+            label="Conteúdos"
+            active?={@active_nav == :contents}
+            title_active="Voltar para a biblioteca de Conteúdos"
+            title_inactive="Sua biblioteca de livros, focada na leitura"
+          />
 
-        <.nav_item
-          id="desktop-nav-priorities"
-          navigate={~p"/priorities"}
-          icon="hero-flag"
-          label="Prioridades"
-          active?={@active_nav == :priorities}
-          title_active="Voltar para Prioridades"
-          title_inactive="Categorias, itens e evolução pessoal"
-        />
+          <.nav_item
+            id="desktop-nav-priorities"
+            navigate={~p"/priorities"}
+            icon="hero-flag"
+            label="Prioridades"
+            active?={@active_nav == :priorities}
+            title_active="Voltar para Prioridades"
+            title_inactive="Categorias, itens e evolução pessoal"
+          />
 
-        <.nav_item
-          id="desktop-nav-kanban"
-          navigate={~p"/today"}
-          icon="hero-view-columns"
-          label="Kanban"
-          active?={@active_nav == :kanban}
-          title_active="Voltar para o Kanban"
-          title_inactive="Raias por prioridade, com o que é hoje"
-          badge={@loose_captures_count}
-        />
+          <.nav_item
+            id="desktop-nav-kanban"
+            navigate={~p"/today"}
+            icon="hero-view-columns"
+            label="Kanban"
+            active?={@active_nav == :kanban}
+            title_active="Voltar para o Kanban"
+            title_inactive="Raias por prioridade, com o que é hoje"
+            badge={@loose_captures_count}
+          />
 
-        <.nav_item
-          id="desktop-nav-adaptive-study"
-          navigate={~p"/study"}
-          icon="hero-academic-cap"
-          label="Estudo Adaptativo"
-          active?={@active_nav == :adaptive_study}
-          title_active="Voltar para a lista de Estudo Adaptativo"
-          title_inactive="Ingestão e curadoria de materiais de estudo com Mapa Mental"
-        />
-      </nav>
+          <.nav_item
+            id="desktop-nav-adaptive-study"
+            navigate={~p"/study"}
+            icon="hero-academic-cap"
+            label="Estudo Adaptativo"
+            active?={@active_nav == :adaptive_study}
+            title_active="Voltar para a lista de Estudo Adaptativo"
+            title_inactive="Ingestão e curadoria de materiais de estudo com Mapa Mental"
+          />
 
-      <%!-- cronômetro da tentativa (todas as larguras) --%>
-      <div
-        :if={@attempt_started_at}
-        id="attempt-timer"
-        phx-hook=".AttemptTimer"
-        phx-update="ignore"
-        data-elapsed={DateTime.diff(DateTime.utc_now(), @attempt_started_at)}
-        class="flex-none"
-      >
-        <button
-          type="button"
-          data-timer-toggle
-          class="inline-flex h-10 items-center gap-2 rounded-full border border-base-300 px-3 text-sm font-semibold transition hover:border-primary hover:text-primary"
-          aria-pressed="false"
-          aria-label="Mostrar ou ocultar o cronômetro da tentativa"
-          title="Cronômetro da tentativa"
+          <.nav_item
+            id="desktop-nav-wish-store"
+            navigate={~p"/wish-store"}
+            icon="hero-gift"
+            label="Wish Store"
+            active?={@active_nav == :wish_store}
+            title_active="Voltar para a Wish Store"
+            title_inactive="Carteira de pontos e recompensas"
+          />
+        </nav>
+
+        <%!-- cronômetro da tentativa (todas as larguras) --%>
+        <div
+          :if={@attempt_started_at}
+          id="attempt-timer"
+          phx-hook=".AttemptTimer"
+          phx-update="ignore"
+          data-elapsed={DateTime.diff(DateTime.utc_now(), @attempt_started_at)}
+          class="flex-none"
         >
-          <.icon name="hero-clock" class="size-5" />
-          <span data-timer-value class="hidden font-mono tabular-nums">00:00</span>
-        </button>
-      </div>
-      <script :type={Phoenix.LiveView.ColocatedHook} name=".AttemptTimer">
-        export default {
-          mounted() {
-            // Âncora no relógio local a partir do tempo decorrido calculado no
-            // servidor, imune a fuso/desvio de relógio do participante.
-            this.base = Date.now() - parseInt(this.el.dataset.elapsed, 10) * 1000
-            this.value = this.el.querySelector("[data-timer-value]")
-            this.toggle = this.el.querySelector("[data-timer-toggle]")
-            this.toggle.addEventListener("click", () => {
-              const hidden = this.value.classList.toggle("hidden")
-              this.toggle.setAttribute("aria-pressed", String(!hidden))
-            })
-            this.tick()
-            this.interval = setInterval(() => this.tick(), 1000)
-          },
-          destroyed() {
-            clearInterval(this.interval)
-          },
-          tick() {
-            const total = Math.max(0, Math.floor((Date.now() - this.base) / 1000))
-            const h = Math.floor(total / 3600)
-            const m = Math.floor((total % 3600) / 60)
-            const s = total % 60
-            const pad = (n) => String(n).padStart(2, "0")
-            this.value.textContent =
-              h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`
+          <button
+            type="button"
+            data-timer-toggle
+            class="inline-flex h-10 items-center gap-2 rounded-full border border-base-300 px-3 text-sm font-semibold transition hover:border-primary hover:text-primary"
+            aria-pressed="false"
+            aria-label="Mostrar ou ocultar o cronômetro da tentativa"
+            title="Cronômetro da tentativa"
+          >
+            <.icon name="hero-clock" class="size-5" />
+            <span data-timer-value class="hidden font-mono tabular-nums">00:00</span>
+          </button>
+        </div>
+        <script :type={Phoenix.LiveView.ColocatedHook} name=".AttemptTimer">
+          export default {
+            mounted() {
+              // Âncora no relógio local a partir do tempo decorrido calculado no
+              // servidor, imune a fuso/desvio de relógio do participante.
+              this.base = Date.now() - parseInt(this.el.dataset.elapsed, 10) * 1000
+              this.value = this.el.querySelector("[data-timer-value]")
+              this.toggle = this.el.querySelector("[data-timer-toggle]")
+              this.toggle.addEventListener("click", () => {
+                const hidden = this.value.classList.toggle("hidden")
+                this.toggle.setAttribute("aria-pressed", String(!hidden))
+              })
+              this.tick()
+              this.interval = setInterval(() => this.tick(), 1000)
+            },
+            destroyed() {
+              clearInterval(this.interval)
+            },
+            tick() {
+              const total = Math.max(0, Math.floor((Date.now() - this.base) / 1000))
+              const h = Math.floor(total / 3600)
+              const m = Math.floor((total % 3600) / 60)
+              const s = total % 60
+              const pad = (n) => String(n).padStart(2, "0")
+              this.value.textContent =
+                h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`
+            }
           }
-        }
-      </script>
+        </script>
 
-      <%!-- conta e aparência (desktop) --%>
-      <div class="hidden flex-none items-center justify-end gap-2 md:flex">
-        <%= if @current_user do %>
-          <%!-- E-mail e ícone no mesmo botão: ao passar o mouse, o e-mail cede
+        <%!-- conta e aparência (desktop) --%>
+        <div class="hidden flex-none items-center justify-end gap-2 md:flex">
+          <%= if @current_user do %>
+            <%!-- E-mail e ícone no mesmo botão: ao passar o mouse, o e-mail cede
                lugar ao rótulo da ação ("Configurações de conta") em vez de um
                `title` nativo — junto no mesmo elemento, o hover explica o que
                o clique faz sem precisar de um segundo alvo separado. --%>
-          <.link
-            id="desktop-nav-account"
-            navigate={~p"/settings"}
-            aria-current={@active_nav == :account && "page"}
-            aria-label="Configurações de conta"
-            class={[
-              "group inline-flex items-center gap-2 rounded-full py-2 pl-3 pr-4 text-sm font-semibold transition",
-              if(@active_nav == :account,
-                do: "bg-primary text-primary-content shadow-sm",
-                else: "opacity-65 hover:bg-base-200 hover:opacity-100"
-              )
-            ]}
-          >
-            <.icon name="hero-user-circle" class="size-5 shrink-0" />
-            <span class="hidden max-w-44 truncate xl:block">
-              <span class="group-hover:hidden">{@current_user.email}</span>
-              <span class="hidden group-hover:inline">Configurações de conta</span>
-            </span>
-          </.link>
-          <.link
-            id="desktop-logout"
-            href={~p"/logout"}
-            method="delete"
-            class="rounded-full border border-base-300 px-4 py-2 text-sm font-semibold transition hover:border-error/40 hover:bg-error/10 hover:text-error"
-          >
-            Sair
-          </.link>
-        <% else %>
-          <.link navigate={~p"/login"} class="rounded-full px-4 py-2 text-sm font-semibold">
-            Entrar
-          </.link>
-          <.link
-            navigate={~p"/register"}
-            class="rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-content"
-          >
-            Criar conta
-          </.link>
-        <% end %>
-        <.appearance_control />
-      </div>
-
-      <%!-- menu compacto (mobile) --%>
-      <details class="dropdown dropdown-end md:hidden flex-none" id="mobile-menu">
-        <summary class="btn btn-ghost btn-circle" aria-label="Abrir menu">
-          <.icon name="hero-bars-3" class="size-6" />
-        </summary>
-        <div class="dropdown-content z-40 mt-3 w-64 max-w-[calc(100vw-2rem)] card qcard bg-base-200 p-4 space-y-4">
-          <div class="space-y-2">
-            <%= if @current_user do %>
-              <p class="text-xs opacity-70 truncate px-1">{@current_user.email}</p>
-              <.link
-                navigate={~p"/dashboard"}
-                class="flex items-center gap-3 rounded-2xl border border-base-300 px-3 py-2.5 transition hover:border-primary hover:bg-base-100"
-              >
-                <span class="grid size-9 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
-                  <.icon name="hero-rectangle-stack" class="size-4" />
-                </span>
-                <span class="min-w-0 text-left">
-                  <span class="block text-sm font-semibold">Meus quizzes</span>
-                  <span class="block truncate text-[0.68rem] opacity-70">
-                    Criar, editar e acompanhar
-                  </span>
-                </span>
-              </.link>
-              <.link
-                navigate={~p"/contents"}
-                class="flex items-center gap-3 rounded-2xl border border-transparent px-3 py-2.5 transition hover:border-base-300 hover:bg-base-100"
-              >
-                <span class="grid size-9 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
-                  <.icon name="hero-book-open" class="size-4" />
-                </span>
-                <span class="min-w-0 text-left">
-                  <span class="block text-sm font-semibold">Conteúdos</span>
-                  <span class="block truncate text-[0.68rem] opacity-70">Biblioteca e leitura</span>
-                </span>
-              </.link>
-              <.link
-                navigate={~p"/priorities"}
-                class="flex items-center gap-3 rounded-2xl border border-transparent px-3 py-2.5 transition hover:border-base-300 hover:bg-base-100"
-              >
-                <span class="grid size-9 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
-                  <.icon name="hero-flag" class="size-4" />
-                </span>
-                <span class="min-w-0 text-left">
-                  <span class="block text-sm font-semibold">Prioridades</span>
-                  <span class="block truncate text-[0.68rem] opacity-70">
-                    Categorias, itens e evolução
-                  </span>
-                </span>
-              </.link>
-              <.link
-                navigate={~p"/today"}
-                class="flex items-center gap-3 rounded-2xl border border-transparent px-3 py-2.5 transition hover:border-base-300 hover:bg-base-100"
-              >
-                <span class="relative grid size-9 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
-                  <.icon name="hero-view-columns" class="size-4" />
-                  <span
-                    :if={@loose_captures_count > 0}
-                    class="absolute -right-1 -top-1 inline-flex min-w-4 items-center justify-center rounded-full bg-error px-1 text-[0.6rem] font-bold text-error-content"
-                  >
-                    {@loose_captures_count}
-                  </span>
-                </span>
-                <span class="min-w-0 text-left">
-                  <span class="block text-sm font-semibold">Kanban</span>
-                  <span class="block truncate text-[0.68rem] opacity-70">
-                    Raias por prioridade, hoje
-                  </span>
-                </span>
-              </.link>
-              <.link
-                navigate={~p"/settings"}
-                class="flex items-center gap-3 rounded-2xl border border-transparent px-3 py-2.5 transition hover:border-base-300 hover:bg-base-100"
-              >
-                <span class="grid size-9 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
-                  <.icon name="hero-user-circle" class="size-4" />
-                </span>
-                <span class="min-w-0 text-left">
-                  <span class="block text-sm font-semibold">Conta e API</span>
-                  <span class="block truncate text-[0.68rem] opacity-70">Perfil, senha e tokens</span>
-                </span>
-              </.link>
-              <.link
-                href={~p"/logout"}
-                method="delete"
-                class="btn btn-ghost btn-sm w-full rounded-full"
-              >
-                Sair
-              </.link>
-            <% else %>
-              <.link navigate={~p"/login"} class="btn btn-outline btn-sm w-full rounded-full">
-                Entrar
-              </.link>
-              <.link
-                navigate={~p"/register"}
-                class="btn btn-primary btn-sm w-full rounded-full"
-              >
-                Criar conta
-              </.link>
-            <% end %>
-            <.link href={~p"/api/docs"} class="btn btn-ghost btn-sm w-full rounded-full">
-              Docs para desenvolvedores
-            </.link>
-          </div>
-
-          <div class="flex items-center justify-between gap-3">
-            <label class="text-xs opacity-70" for="skin-select-mobile">Estilo</label>
-            <select
-              id="skin-select-mobile"
-              data-skin-select
-              phx-update="ignore"
-              class="select select-sm rounded-full w-auto"
+            <.link
+              id="desktop-nav-account"
+              navigate={~p"/settings"}
+              aria-current={@active_nav == :account && "page"}
+              aria-label="Configurações de conta"
+              class={[
+                "group inline-flex items-center gap-2 rounded-full py-2 pl-3 pr-4 text-sm font-semibold transition",
+                if(@active_nav == :account,
+                  do: "bg-primary text-primary-content shadow-sm",
+                  else: "opacity-65 hover:bg-base-200 hover:opacity-100"
+                )
+              ]}
             >
-              <option value="sobrio">Sóbrio</option>
-              <option value="aurora">Aurora</option>
-              <option value="classico">Clássico</option>
-            </select>
-          </div>
-
-          <div class="flex items-center justify-between gap-3">
-            <span class="text-xs opacity-70">Tema</span>
-            <.theme_toggle />
-          </div>
+              <.icon name="hero-user-circle" class="size-5 shrink-0" />
+              <span class="hidden max-w-44 truncate xl:block">
+                <span class="group-hover:hidden">{@current_user.email}</span>
+                <span class="hidden group-hover:inline">Configurações de conta</span>
+              </span>
+            </.link>
+            <.link
+              id="desktop-logout"
+              href={~p"/logout"}
+              method="delete"
+              class="rounded-full border border-base-300 px-4 py-2 text-sm font-semibold transition hover:border-error/40 hover:bg-error/10 hover:text-error"
+            >
+              Sair
+            </.link>
+          <% else %>
+            <.link navigate={~p"/login"} class="rounded-full px-4 py-2 text-sm font-semibold">
+              Entrar
+            </.link>
+            <.link
+              navigate={~p"/register"}
+              class="rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-content"
+            >
+              Criar conta
+            </.link>
+          <% end %>
+          <.appearance_control />
         </div>
-      </details>
-    </header>
 
-    <main class="px-4 py-8 sm:px-6 lg:px-8">
-      <div class={["mx-auto space-y-4", if(@wide, do: "qlayout-wide", else: "max-w-2xl")]}>
-        {render_slot(@inner_block)}
-      </div>
-    </main>
+        <%!-- menu compacto (mobile) --%>
+        <details class="dropdown dropdown-end md:hidden flex-none" id="mobile-menu">
+          <summary class="btn btn-ghost btn-circle" aria-label="Abrir menu">
+            <.icon name="hero-bars-3" class="size-6" />
+          </summary>
+          <div class="dropdown-content z-40 mt-3 w-64 max-w-[calc(100vw-2rem)] card qcard bg-base-200 p-4 space-y-4">
+            <div class="space-y-2">
+              <%= if @current_user do %>
+                <p class="text-xs opacity-70 truncate px-1">{@current_user.email}</p>
+                <.link
+                  navigate={~p"/dashboard"}
+                  class="flex items-center gap-3 rounded-2xl border border-base-300 px-3 py-2.5 transition hover:border-primary hover:bg-base-100"
+                >
+                  <span class="grid size-9 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+                    <.icon name="hero-rectangle-stack" class="size-4" />
+                  </span>
+                  <span class="min-w-0 text-left">
+                    <span class="block text-sm font-semibold">Meus quizzes</span>
+                    <span class="block truncate text-[0.68rem] opacity-70">
+                      Criar, editar e acompanhar
+                    </span>
+                  </span>
+                </.link>
+                <.link
+                  navigate={~p"/contents"}
+                  class="flex items-center gap-3 rounded-2xl border border-transparent px-3 py-2.5 transition hover:border-base-300 hover:bg-base-100"
+                >
+                  <span class="grid size-9 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+                    <.icon name="hero-book-open" class="size-4" />
+                  </span>
+                  <span class="min-w-0 text-left">
+                    <span class="block text-sm font-semibold">Conteúdos</span>
+                    <span class="block truncate text-[0.68rem] opacity-70">Biblioteca e leitura</span>
+                  </span>
+                </.link>
+                <.link
+                  navigate={~p"/priorities"}
+                  class="flex items-center gap-3 rounded-2xl border border-transparent px-3 py-2.5 transition hover:border-base-300 hover:bg-base-100"
+                >
+                  <span class="grid size-9 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+                    <.icon name="hero-flag" class="size-4" />
+                  </span>
+                  <span class="min-w-0 text-left">
+                    <span class="block text-sm font-semibold">Prioridades</span>
+                    <span class="block truncate text-[0.68rem] opacity-70">
+                      Categorias, itens e evolução
+                    </span>
+                  </span>
+                </.link>
+                <.link
+                  navigate={~p"/today"}
+                  class="flex items-center gap-3 rounded-2xl border border-transparent px-3 py-2.5 transition hover:border-base-300 hover:bg-base-100"
+                >
+                  <span class="relative grid size-9 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+                    <.icon name="hero-view-columns" class="size-4" />
+                    <span
+                      :if={@loose_captures_count > 0}
+                      class="absolute -right-1 -top-1 inline-flex min-w-4 items-center justify-center rounded-full bg-error px-1 text-[0.6rem] font-bold text-error-content"
+                    >
+                      {@loose_captures_count}
+                    </span>
+                  </span>
+                  <span class="min-w-0 text-left">
+                    <span class="block text-sm font-semibold">Kanban</span>
+                    <span class="block truncate text-[0.68rem] opacity-70">
+                      Raias por prioridade, hoje
+                    </span>
+                  </span>
+                </.link>
+                <.link
+                  navigate={~p"/wish-store"}
+                  class="flex items-center gap-3 rounded-2xl border border-transparent px-3 py-2.5 transition hover:border-base-300 hover:bg-base-100"
+                >
+                  <span class="grid size-9 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+                    <.icon name="hero-gift" class="size-4" />
+                  </span>
+                  <span class="min-w-0 text-left">
+                    <span class="block text-sm font-semibold">Wish Store</span>
+                    <span class="block truncate text-[0.68rem] opacity-70">
+                      Carteira de pontos e recompensas
+                    </span>
+                  </span>
+                </.link>
+                <.link
+                  navigate={~p"/settings"}
+                  class="flex items-center gap-3 rounded-2xl border border-transparent px-3 py-2.5 transition hover:border-base-300 hover:bg-base-100"
+                >
+                  <span class="grid size-9 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+                    <.icon name="hero-user-circle" class="size-4" />
+                  </span>
+                  <span class="min-w-0 text-left">
+                    <span class="block text-sm font-semibold">Conta e API</span>
+                    <span class="block truncate text-[0.68rem] opacity-70">Perfil, senha e tokens</span>
+                  </span>
+                </.link>
+                <.link
+                  href={~p"/logout"}
+                  method="delete"
+                  class="btn btn-ghost btn-sm w-full rounded-full"
+                >
+                  Sair
+                </.link>
+              <% else %>
+                <.link navigate={~p"/login"} class="btn btn-outline btn-sm w-full rounded-full">
+                  Entrar
+                </.link>
+                <.link
+                  navigate={~p"/register"}
+                  class="btn btn-primary btn-sm w-full rounded-full"
+                >
+                  Criar conta
+                </.link>
+              <% end %>
+              <.link href={~p"/api/docs"} class="btn btn-ghost btn-sm w-full rounded-full">
+                Docs para desenvolvedores
+              </.link>
+            </div>
 
-    <footer class="border-t border-base-300 px-4 py-6 text-center text-xs opacity-60 sm:px-6 lg:px-8">
-      <.link navigate={~p"/privacy"} class="hover:underline">Privacidade</.link>
-      <span class="px-2">·</span>
-      <.link navigate={~p"/terms"} class="hover:underline">Termos de Serviço</.link>
-    </footer>
+            <div class="flex items-center justify-between gap-3">
+              <label class="text-xs opacity-70" for="skin-select-mobile">Estilo</label>
+              <select
+                id="skin-select-mobile"
+                data-skin-select
+                phx-update="ignore"
+                class="select select-sm rounded-full w-auto"
+              >
+                <option value="sobrio">Sóbrio</option>
+                <option value="aurora">Aurora</option>
+                <option value="classico">Clássico</option>
+              </select>
+            </div>
+
+            <div class="flex items-center justify-between gap-3">
+              <span class="text-xs opacity-70">Tema</span>
+              <.theme_toggle />
+            </div>
+          </div>
+        </details>
+      </header>
+
+      <main class="flex-1 px-4 py-8 sm:px-6 lg:px-8">
+        <div class={["mx-auto space-y-4", if(@wide, do: "qlayout-wide", else: "max-w-2xl")]}>
+          {render_slot(@inner_block)}
+        </div>
+      </main>
+
+      <footer class="shrink-0 border-t border-base-300 px-4 py-6 text-center text-xs opacity-60 sm:px-6 lg:px-8">
+        <.link navigate={~p"/privacy"} class="hover:underline">Privacidade</.link>
+        <span class="px-2">·</span>
+        <.link navigate={~p"/terms"} class="hover:underline">Termos de Serviço</.link>
+      </footer>
+    </div>
 
     <.flash_group flash={@flash} />
     <.notification_stack notifications={@notifications} />

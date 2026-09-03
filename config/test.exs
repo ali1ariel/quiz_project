@@ -38,6 +38,10 @@ config :quiz_project,
        :book_images_dir,
        Path.join([System.tmp_dir!(), "quiz_project_test", "book_images"])
 
+config :quiz_project,
+       :store_images_dir,
+       Path.join([System.tmp_dir!(), "quiz_project_test", "store_images"])
+
 # Configure your database
 #
 # The MIX_TEST_PARTITION environment variable can be used

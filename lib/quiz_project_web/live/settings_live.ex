@@ -5,8 +5,12 @@ defmodule QuizProjectWeb.SettingsLive do
 
   alias QuizProject.Accounts
   alias QuizProject.GoogleCalendar
+  alias QuizProject.Priorities
+  alias QuizProject.Store
+  alias QuizProjectWeb.WishStoreLive.Components, as: StoreComponents
 
-  @tabs ~w(profile security tokens calendar)
+  @tabs ~w(profile security tokens calendar store)
+  @store_tabs ~w(gift_card products)
 
   @impl true
   def render(assigns) do
@@ -73,6 +77,16 @@ defmodule QuizProjectWeb.SettingsLive do
             >
               <.icon name="hero-calendar-days" class="size-5" />
               <span>Google Agenda</span>
+            </button>
+            <button
+              id="settings-tab-store"
+              type="button"
+              phx-click="switch_tab"
+              phx-value-tab="store"
+              class={tab_class(@tab == "store")}
+            >
+              <.icon name="hero-gift" class="size-5" />
+              <span>Loja</span>
             </button>
           </nav>
         </aside>
@@ -402,6 +416,157 @@ defmodule QuizProjectWeb.SettingsLive do
               </div>
             </div>
           </section>
+
+          <section :if={@tab == "store"} id="store-settings" class="space-y-5">
+            <nav
+              id="store-subtabs"
+              class="flex flex-wrap gap-2 text-sm font-semibold"
+              aria-label="Loja"
+            >
+              <button
+                id="store-subtab-products"
+                type="button"
+                phx-click="switch_store_tab"
+                phx-value-tab="products"
+                class={[
+                  "flex items-center gap-1.5 rounded-full px-4 py-1.5 transition",
+                  subtab_class(@store_tab == "products")
+                ]}
+              >
+                <.icon name="hero-shopping-bag" class="size-4" />
+                <span>Produtos</span>
+              </button>
+              <button
+                id="store-subtab-gift_card"
+                type="button"
+                phx-click="switch_store_tab"
+                phx-value-tab="gift_card"
+                class={[
+                  "flex items-center gap-1.5 rounded-full px-4 py-1.5 transition",
+                  subtab_class(@store_tab == "gift_card")
+                ]}
+              >
+                <.icon name="hero-gift" class="size-4" />
+                <span>Gift card</span>
+              </button>
+            </nav>
+
+            <div
+              :if={@store_tab == "gift_card"}
+              id="store-gift-card"
+              class="rounded-3xl border border-base-300 bg-base-200 p-6 shadow-sm sm:p-8"
+            >
+              <div class="flex flex-wrap items-start gap-4">
+                <span class="grid size-12 shrink-0 place-items-center rounded-2xl bg-warning/15 text-warning">
+                  <.icon name="hero-gift" class="size-6" />
+                </span>
+                <div class="min-w-0 flex-1">
+                  <h2 class="text-xl font-bold">Gift card</h2>
+                  <p class="mt-1 max-w-2xl text-sm leading-6 opacity-70">
+                    Credita pontos na carteira na hora, com um motivo — para ajustes que não vêm
+                    de nenhuma atividade ou prioridade concluída.
+                  </p>
+                </div>
+                <span class="flex shrink-0 items-center gap-2 rounded-full border border-base-300 bg-base-100 px-4 py-2">
+                  <StoreComponents.points_badge />
+                  <span class="text-sm font-bold tabular-nums">{@store_balance}</span>
+                </span>
+              </div>
+
+              <.form
+                for={@gift_card_form}
+                id="gift-card-form"
+                phx-submit="grant_gift_card"
+                class="mt-7 grid gap-4 sm:grid-cols-[8rem_1fr_auto] sm:items-end"
+              >
+                <.input
+                  field={@gift_card_form[:amount]}
+                  type="number"
+                  label="Pontos"
+                  min="1"
+                  required
+                />
+                <.input
+                  field={@gift_card_form[:reason]}
+                  type="text"
+                  label="Motivo"
+                  maxlength="200"
+                  placeholder="Ex.: compensação por bug no app"
+                  required
+                />
+                <button
+                  id="grant-gift-card"
+                  type="submit"
+                  class="mb-2 shrink-0 rounded-full bg-primary px-6 py-2.5 text-sm font-semibold text-primary-content transition hover:-translate-y-0.5 hover:shadow-lg disabled:cursor-wait disabled:opacity-60"
+                  phx-disable-with="Creditando…"
+                >
+                  Creditar
+                </button>
+              </.form>
+            </div>
+
+            <div
+              :if={@store_tab == "products"}
+              id="store-products"
+              class="rounded-3xl border border-base-300 bg-base-200 p-3 shadow-sm sm:p-5"
+            >
+              <div class="flex items-center justify-between gap-4 px-3 pt-2">
+                <h2 class="text-sm font-bold uppercase tracking-wide opacity-60">
+                  Produtos cadastrados
+                </h2>
+                <.link
+                  navigate={~p"/settings/products/new"}
+                  class="btn btn-primary btn-sm gap-1.5 rounded-full"
+                >
+                  <.icon name="hero-plus" class="size-4" /> Novo produto
+                </.link>
+              </div>
+
+              <div id="store-product-list" phx-update="stream" class="mt-2 space-y-2">
+                <div
+                  id="store-products-empty"
+                  class="hidden only:block rounded-2xl border border-dashed border-base-300 px-6 py-12 text-center"
+                >
+                  <.icon name="hero-shopping-bag" class="mx-auto size-8 opacity-30" />
+                  <p class="mt-3 font-semibold">Nenhum produto cadastrado</p>
+                  <p class="mt-1 text-sm opacity-70">Cadastre um acima para começar o catálogo.</p>
+                </div>
+
+                <article
+                  :for={{dom_id, product} <- @streams.store_products}
+                  id={dom_id}
+                  class="flex items-center gap-4 rounded-2xl px-4 py-4 transition hover:bg-base-200"
+                >
+                  <div class="size-12 shrink-0 overflow-hidden rounded-xl bg-base-200">
+                    <img
+                      :if={StoreComponents.cover_image_url(product)}
+                      src={StoreComponents.cover_image_url(product)}
+                      class="h-full w-full object-cover"
+                      alt=""
+                    />
+                    <div
+                      :if={!StoreComponents.cover_image_url(product)}
+                      class="grid h-full place-items-center text-base-content/30"
+                    >
+                      <.icon name="hero-photo" class="size-5" />
+                    </div>
+                  </div>
+                  <div class="min-w-0 flex-1">
+                    <p class="truncate font-semibold">{product.name}</p>
+                    <p class="mt-1 truncate text-xs opacity-70">{product.description}</p>
+                  </div>
+                  <StoreComponents.price_tag price={product.price} size="text-sm" />
+                  <.link
+                    id={"edit-store-product-#{product.id}"}
+                    navigate={~p"/settings/products/#{product.id}/edit"}
+                    class="shrink-0 rounded-full px-4 py-2 text-sm font-semibold text-primary transition hover:bg-primary/10"
+                  >
+                    Editar
+                  </.link>
+                </article>
+              </div>
+            </div>
+          </section>
         </div>
       </div>
 
@@ -436,12 +601,19 @@ defmodule QuizProjectWeb.SettingsLive do
      |> assign(:token_count, length(tokens))
      |> assign(:google_configured?, google_configured?())
      |> assign(:google_connection, google_connection(user))
-     |> stream(:api_tokens, tokens, dom_id: &"api-token-#{&1.id}")}
+     |> assign(:gift_card_form, gift_card_form())
+     |> assign(:store_balance, Priorities.wallet_balance(user))
+     |> assign(:store_tab, store_tab_from_params(params))
+     |> stream(:api_tokens, tokens, dom_id: &"api-token-#{&1.id}")
+     |> stream(:store_products, Store.list_products(user), dom_id: &"store-product-#{&1.id}")}
   end
 
   @impl true
   def handle_params(params, _uri, socket) do
-    {:noreply, assign(socket, :tab, tab_from_params(params))}
+    {:noreply,
+     socket
+     |> assign(:tab, tab_from_params(params))
+     |> assign(:store_tab, store_tab_from_params(params))}
   end
 
   @impl true
@@ -450,6 +622,12 @@ defmodule QuizProjectWeb.SettingsLive do
   end
 
   def handle_event("switch_tab", _params, socket), do: {:noreply, socket}
+
+  def handle_event("switch_store_tab", %{"tab" => tab}, socket) when tab in @store_tabs do
+    {:noreply, assign(socket, :store_tab, tab)}
+  end
+
+  def handle_event("switch_store_tab", _params, socket), do: {:noreply, socket}
 
   def handle_event("save_profile", %{"profile" => params}, socket) do
     attrs = %{
@@ -542,6 +720,32 @@ defmodule QuizProjectWeb.SettingsLive do
      |> put_flash(:info, "Google Agenda desconectado.")}
   end
 
+  def handle_event("grant_gift_card", %{"gift_card" => params}, socket) do
+    user = socket.assigns.current_user
+    reason = String.trim(params["reason"] || "")
+
+    with {:ok, amount} <- parse_positive_int(params["amount"]),
+         true <- reason != "",
+         {:ok, _entry} <- Priorities.grant_gift_card(user, amount, reason) do
+      {:noreply,
+       socket
+       |> assign(:store_balance, Priorities.wallet_balance(user))
+       |> assign(:gift_card_form, gift_card_form())
+       |> put_flash(:info, "#{amount} pontos creditados.")}
+    else
+      _ -> {:noreply, put_flash(socket, :error, "Informe um valor válido e um motivo.")}
+    end
+  end
+
+  defp parse_positive_int(value) when is_binary(value) do
+    case Integer.parse(String.trim(value)) do
+      {int, ""} when int > 0 -> {:ok, int}
+      _ -> :error
+    end
+  end
+
+  defp parse_positive_int(_value), do: :error
+
   defp profile_form(user) do
     to_form(%{"name" => user.name || "", "email" => to_string(user.email)}, as: :profile)
   end
@@ -555,8 +759,13 @@ defmodule QuizProjectWeb.SettingsLive do
 
   defp token_form, do: to_form(%{"name" => ""}, as: :token)
 
+  defp gift_card_form, do: to_form(%{"amount" => "", "reason" => ""}, as: :gift_card)
+
   defp tab_from_params(%{"tab" => tab}) when tab in @tabs, do: tab
   defp tab_from_params(_params), do: "profile"
+
+  defp store_tab_from_params(%{"store_tab" => tab}) when tab in @store_tabs, do: tab
+  defp store_tab_from_params(_params), do: "products"
 
   defp blank_to_nil(nil), do: nil
 
@@ -588,6 +797,12 @@ defmodule QuizProjectWeb.SettingsLive do
       )
     ]
   end
+
+  # Pílula horizontal — mesmo visual da sub-navegação da Wish Store
+  # (`WishStoreLive.Components.sub_nav/1`), pra barra de sub-abas da Loja
+  # aqui em Configurações.
+  defp subtab_class(true), do: "bg-primary text-primary-content shadow-sm"
+  defp subtab_class(false), do: "bg-base-200 opacity-70 hover:opacity-100"
 
   defp format_datetime(datetime) do
     Calendar.strftime(datetime, "%d/%m/%Y às %H:%M")

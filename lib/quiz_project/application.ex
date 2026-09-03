@@ -8,6 +8,7 @@ defmodule QuizProject.Application do
   @impl true
   def start(_type, _args) do
     ensure_book_images_dir!()
+    ensure_store_images_dir!()
 
     children =
       [
@@ -44,7 +45,18 @@ defmodule QuizProject.Application do
   # volume persistente não estiver montado em produção, é melhor a aplicação
   # não subir do que subir e falhar só no primeiro upload de um usuário.
   defp ensure_book_images_dir! do
-    dir = Application.fetch_env!(:quiz_project, :book_images_dir)
+    ensure_writable_dir!(:book_images_dir, "BOOK_IMAGES_DIR")
+  end
+
+  # Imagens de produto da Wish Store são o outro estado em disco da aplicação
+  # (ver `QuizProject.Store.ImageStore`) — mesmo racional e mesma checagem de
+  # gravação na subida do `book_images_dir` acima.
+  defp ensure_store_images_dir! do
+    ensure_writable_dir!(:store_images_dir, "STORE_IMAGES_DIR")
+  end
+
+  defp ensure_writable_dir!(env_key, human_name) do
+    dir = Application.fetch_env!(:quiz_project, env_key)
 
     case File.mkdir_p(dir) do
       :ok ->
@@ -55,11 +67,11 @@ defmodule QuizProject.Application do
             File.rm(probe)
 
           {:error, reason} ->
-            raise "BOOK_IMAGES_DIR (#{dir}) não é gravável: #{:file.format_error(reason)}"
+            raise "#{human_name} (#{dir}) não é gravável: #{:file.format_error(reason)}"
         end
 
       {:error, reason} ->
-        raise "BOOK_IMAGES_DIR (#{dir}) inacessível: #{:file.format_error(reason)}"
+        raise "#{human_name} (#{dir}) inacessível: #{:file.format_error(reason)}"
     end
   end
 

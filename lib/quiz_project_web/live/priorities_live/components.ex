@@ -429,6 +429,21 @@ defmodule QuizProjectWeb.PrioritiesLive.Components do
       </p>
 
       <form
+        id={"habit-store-points-form-#{@habit.id}"}
+        phx-change="set_habit_store_points"
+        phx-target={@myself}
+        class="w-32"
+      >
+        <.input
+          type="number"
+          name="store_points"
+          label="Pontos"
+          value={@habit.store_points}
+          min="0"
+        />
+      </form>
+
+      <form
         id={"habit-frequency-form-#{@habit.id}"}
         phx-submit="set_habit_frequency"
         phx-change="habit_frequency_form_change"

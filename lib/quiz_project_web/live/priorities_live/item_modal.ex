@@ -32,6 +32,7 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
       |> assign_new(:new_activity_title, fn -> "" end)
       |> assign_new(:new_activity_type, fn -> "tarefa" end)
       |> assign_new(:new_activity_frequency, fn -> "daily" end)
+      |> assign_new(:new_activity_expanded?, fn -> false end)
       |> assign_new(:books, fn -> AdaptiveStudy.list_books(assigns.current_user) end)
       |> assign_new(:quizzes, fn -> Quizzes.list_created(assigns.current_user) end)
       |> load_item(assigns.item_id)
@@ -40,12 +41,16 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
   end
 
   @impl true
-  def handle_event("update_item", %{"title" => title, "notes" => notes}, socket) do
+  def handle_event("update_item", %{"title" => title, "notes" => notes} = params, socket) do
     user = socket.assigns.current_user
 
     case Priorities.update_item(
            socket.assigns.item,
-           %{title: String.trim(title), notes: notes},
+           %{
+             title: String.trim(title),
+             notes: notes,
+             store_points: parse_int(params["store_points"]) || 0
+           },
            user
          ) do
       {:ok, _} ->
@@ -344,6 +349,11 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
   end
 
   @impl true
+  def handle_event("toggle_new_activity_expanded", _params, socket) do
+    {:noreply, update(socket, :new_activity_expanded?, &(!&1))}
+  end
+
+  @impl true
   def handle_event("new_activity_form_change", params, socket) do
     {:noreply,
      assign(socket,
@@ -366,7 +376,10 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
         {:noreply, socket}
 
       is_habit? ->
-        attrs = Map.merge(%{title: title, item_id: item.id}, build_habit_attrs(params))
+        attrs =
+          %{title: title, item_id: item.id}
+          |> Map.merge(build_habit_attrs(params))
+          |> Map.merge(store_points_attrs(params))
 
         case Priorities.create_habit(user, attrs) do
           {:ok, habit} ->
@@ -378,7 +391,8 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
              |> assign(
                new_activity_title: "",
                new_activity_type: "tarefa",
-               new_activity_frequency: "daily"
+               new_activity_frequency: "daily",
+               new_activity_expanded?: false
              )
              |> load_item(item.id)}
 
@@ -387,7 +401,12 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
         end
 
       true ->
-        attrs = Map.merge(%{title: title, item_id: item.id}, event_attrs(is_event?, params))
+        attrs =
+          %{title: title, item_id: item.id}
+          |> Map.merge(event_attrs(is_event?, params))
+          |> Map.merge(notes_attrs(params))
+          |> Map.merge(max_deadline_attrs(params))
+          |> Map.merge(store_points_attrs(params))
 
         case Priorities.create_activity(user, attrs) do
           {:ok, _} ->
@@ -396,7 +415,11 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
             {:noreply,
              socket
              |> notify_flash(:info, flash)
-             |> assign(new_activity_title: "", new_activity_type: "tarefa")
+             |> assign(
+               new_activity_title: "",
+               new_activity_type: "tarefa",
+               new_activity_expanded?: false
+             )
              |> load_item(item.id)}
 
           _ ->
@@ -520,6 +543,27 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
     end
   end
 
+  defp notes_attrs(params) do
+    case params |> Map.get("notes", "") |> String.trim() do
+      "" -> %{}
+      notes -> %{notes: notes}
+    end
+  end
+
+  defp max_deadline_attrs(params) do
+    case params |> Map.get("max_deadline", "") |> Date.from_iso8601() do
+      {:ok, date} -> %{max_deadline: date}
+      _ -> %{}
+    end
+  end
+
+  defp store_points_attrs(params) do
+    case params |> Map.get("store_points", "") |> Integer.parse() do
+      {points, _rest} -> %{store_points: points}
+      :error -> %{}
+    end
+  end
+
   @item_types ~w(book quiz_goal course checklist manual)
 
   defp parse_item_type(value) when value in @item_types,
@@ -596,6 +640,7 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
           new_activity_title={@new_activity_title}
           new_activity_type={@new_activity_type}
           new_activity_frequency={@new_activity_frequency}
+          new_activity_expanded?={@new_activity_expanded?}
           item_logs={@item_logs}
         />
       </div>
@@ -646,6 +691,7 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
               new_activity_title={@new_activity_title}
               new_activity_type={@new_activity_type}
               new_activity_frequency={@new_activity_frequency}
+              new_activity_expanded?={@new_activity_expanded?}
               item_logs={@item_logs}
             />
           </div>
@@ -781,6 +827,7 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
   attr :new_activity_title, :string, required: true
   attr :new_activity_type, :string, required: true
   attr :new_activity_frequency, :string, required: true
+  attr :new_activity_expanded?, :boolean, required: true
   attr :item_logs, :list, required: true
 
   defp content_body(assigns) do
@@ -802,6 +849,15 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
         <form id="update-item-form" phx-submit="update_item" phx-target={@myself} class="space-y-3">
           <.input type="text" name="title" label="Título" value={@item.title} required />
           <.input type="textarea" name="notes" label="Notas" value={@item.notes} rows="3" />
+          <div class="w-32">
+            <.input
+              type="number"
+              name="store_points"
+              label="Pontos"
+              value={@item.store_points}
+              min="0"
+            />
+          </div>
           <div class="flex justify-end">
             <button type="submit" class="btn btn-primary btn-sm rounded-full px-5">Salvar</button>
           </div>
@@ -1142,6 +1198,43 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
                 options={Enum.map(1..31, &{to_string(&1), to_string(&1)})}
                 class="grid grid-cols-6 gap-1.5 sm:grid-cols-7"
               />
+            </div>
+          </div>
+
+          <button
+            type="button"
+            phx-click="toggle_new_activity_expanded"
+            phx-target={@myself}
+            class="flex items-center gap-1 text-xs font-semibold opacity-60 hover:opacity-100"
+          >
+            <.icon
+              name="hero-chevron-right"
+              class={[
+                "size-3.5 transition-transform",
+                @new_activity_expanded? && "rotate-90"
+              ]}
+            /> Mais opções
+          </button>
+
+          <div
+            :if={@new_activity_expanded?}
+            class="space-y-3 rounded-2xl border border-base-300 p-3"
+          >
+            <.input
+              :if={@new_activity_type != "habito"}
+              type="textarea"
+              name="notes"
+              label="Descrição (opcional)"
+              value=""
+              rows="2"
+            />
+            <div class="flex flex-wrap items-end gap-3">
+              <div :if={@new_activity_type != "habito"} class="w-40">
+                <.input type="date" name="max_deadline" label="Prazo máximo" value="" />
+              </div>
+              <div class="w-28">
+                <.input type="number" name="store_points" label="Pontos" value="0" min="0" />
+              </div>
             </div>
           </div>
         </form>
