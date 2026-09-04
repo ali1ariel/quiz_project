@@ -215,5 +215,39 @@ defmodule QuizProjectWeb.SettingsLiveTest do
 
       assert has_element?(view, "#store-products-empty")
     end
+
+    test "sub-aba de padrões mostra e salva a pontuação padrão por tipo", %{
+      conn: conn,
+      user: user
+    } do
+      {:ok, view, _html} = live(conn, ~p"/settings?tab=store&store_tab=defaults")
+
+      assert has_element?(view, "#point-defaults-form")
+
+      view
+      |> form("#point-defaults-form", %{
+        "point_defaults" => %{
+          "activity_points" => "10",
+          "activity_task_points" => "5",
+          "item_points" => "20",
+          "habit_points" => "15"
+        }
+      })
+      |> render_submit()
+
+      defaults = Priorities.get_point_defaults(user)
+      assert defaults.activity_points == 10
+      assert defaults.activity_task_points == 5
+      assert defaults.item_points == 20
+      assert defaults.habit_points == 15
+    end
+
+    test "sub-aba de padrões pré-preenche com o que já foi salvo", %{conn: conn, user: user} do
+      {:ok, _} = Priorities.save_point_defaults(user, %{activity_points: 42})
+
+      {:ok, view, _html} = live(conn, ~p"/settings?tab=store&store_tab=defaults")
+
+      assert has_element?(view, "input[name='point_defaults[activity_points]'][value='42']")
+    end
   end
 end

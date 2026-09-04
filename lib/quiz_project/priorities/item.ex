@@ -51,12 +51,13 @@ defmodule QuizProject.Priorities.Item do
         :manual_percent,
         :general,
         :store_points,
+        :default_activity_store_points,
         :tier
       ]
     end
 
     update :update do
-      accept [:title, :notes, :store_points]
+      accept [:title, :notes, :store_points, :default_activity_store_points]
     end
 
     # Único jeito de mudar `item_type` depois de criado. As validações
@@ -254,6 +255,14 @@ defmodule QuizProject.Priorities.Item do
     attribute :store_points, :integer do
       allow_nil? false
       default 0
+    end
+
+    # `nil` (o padrão) significa "usa a pontuação padrão de atividade das
+    # Configurações" (`Priorities.get_point_defaults/1`) — só ganha um número
+    # próprio quem for sobrescrever isso para as atividades geradas aqui
+    # dentro. Atividades soltas do Kanban nunca leem este campo.
+    attribute :default_activity_store_points, :integer do
+      constraints min: 0
     end
 
     timestamps()

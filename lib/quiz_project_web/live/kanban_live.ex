@@ -41,6 +41,8 @@ defmodule QuizProjectWeb.KanbanLive do
       Priorities.clear_expired_snoozes(socket.assigns.current_user)
     end
 
+    point_defaults = Priorities.get_point_defaults(socket.assigns.current_user)
+
     {:ok,
      socket
      |> assign(
@@ -56,8 +58,9 @@ defmodule QuizProjectWeb.KanbanLive do
        capture_item_id: nil,
        capture_tasks: [],
        capture_task_draft: "",
-       capture_task_points_draft: "0",
-       attach_category_by_activity: %{}
+       capture_task_points_draft: to_string(point_defaults.activity_task_points),
+       attach_category_by_activity: %{},
+       point_defaults: point_defaults
      )
      |> load_data()}
   end
@@ -104,7 +107,10 @@ defmodule QuizProjectWeb.KanbanLive do
   @impl true
   def handle_event("add_capture_task", _params, socket) do
     title = String.trim(socket.assigns.capture_task_draft || "")
-    points = parse_int(socket.assigns.capture_task_points_draft) || 0
+
+    points =
+      parse_int(socket.assigns.capture_task_points_draft) ||
+        socket.assigns.point_defaults.activity_task_points
 
     if title == "" do
       {:noreply, socket}
@@ -114,7 +120,10 @@ defmodule QuizProjectWeb.KanbanLive do
       {:noreply,
        socket
        |> update(:capture_tasks, &(&1 ++ [task]))
-       |> assign(capture_task_draft: "", capture_task_points_draft: "0")}
+       |> assign(
+         capture_task_draft: "",
+         capture_task_points_draft: to_string(socket.assigns.point_defaults.activity_task_points)
+       )}
     end
   end
 
@@ -148,7 +157,7 @@ defmodule QuizProjectWeb.KanbanLive do
           event_attrs(is_event?, params)
           |> Map.merge(max_deadline_attrs(params))
           |> Map.merge(notes_attrs(params))
-          |> Map.merge(store_points_attrs(params))
+          |> Map.merge(store_points_attrs(params, socket.assigns.point_defaults.activity_points))
 
         create_loose_capture(socket, user, title, item_id, extra_attrs)
     end
@@ -286,7 +295,7 @@ defmodule QuizProjectWeb.KanbanLive do
   defp blank_to_nil(""), do: nil
   defp blank_to_nil(value), do: value
 
-  defp reset_capture_assigns do
+  defp reset_capture_assigns(point_defaults) do
     [
       capture_expanded?: false,
       capture_title: "",
@@ -297,7 +306,7 @@ defmodule QuizProjectWeb.KanbanLive do
       capture_item_id: nil,
       capture_tasks: [],
       capture_task_draft: "",
-      capture_task_points_draft: "0"
+      capture_task_points_draft: to_string(point_defaults.activity_task_points)
     ]
   end
 
@@ -306,7 +315,7 @@ defmodule QuizProjectWeb.KanbanLive do
       attrs =
         %{title: title, item_id: item.id}
         |> Map.merge(build_habit_attrs(params))
-        |> Map.merge(store_points_attrs(params))
+        |> Map.merge(store_points_attrs(params, socket.assigns.point_defaults.habit_points))
 
       case Priorities.create_habit(user, attrs) do
         {:ok, habit} ->
@@ -315,7 +324,7 @@ defmodule QuizProjectWeb.KanbanLive do
           {:noreply,
            socket
            |> put_flash(:info, "Hábito criado.")
-           |> assign(reset_capture_assigns())
+           |> assign(reset_capture_assigns(socket.assigns.point_defaults))
            |> load_data()}
 
         _ ->
@@ -343,7 +352,7 @@ defmodule QuizProjectWeb.KanbanLive do
         {:noreply,
          socket
          |> put_flash(:info, flash)
-         |> assign(reset_capture_assigns())
+         |> assign(reset_capture_assigns(socket.assigns.point_defaults))
          |> load_data()}
 
       _ ->
@@ -377,10 +386,10 @@ defmodule QuizProjectWeb.KanbanLive do
     end
   end
 
-  defp store_points_attrs(params) do
+  defp store_points_attrs(params, default) do
     case params |> Map.get("store_points", "") |> Integer.parse() do
       {points, _rest} -> %{store_points: points}
-      :error -> %{}
+      :error -> %{store_points: default}
     end
   end
 
@@ -412,7 +421,9 @@ defmodule QuizProjectWeb.KanbanLive do
   # Arrastar pra fora de Feito precisa reabrir antes — `back_to_todo`/`start`
   # só aceitam atividade já em `fazendo`/`pendente`, então uma atividade
   # resolvida (`flow == :feito`) sempre passa por `reopen` primeiro.
-  defp move_to_todo(%{flow: :feito} = activity, user), do: Priorities.reopen_activity(activity, user)
+  defp move_to_todo(%{flow: :feito} = activity, user),
+    do: Priorities.reopen_activity(activity, user)
+
   defp move_to_todo(activity, user), do: Priorities.back_to_todo_activity(activity, user)
 
   defp move_to_fazendo(%{flow: :feito} = activity, user) do
@@ -575,7 +586,17 @@ defmodule QuizProjectWeb.KanbanLive do
                     <.input type="date" name="max_deadline" label="Prazo máximo" value="" />
                   </div>
                   <div class="w-28">
-                    <.input type="number" name="store_points" label="Pontos" value="0" min="0" />
+                    <.input
+                      type="number"
+                      name="store_points"
+                      label="Pontos"
+                      value={
+                        if @capture_type == "habito",
+                          do: @point_defaults.habit_points,
+                          else: @point_defaults.activity_points
+                      }
+                      min="0"
+                    />
                   </div>
                 </div>
 
@@ -767,69 +788,69 @@ defmodule QuizProjectWeb.KanbanLive do
               class="space-y-2"
             >
               <Components.activity_card activity={activity} show_age?={true}>
-              <:actions>
-                <button
-                  phx-click="complete_activity"
-                  phx-value-id={activity.id}
-                  class="btn btn-success btn-sm rounded-full"
-                >
-                  <.icon name="hero-check" class="size-4" /> Concluir
-                </button>
-                <button
-                  :if={activity.kind == :evento}
-                  phx-click="open_snooze"
-                  phx-value-id={activity.id}
-                  class="btn btn-ghost btn-sm"
-                  title="Reagendar — muda o dia marcado do evento"
-                >
-                  <.icon name="hero-calendar-days" class="size-4 opacity-60" />
-                </button>
-                <button
-                  phx-click="discard_activity"
-                  phx-value-id={activity.id}
-                  class="btn btn-ghost btn-sm"
-                  title="Descartar"
-                >
-                  <.icon name="hero-trash" class="size-4 opacity-50" />
-                </button>
-                <% attach_category_id = Map.get(@attach_category_by_activity, activity.id) %>
-                <form
-                  id={"attach-category-form-#{activity.id}"}
-                  phx-change="attach_category_change"
-                  class="inline-flex items-center gap-1.5"
-                >
-                  <input type="hidden" name="activity_id" value={activity.id} />
-                  <.input
-                    type="select"
-                    name="category_id"
-                    value={attach_category_id || ""}
-                    options={Enum.map(@categories, &{&1.name, &1.id})}
-                    prompt="Anexar a..."
-                    class="select select-sm select-bordered rounded-full"
-                  />
-                </form>
-                <form
-                  :if={attach_category_id}
-                  id={"attach-item-form-#{activity.id}"}
-                  phx-change="attach_capture"
-                  class="inline-flex items-center"
-                >
-                  <input type="hidden" name="activity_id" value={activity.id} />
-                  <.input
-                    type="select"
-                    name="item_id"
-                    value=""
-                    options={
-                      Components.attach_item_options(
-                        Map.get(@items_by_category, attach_category_id, []),
-                        category_by_id(@categories, attach_category_id)
-                      )
-                    }
-                    prompt="Qual prioridade?"
-                    class="select select-sm select-bordered rounded-full"
-                  />
-                </form>
-              </:actions>
+                <:actions>
+                  <button
+                    phx-click="complete_activity"
+                    phx-value-id={activity.id}
+                    class="btn btn-success btn-sm rounded-full"
+                  >
+                    <.icon name="hero-check" class="size-4" /> Concluir
+                  </button>
+                  <button
+                    :if={activity.kind == :evento}
+                    phx-click="open_snooze"
+                    phx-value-id={activity.id}
+                    class="btn btn-ghost btn-sm"
+                    title="Reagendar — muda o dia marcado do evento"
+                  >
+                    <.icon name="hero-calendar-days" class="size-4 opacity-60" />
+                  </button>
+                  <button
+                    phx-click="discard_activity"
+                    phx-value-id={activity.id}
+                    class="btn btn-ghost btn-sm"
+                    title="Descartar"
+                  >
+                    <.icon name="hero-trash" class="size-4 opacity-50" />
+                  </button>
+                  <% attach_category_id = Map.get(@attach_category_by_activity, activity.id) %>
+                  <form
+                    id={"attach-category-form-#{activity.id}"}
+                    phx-change="attach_category_change"
+                    class="inline-flex items-center gap-1.5"
+                  >
+                    <input type="hidden" name="activity_id" value={activity.id} />
+                    <.input
+                      type="select"
+                      name="category_id"
+                      value={attach_category_id || ""}
+                      options={Enum.map(@categories, &{&1.name, &1.id})}
+                      prompt="Anexar a..."
+                      class="select select-sm select-bordered rounded-full"
+                    />
+                  </form>
+                  <form
+                    :if={attach_category_id}
+                    id={"attach-item-form-#{activity.id}"}
+                    phx-change="attach_capture"
+                    class="inline-flex items-center"
+                  >
+                    <input type="hidden" name="activity_id" value={activity.id} />
+                    <.input
+                      type="select"
+                      name="item_id"
+                      value=""
+                      options={
+                        Components.attach_item_options(
+                          Map.get(@items_by_category, attach_category_id, []),
+                          category_by_id(@categories, attach_category_id)
+                        )
+                      }
+                      prompt="Qual prioridade?"
+                      class="select select-sm select-bordered rounded-full"
+                    />
+                  </form>
+                </:actions>
               </Components.activity_card>
             </div>
           </div>

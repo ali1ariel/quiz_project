@@ -88,7 +88,7 @@ defmodule QuizProjectWeb.PrioritiesLive.Index do
     category = Enum.find(socket.assigns.categories, &(&1.id == params["category_id"]))
 
     with true <- not is_nil(category),
-         {:ok, attrs} <- build_item_attrs(params),
+         {:ok, attrs} <- build_item_attrs(params, socket.assigns.point_defaults.item_points),
          {:ok, _item} <- Priorities.create_item(user, category, attrs) do
       {:noreply,
        socket
@@ -168,18 +168,19 @@ defmodule QuizProjectWeb.PrioritiesLive.Index do
       categories: categories,
       sections: sections,
       books: AdaptiveStudy.list_books(user),
-      quizzes: Quizzes.list_created(user)
+      quizzes: Quizzes.list_created(user),
+      point_defaults: Priorities.get_point_defaults(user)
     )
   end
 
-  defp build_item_attrs(params) do
+  defp build_item_attrs(params, default_points) do
     with {:ok, item_type} <- parse_item_type(params["item_type"]),
          {:ok, tier} <- parse_tier(params["tier"] || "") do
       base = %{
         item_type: item_type,
         title: String.trim(params["title"] || ""),
         notes: params["notes"] || "",
-        store_points: parse_int(params["store_points"]) || 0,
+        store_points: parse_int(params["store_points"]) || default_points,
         tier: tier
       }
 
@@ -417,7 +418,7 @@ defmodule QuizProjectWeb.PrioritiesLive.Index do
                           type="number"
                           name="store_points"
                           label="Pontos"
-                          value="0"
+                          value={@point_defaults.item_points}
                           min="0"
                         />
                       </div>

@@ -28,6 +28,7 @@ defmodule QuizProject.Priorities do
   alias QuizProject.Priorities.ItemLink
   alias QuizProject.Priorities.ItemTag
   alias QuizProject.Priorities.ItemTask
+  alias QuizProject.Priorities.PointDefaults
   alias QuizProject.Priorities.Tag
   alias QuizProject.Priorities.WalletEntry
 
@@ -47,6 +48,7 @@ defmodule QuizProject.Priorities do
     resource Habit
     resource HabitOverride
     resource WalletEntry
+    resource PointDefaults
   end
 
   # Autorização
@@ -1891,6 +1893,39 @@ defmodule QuizProject.Priorities do
     Activity
     |> Ash.Query.filter(user_id == ^user_id and habit_id == ^habit_id and flow == ^flow)
     |> next_position_for()
+  end
+
+  # Pontuação padrão por tipo
+
+  @doc """
+  Pontuação padrão por tipo de elemento do usuário (atividade, subitem de
+  checklist, prioridade, hábito) — zerada em todo campo quando ele ainda não
+  configurou nada em Configurações.
+  """
+  def get_point_defaults(%{id: user_id}) do
+    PointDefaults
+    |> Ash.Query.filter(user_id == ^user_id)
+    |> Ash.read_one!(authorize?: false)
+    |> case do
+      nil ->
+        %PointDefaults{
+          user_id: user_id,
+          activity_points: 0,
+          activity_task_points: 0,
+          item_points: 0,
+          habit_points: 0
+        }
+
+      defaults ->
+        defaults
+    end
+  end
+
+  @doc "Salva a pontuação padrão por tipo de elemento do usuário."
+  def save_point_defaults(%{id: user_id}, attrs) do
+    PointDefaults
+    |> Ash.Changeset.for_create(:upsert, Map.put(attrs, :user_id, user_id), authorize?: false)
+    |> Ash.create()
   end
 
   # Carteira de pontos

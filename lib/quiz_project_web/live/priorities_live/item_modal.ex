@@ -35,6 +35,7 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
       |> assign_new(:new_activity_expanded?, fn -> false end)
       |> assign_new(:books, fn -> AdaptiveStudy.list_books(assigns.current_user) end)
       |> assign_new(:quizzes, fn -> Quizzes.list_created(assigns.current_user) end)
+      |> assign_new(:point_defaults, fn -> Priorities.get_point_defaults(assigns.current_user) end)
       |> load_item(assigns.item_id)
 
     {:ok, socket}
@@ -49,7 +50,8 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
            %{
              title: String.trim(title),
              notes: notes,
-             store_points: parse_int(params["store_points"]) || 0
+             store_points: parse_int(params["store_points"]) || 0,
+             default_activity_store_points: parse_int(params["default_activity_store_points"])
            },
            user
          ) do
@@ -379,7 +381,7 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
         attrs =
           %{title: title, item_id: item.id}
           |> Map.merge(build_habit_attrs(params))
-          |> Map.merge(store_points_attrs(params))
+          |> Map.merge(store_points_attrs(params, socket.assigns.point_defaults.habit_points))
 
         case Priorities.create_habit(user, attrs) do
           {:ok, habit} ->
@@ -401,12 +403,15 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
         end
 
       true ->
+        activity_default =
+          item.default_activity_store_points || socket.assigns.point_defaults.activity_points
+
         attrs =
           %{title: title, item_id: item.id}
           |> Map.merge(event_attrs(is_event?, params))
           |> Map.merge(notes_attrs(params))
           |> Map.merge(max_deadline_attrs(params))
-          |> Map.merge(store_points_attrs(params))
+          |> Map.merge(store_points_attrs(params, activity_default))
 
         case Priorities.create_activity(user, attrs) do
           {:ok, _} ->
@@ -557,10 +562,20 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
     end
   end
 
-  defp store_points_attrs(params) do
+  # Mesma resolução de `create_item_activity/3`: hábito usa o padrão global
+  # de hábito, atividade/evento usa a sobrescrita do item (se houver) ou o
+  # padrão global de atividade — só pra pré-preencher o campo antes do
+  # primeiro submit.
+  defp new_activity_points_default("habito", _item, point_defaults),
+    do: point_defaults.habit_points
+
+  defp new_activity_points_default(_type, item, point_defaults),
+    do: item.default_activity_store_points || point_defaults.activity_points
+
+  defp store_points_attrs(params, default) do
     case params |> Map.get("store_points", "") |> Integer.parse() do
       {points, _rest} -> %{store_points: points}
-      :error -> %{}
+      :error -> %{store_points: default}
     end
   end
 
@@ -642,6 +657,7 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
           new_activity_frequency={@new_activity_frequency}
           new_activity_expanded?={@new_activity_expanded?}
           item_logs={@item_logs}
+          point_defaults={@point_defaults}
         />
       </div>
 
@@ -693,6 +709,7 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
               new_activity_frequency={@new_activity_frequency}
               new_activity_expanded?={@new_activity_expanded?}
               item_logs={@item_logs}
+              point_defaults={@point_defaults}
             />
           </div>
         </div>
@@ -829,6 +846,7 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
   attr :new_activity_frequency, :string, required: true
   attr :new_activity_expanded?, :boolean, required: true
   attr :item_logs, :list, required: true
+  attr :point_defaults, :map, required: true
 
   defp content_body(assigns) do
     ~H"""
@@ -849,14 +867,26 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
         <form id="update-item-form" phx-submit="update_item" phx-target={@myself} class="space-y-3">
           <.input type="text" name="title" label="Título" value={@item.title} required />
           <.input type="textarea" name="notes" label="Notas" value={@item.notes} rows="3" />
-          <div class="w-32">
-            <.input
-              type="number"
-              name="store_points"
-              label="Pontos"
-              value={@item.store_points}
-              min="0"
-            />
+          <div class="flex flex-wrap items-end gap-4">
+            <div class="w-32">
+              <.input
+                type="number"
+                name="store_points"
+                label="Pontos"
+                value={@item.store_points}
+                min="0"
+              />
+            </div>
+            <div class="w-56">
+              <.input
+                type="number"
+                name="default_activity_store_points"
+                label="Pontos padrão das atividades"
+                value={@item.default_activity_store_points}
+                placeholder={"Padrão de Configurações (#{@point_defaults.activity_points})"}
+                min="0"
+              />
+            </div>
           </div>
           <div class="flex justify-end">
             <button type="submit" class="btn btn-primary btn-sm rounded-full px-5">Salvar</button>
@@ -1233,7 +1263,13 @@ defmodule QuizProjectWeb.PrioritiesLive.ItemModal do
                 <.input type="date" name="max_deadline" label="Prazo máximo" value="" />
               </div>
               <div class="w-28">
-                <.input type="number" name="store_points" label="Pontos" value="0" min="0" />
+                <.input
+                  type="number"
+                  name="store_points"
+                  label="Pontos"
+                  value={new_activity_points_default(@new_activity_type, @item, @point_defaults)}
+                  min="0"
+                />
               </div>
             </div>
           </div>

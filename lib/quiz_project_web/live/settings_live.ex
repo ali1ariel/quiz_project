@@ -10,7 +10,7 @@ defmodule QuizProjectWeb.SettingsLive do
   alias QuizProjectWeb.WishStoreLive.Components, as: StoreComponents
 
   @tabs ~w(profile security tokens calendar store)
-  @store_tabs ~w(gift_card products)
+  @store_tabs ~w(gift_card products defaults)
 
   @impl true
   def render(assigns) do
@@ -449,6 +449,19 @@ defmodule QuizProjectWeb.SettingsLive do
                 <.icon name="hero-gift" class="size-4" />
                 <span>Gift card</span>
               </button>
+              <button
+                id="store-subtab-defaults"
+                type="button"
+                phx-click="switch_store_tab"
+                phx-value-tab="defaults"
+                class={[
+                  "flex items-center gap-1.5 rounded-full px-4 py-1.5 transition",
+                  subtab_class(@store_tab == "defaults")
+                ]}
+              >
+                <.icon name="hero-adjustments-horizontal" class="size-4" />
+                <span>Padrões</span>
+              </button>
             </nav>
 
             <div
@@ -566,6 +579,75 @@ defmodule QuizProjectWeb.SettingsLive do
                 </article>
               </div>
             </div>
+
+            <div
+              :if={@store_tab == "defaults"}
+              id="store-defaults"
+              class="rounded-3xl border border-base-300 bg-base-200 p-6 shadow-sm sm:p-8"
+            >
+              <div class="flex items-start gap-4">
+                <span class="grid size-12 shrink-0 place-items-center rounded-2xl bg-primary/10 text-primary">
+                  <.icon name="hero-adjustments-horizontal" class="size-6" />
+                </span>
+                <div>
+                  <h2 class="text-xl font-bold">Pontuação padrão</h2>
+                  <p class="mt-1 max-w-2xl text-sm leading-6 opacity-70">
+                    Preenche o campo "Pontos" ao criar cada tipo de elemento, em vez de sempre
+                    começar do zero. Uma prioridade pode sobrescrever o valor de atividade só
+                    para o que for gerado dentro dela — atividades soltas do Kanban sempre usam
+                    o valor daqui.
+                  </p>
+                </div>
+              </div>
+
+              <.form
+                for={@point_defaults_form}
+                id="point-defaults-form"
+                phx-submit="save_point_defaults"
+                class="mt-7 space-y-5"
+              >
+                <div class="grid gap-4 sm:grid-cols-2">
+                  <.input
+                    field={@point_defaults_form[:activity_points]}
+                    type="number"
+                    label="Atividade"
+                    min="0"
+                    required
+                  />
+                  <.input
+                    field={@point_defaults_form[:activity_task_points]}
+                    type="number"
+                    label="Subitem de checklist"
+                    min="0"
+                    required
+                  />
+                  <.input
+                    field={@point_defaults_form[:item_points]}
+                    type="number"
+                    label="Prioridade"
+                    min="0"
+                    required
+                  />
+                  <.input
+                    field={@point_defaults_form[:habit_points]}
+                    type="number"
+                    label="Hábito"
+                    min="0"
+                    required
+                  />
+                </div>
+                <div class="flex justify-end pt-2">
+                  <button
+                    id="save-point-defaults"
+                    type="submit"
+                    class="rounded-full bg-primary px-6 py-2.5 text-sm font-semibold text-primary-content transition hover:-translate-y-0.5 hover:shadow-lg disabled:cursor-wait disabled:opacity-60"
+                    phx-disable-with="Salvando…"
+                  >
+                    Salvar padrões
+                  </button>
+                </div>
+              </.form>
+            </div>
           </section>
         </div>
       </div>
@@ -603,6 +685,7 @@ defmodule QuizProjectWeb.SettingsLive do
      |> assign(:google_connection, google_connection(user))
      |> assign(:gift_card_form, gift_card_form())
      |> assign(:store_balance, Priorities.wallet_balance(user))
+     |> assign(:point_defaults_form, point_defaults_form(Priorities.get_point_defaults(user)))
      |> assign(:store_tab, store_tab_from_params(params))
      |> stream(:api_tokens, tokens, dom_id: &"api-token-#{&1.id}")
      |> stream(:store_products, Store.list_products(user), dom_id: &"store-product-#{&1.id}")}
@@ -737,6 +820,29 @@ defmodule QuizProjectWeb.SettingsLive do
     end
   end
 
+  def handle_event("save_point_defaults", %{"point_defaults" => params}, socket) do
+    user = socket.assigns.current_user
+
+    with {:ok, activity} <- parse_non_negative_int(params["activity_points"]),
+         {:ok, activity_task} <- parse_non_negative_int(params["activity_task_points"]),
+         {:ok, item} <- parse_non_negative_int(params["item_points"]),
+         {:ok, habit} <- parse_non_negative_int(params["habit_points"]),
+         {:ok, defaults} <-
+           Priorities.save_point_defaults(user, %{
+             activity_points: activity,
+             activity_task_points: activity_task,
+             item_points: item,
+             habit_points: habit
+           }) do
+      {:noreply,
+       socket
+       |> assign(:point_defaults_form, point_defaults_form(defaults))
+       |> put_flash(:info, "Pontuação padrão atualizada.")}
+    else
+      _ -> {:noreply, put_flash(socket, :error, "Informe valores válidos.")}
+    end
+  end
+
   defp parse_positive_int(value) when is_binary(value) do
     case Integer.parse(String.trim(value)) do
       {int, ""} when int > 0 -> {:ok, int}
@@ -745,6 +851,15 @@ defmodule QuizProjectWeb.SettingsLive do
   end
 
   defp parse_positive_int(_value), do: :error
+
+  defp parse_non_negative_int(value) when is_binary(value) do
+    case Integer.parse(String.trim(value)) do
+      {int, ""} when int >= 0 -> {:ok, int}
+      _ -> :error
+    end
+  end
+
+  defp parse_non_negative_int(_value), do: :error
 
   defp profile_form(user) do
     to_form(%{"name" => user.name || "", "email" => to_string(user.email)}, as: :profile)
@@ -760,6 +875,18 @@ defmodule QuizProjectWeb.SettingsLive do
   defp token_form, do: to_form(%{"name" => ""}, as: :token)
 
   defp gift_card_form, do: to_form(%{"amount" => "", "reason" => ""}, as: :gift_card)
+
+  defp point_defaults_form(defaults) do
+    to_form(
+      %{
+        "activity_points" => to_string(defaults.activity_points),
+        "activity_task_points" => to_string(defaults.activity_task_points),
+        "item_points" => to_string(defaults.item_points),
+        "habit_points" => to_string(defaults.habit_points)
+      },
+      as: :point_defaults
+    )
+  end
 
   defp tab_from_params(%{"tab" => tab}) when tab in @tabs, do: tab
   defp tab_from_params(_params), do: "profile"

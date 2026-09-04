@@ -22,6 +22,7 @@ defmodule QuizProjectWeb.ActivityModal do
      |> assign(assigns)
      |> assign_new(:habit_frequency_form_value, fn -> nil end)
      |> assign_new(:active_tab, fn -> :detalhes end)
+     |> assign_new(:point_defaults, fn -> Priorities.get_point_defaults(assigns.current_user) end)
      |> load_activity(assigns.activity_id)}
   end
 
@@ -73,7 +74,7 @@ defmodule QuizProjectWeb.ActivityModal do
           socket.assigns.activity,
           title,
           socket.assigns.current_user,
-          parse_int(params["store_points"]) || 0
+          parse_int(params["store_points"]) || socket.assigns.point_defaults.activity_task_points
         )
 
       {:noreply, load_activity(socket, socket.assigns.activity.id)}
@@ -433,7 +434,13 @@ defmodule QuizProjectWeb.ActivityModal do
                     />
                   </div>
                   <div class="w-20">
-                    <.input type="number" name="store_points" label="Pontos" value="0" min="0" />
+                    <.input
+                      type="number"
+                      name="store_points"
+                      label="Pontos"
+                      value={@point_defaults.activity_task_points}
+                      min="0"
+                    />
                   </div>
                   <div class="fieldset mb-2">
                     <label>
