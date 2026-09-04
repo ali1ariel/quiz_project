@@ -6,6 +6,7 @@ APP_DIR="/opt/quiz_project"
 PORT=4005
 PHX_HOST="quizzes.alissonmachado.dev"
 BOOK_IMAGES_DIR="/var/lib/quiz_project/book_images"
+STORE_IMAGES_DIR="/var/lib/quiz_project/store_images"
 
 get_param() {
   aws ssm get-parameter --name "$1" --with-decryption --query Parameter.Value --output text
@@ -68,12 +69,18 @@ echo "Ensuring persistent journald storage..."
 sudo mkdir -p /var/log/journal
 sudo systemd-tmpfiles --create --prefix /var/log/journal >/dev/null 2>&1 || true
 
-# Único estado em disco da app (ver QuizProject.Application.ensure_book_images_dir!/0):
-# precisa existir e pertencer a ubuntu *antes* do boot, já que o processo sobe
-# como ubuntu e /var/lib é raiz de root.
+# Estado em disco da app (ver QuizProject.Application.ensure_writable_dir!/2):
+# precisam existir e pertencer a ubuntu *antes* do boot, já que o processo sobe
+# como ubuntu e /var/lib é raiz de root — sem o chown daqui, o mkdir_p que o
+# app faz sozinho no boot esbarra em "permission denied" e a aplicação
+# inteira falha ao subir.
 sudo mkdir -p "$BOOK_IMAGES_DIR"
 sudo chown -R ubuntu:ubuntu "$BOOK_IMAGES_DIR"
 sudo chmod -R 755 "$BOOK_IMAGES_DIR"
+
+sudo mkdir -p "$STORE_IMAGES_DIR"
+sudo chown -R ubuntu:ubuntu "$STORE_IMAGES_DIR"
+sudo chmod -R 755 "$STORE_IMAGES_DIR"
 
 # --- systemd aponta para o symlink estável current/ (não para releases/<id>) ---
 echo "Writing systemd unit..."
@@ -96,6 +103,7 @@ Environment="PHX_SERVER=true"
 Environment="POOL_SIZE=10"
 Environment="RELEASE_NAME=quiz_project"
 Environment="BOOK_IMAGES_DIR=${BOOK_IMAGES_DIR}"
+Environment="STORE_IMAGES_DIR=${STORE_IMAGES_DIR}"
 Environment="DATABASE_URL=${DB_URL}"
 Environment="SECRET_KEY_BASE=${KEY_BASE}"
 Environment="OPENAI_API_KEY=${OPENAI_API_KEY}"
