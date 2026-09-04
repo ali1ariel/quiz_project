@@ -15,11 +15,11 @@ defmodule QuizProject.Priorities.Category do
     defaults [:read, :destroy]
 
     create :create do
-      accept [:user_id, :name, :position]
+      accept [:user_id, :name, :position, :default_item_store_points]
     end
 
     update :update do
-      accept [:name]
+      accept [:name, :default_item_store_points]
     end
 
     update :reposition do
@@ -42,6 +42,13 @@ defmodule QuizProject.Priorities.Category do
     attribute :position, :integer do
       allow_nil? false
       default 0
+    end
+
+    # `nil` (o padrão) significa "usa a pontuação padrão de prioridade das
+    # Configurações" (`Priorities.get_point_defaults/1`) — só ganha um número
+    # próprio quem for sobrescrever isso para os itens criados aqui dentro.
+    attribute :default_item_store_points, :integer do
+      constraints min: 0
     end
 
     timestamps()

@@ -57,6 +57,63 @@ defmodule QuizProjectWeb.PrioritiesLiveTest do
       assert html =~ "Beber água"
     end
 
+    test "cria categoria com pontuação padrão de prioridade", %{conn: conn, user: user} do
+      {:ok, view, _html} = live(conn, ~p"/priorities")
+
+      view |> element("#new-category-btn") |> render_click()
+
+      render_submit(view, "create_category", %{
+        "name" => "Livros",
+        "default_item_store_points" => "25"
+      })
+
+      assert [category] = Priorities.list_categories(user)
+      assert category.default_item_store_points == 25
+    end
+
+    test "edita nome e pontuação padrão de uma categoria pelo lápis", %{conn: conn, user: user} do
+      cat = category(user, "Metas")
+      {:ok, view, _html} = live(conn, ~p"/priorities")
+
+      render_click(view, "toggle_edit_category", %{"category_id" => cat.id})
+      assert has_element?(view, "#edit-category-form-#{cat.id}")
+
+      html =
+        render_submit(view, "update_category", %{
+          "category_id" => cat.id,
+          "name" => "Metas de leitura",
+          "default_item_store_points" => "30"
+        })
+
+      assert html =~ "Metas de leitura"
+      refute has_element?(view, "#edit-category-form-#{cat.id}")
+
+      assert {:ok, updated} = Priorities.get_category(cat.id, user)
+      assert updated.name == "Metas de leitura"
+      assert updated.default_item_store_points == 30
+    end
+
+    test "prioridade criada sem pontos informados usa a pontuação padrão da categoria", %{
+      conn: conn,
+      user: user
+    } do
+      {:ok, _} = Priorities.save_point_defaults(user, %{item_points: 5})
+      cat = category(user, "Metas")
+      {:ok, cat} = Priorities.update_category(cat, %{default_item_store_points: 50}, user)
+
+      {:ok, view, _html} = live(conn, ~p"/priorities")
+      render_click(view, "toggle_item_form", %{"category_id" => cat.id})
+
+      render_submit(view, "create_item", %{
+        "category_id" => cat.id,
+        "item_type" => "manual",
+        "title" => "Ler mais"
+      })
+
+      assert [item] = Priorities.list_items_by_category(cat.id)
+      assert item.store_points == 50
+    end
+
     test "item de livro sem título usa o título do livro escolhido", %{conn: conn, user: user} do
       cat = category(user, "Livros")
       livro = book(user, "Duna")

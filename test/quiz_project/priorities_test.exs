@@ -120,6 +120,42 @@ defmodule QuizProject.PrioritiesTest do
       assert c2.position == 1
       assert Enum.map(Priorities.list_categories(user), & &1.name) == ["Livros", "Hábitos"]
     end
+
+    test "default_item_store_points começa nil e pode ser definido na criação", %{user: user} do
+      {:ok, sem_pontos} = Priorities.create_category(user, %{name: "Livros"})
+      assert sem_pontos.default_item_store_points == nil
+
+      {:ok, com_pontos} =
+        Priorities.create_category(user, %{name: "Hábitos", default_item_store_points: 25})
+
+      assert com_pontos.default_item_store_points == 25
+    end
+
+    test "update_category/3 atualiza nome e pontuação padrão", %{user: user} do
+      cat = category(user, "Livros")
+
+      assert {:ok, updated} =
+               Priorities.update_category(
+                 cat,
+                 %{name: "Leitura", default_item_store_points: 30},
+                 user
+               )
+
+      assert updated.name == "Leitura"
+      assert updated.default_item_store_points == 30
+    end
+
+    test "update_category/3 recusa dono errado", %{user: user} do
+      {:ok, other} =
+        Accounts.register_user(%{email: "outro@teste.com", password: "senha12345"},
+          authorize?: false
+        )
+
+      cat = category(user, "Livros")
+
+      assert {:error, :unauthorized} =
+               Priorities.update_category(cat, %{name: "Roubada"}, other)
+    end
   end
 
   describe "item \"Geral\" da categoria" do

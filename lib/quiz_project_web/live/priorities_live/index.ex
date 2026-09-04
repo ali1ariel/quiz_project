@@ -19,6 +19,7 @@ defmodule QuizProjectWeb.PrioritiesLive.Index do
      |> assign(
        page_title: "Prioridades",
        show_new_category?: false,
+       editing_category_id: nil,
        item_form_category_id: nil,
        item_form_type: "manual",
        item_form_expanded?: false,
@@ -43,20 +44,64 @@ defmodule QuizProjectWeb.PrioritiesLive.Index do
   end
 
   @impl true
-  def handle_event("create_category", %{"name" => name}, socket) do
+  def handle_event("create_category", params, socket) do
     user = socket.assigns.current_user
-    name = String.trim(name)
+    name = params |> Map.get("name", "") |> String.trim()
 
     if name == "" do
       {:noreply, put_flash(socket, :error, "Dê um nome para a categoria.")}
     else
-      {:ok, _} = Priorities.create_category(user, %{name: name})
+      attrs = %{
+        name: name,
+        default_item_store_points: parse_int(params["default_item_store_points"])
+      }
+
+      {:ok, _} = Priorities.create_category(user, attrs)
 
       {:noreply,
        socket
        |> put_flash(:info, "Categoria criada.")
        |> assign(show_new_category?: false)
        |> load_data()}
+    end
+  end
+
+  @impl true
+  def handle_event("toggle_edit_category", %{"category_id" => id}, socket) do
+    new_id = if socket.assigns.editing_category_id == id, do: nil, else: id
+    {:noreply, assign(socket, editing_category_id: new_id)}
+  end
+
+  @impl true
+  def handle_event("update_category", %{"category_id" => id} = params, socket) do
+    user = socket.assigns.current_user
+    category = Enum.find(socket.assigns.categories, &(&1.id == id))
+    name = params |> Map.get("name", "") |> String.trim()
+
+    cond do
+      is_nil(category) ->
+        {:noreply, socket}
+
+      name == "" ->
+        {:noreply, put_flash(socket, :error, "Dê um nome para a categoria.")}
+
+      true ->
+        attrs = %{
+          name: name,
+          default_item_store_points: parse_int(params["default_item_store_points"])
+        }
+
+        case Priorities.update_category(category, attrs, user) do
+          {:ok, _} ->
+            {:noreply,
+             socket
+             |> put_flash(:info, "Categoria atualizada.")
+             |> assign(editing_category_id: nil)
+             |> load_data()}
+
+          _ ->
+            {:noreply, put_flash(socket, :error, "Não foi possível salvar.")}
+        end
     end
   end
 
@@ -88,7 +133,9 @@ defmodule QuizProjectWeb.PrioritiesLive.Index do
     category = Enum.find(socket.assigns.categories, &(&1.id == params["category_id"]))
 
     with true <- not is_nil(category),
-         {:ok, attrs} <- build_item_attrs(params, socket.assigns.point_defaults.item_points),
+         default_points =
+           category.default_item_store_points || socket.assigns.point_defaults.item_points,
+         {:ok, attrs} <- build_item_attrs(params, default_points),
          {:ok, _item} <- Priorities.create_item(user, category, attrs) do
       {:noreply,
        socket
@@ -284,6 +331,16 @@ defmodule QuizProjectWeb.PrioritiesLive.Index do
               required
             />
           </div>
+          <div class="w-56">
+            <.input
+              type="number"
+              name="default_item_store_points"
+              label="Pontos padrão das prioridades"
+              value=""
+              placeholder={"Config. (#{@point_defaults.item_points})"}
+              min="0"
+            />
+          </div>
           <div class="fieldset mb-2">
             <label>
               <span class="label mb-1 invisible">Criar</span>
@@ -322,6 +379,16 @@ defmodule QuizProjectWeb.PrioritiesLive.Index do
                       elem(Components.category_colors(section.category.id), 1)
                     ]}></span>
                     {section.category.name}
+                    <button
+                      type="button"
+                      phx-click="toggle_edit_category"
+                      phx-value-category_id={section.category.id}
+                      class="opacity-50 transition hover:opacity-100"
+                      aria-label="Editar categoria"
+                      title="Editar categoria"
+                    >
+                      <.icon name="hero-pencil" class="size-3.5" />
+                    </button>
                   </h2>
                   <button
                     phx-click="toggle_item_form"
@@ -331,6 +398,47 @@ defmodule QuizProjectWeb.PrioritiesLive.Index do
                     <.icon name="hero-plus" class="size-3.5" /> Novo item
                   </button>
                 </div>
+
+                <form
+                  :if={@editing_category_id == section.category.id}
+                  id={"edit-category-form-#{section.category.id}"}
+                  phx-submit="update_category"
+                  class="flex flex-wrap items-end gap-3 rounded-2xl border border-base-300 bg-base-100 p-4"
+                >
+                  <input type="hidden" name="category_id" value={section.category.id} />
+                  <div class="min-w-48 flex-1">
+                    <.input
+                      type="text"
+                      name="name"
+                      label="Nome da categoria"
+                      value={section.category.name}
+                      required
+                    />
+                  </div>
+                  <div class="w-56">
+                    <.input
+                      type="number"
+                      name="default_item_store_points"
+                      label="Pontos padrão das prioridades"
+                      value={section.category.default_item_store_points}
+                      placeholder={"Config. (#{@point_defaults.item_points})"}
+                      min="0"
+                    />
+                  </div>
+                  <div class="flex gap-2">
+                    <button
+                      type="button"
+                      phx-click="toggle_edit_category"
+                      phx-value-category_id={section.category.id}
+                      class="btn btn-ghost btn-sm rounded-full"
+                    >
+                      Cancelar
+                    </button>
+                    <button type="submit" class="btn btn-primary btn-sm rounded-full px-5">
+                      Salvar
+                    </button>
+                  </div>
+                </form>
 
                 <form
                   :if={@item_form_category_id == section.category.id}
@@ -418,7 +526,10 @@ defmodule QuizProjectWeb.PrioritiesLive.Index do
                           type="number"
                           name="store_points"
                           label="Pontos"
-                          value={@point_defaults.item_points}
+                          value={
+                            section.category.default_item_store_points ||
+                              @point_defaults.item_points
+                          }
                           min="0"
                         />
                       </div>

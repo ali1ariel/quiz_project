@@ -86,6 +86,15 @@ defmodule QuizProject.Priorities do
     end
   end
 
+  @doc "Atualiza nome e/ou pontuação padrão de prioridades de uma categoria."
+  def update_category(category, attrs, actor) do
+    with :ok <- authorize_owner(category, actor) do
+      category
+      |> Ash.Changeset.for_update(:update, attrs, authorize?: false)
+      |> Ash.update()
+    end
+  end
+
   def reposition_category(category, position, actor) do
     with :ok <- authorize_owner(category, actor) do
       category
