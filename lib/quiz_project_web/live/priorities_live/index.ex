@@ -586,7 +586,7 @@ defmodule QuizProjectWeb.PrioritiesLive.Index do
                   drag_group={"category-items-#{section.category.id}"}
                   event="reorder_items"
                   value={section.category.id}
-                  class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"
+                  class="grid grid-cols-1 gap-3 px-2 sm:grid-cols-2 sm:px-0 lg:grid-cols-3"
                 >
                   <Components.draggable
                     :for={item <- section.primary_items}

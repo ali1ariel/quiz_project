@@ -875,7 +875,7 @@ defmodule QuizProjectWeb.KanbanLive do
               mode="move"
               event="move_flow"
               value="todo"
-              class="h-[64rem] space-y-2 overflow-y-auto rounded-2xl border border-dashed border-base-300 px-3 py-2"
+              class="min-h-40 space-y-2 overflow-y-auto rounded-2xl border border-dashed border-base-300 px-3 py-2 md:h-[64rem]"
             >
               <p :if={@todo_activities == []} class="py-4 text-center text-xs opacity-40">
                 Nada por aqui
@@ -902,7 +902,7 @@ defmodule QuizProjectWeb.KanbanLive do
               mode="move"
               event="move_flow"
               value="fazendo"
-              class="h-[64rem] space-y-2 overflow-y-auto rounded-2xl border border-dashed border-base-300 px-3 py-2"
+              class="min-h-40 space-y-2 overflow-y-auto rounded-2xl border border-dashed border-base-300 px-3 py-2 md:h-[64rem]"
             >
               <p :if={@fazendo_activities == []} class="py-4 text-center text-xs opacity-40">
                 Nada em andamento
@@ -929,7 +929,7 @@ defmodule QuizProjectWeb.KanbanLive do
               mode="move"
               event="move_flow"
               value="feito"
-              class="h-[64rem] space-y-2 overflow-y-auto rounded-2xl border border-dashed border-success/40 bg-success/5 px-3 py-2"
+              class="min-h-40 space-y-2 overflow-y-auto rounded-2xl border border-dashed border-success/40 bg-success/5 px-3 py-2 md:h-[64rem]"
             >
               <p :if={@feito_activities == []} class="py-4 text-center text-xs opacity-40">
                 Nada concluído ainda

@@ -287,6 +287,15 @@ defmodule QuizProjectWeb.PrioritiesLive.Components do
             // reconhecer o gesto de arrastar.
             forceFallback: true,
             fallbackTolerance: 3,
+            // `forceFallback` tira o autoscroll do caminho nativo de
+            // `dragover` — sem `forceAutoScrollFallback` ele não engata
+            // de forma confiável em touch, que era exatamente o sintoma
+            // (arrastar um card até a borda da tela não rolava nada).
+            scroll: true,
+            forceAutoScrollFallback: true,
+            scrollSensitivity: 80,
+            scrollSpeed: 15,
+            bubbleScroll: true,
             onEnd: (evt) => {
               const from = evt.from
               const to = evt.to
