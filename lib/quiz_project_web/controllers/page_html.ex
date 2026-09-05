@@ -42,6 +42,7 @@ defmodule QuizProjectWeb.PageHTML do
     """
   end
 
+  attr :id, :string, default: nil
   attr :title, :string, required: true
   attr :name_label, :string, default: "Campo"
   attr :type_label, :string, default: "Tipo"
@@ -55,7 +56,7 @@ defmodule QuizProjectWeb.PageHTML do
 
   def api_fields(assigns) do
     ~H"""
-    <div class="overflow-hidden rounded-xl border border-base-300 bg-base-100">
+    <div id={@id} class="overflow-hidden rounded-xl border border-base-300 bg-base-100">
       <div class="border-b border-base-300 px-4 py-3 text-xs font-bold uppercase tracking-[0.14em] opacity-70">
         {@title}
       </div>

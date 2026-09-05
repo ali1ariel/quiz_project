@@ -21,13 +21,25 @@ defmodule QuizProjectWeb.PageControllerTest do
            |> Enum.any?()
 
     assert document |> LazyHTML.query("#api-ai-prompt") |> Enum.any?()
-    assert document |> LazyHTML.query("#endpoint-mcp table") |> Enum.any?()
+    assert document |> LazyHTML.query("#endpoint-mcp pre") |> Enum.any?()
     assert document |> LazyHTML.query("#ai-panel-claude") |> Enum.any?()
     assert document |> LazyHTML.query("#ai-panel-chatgpt") |> Enum.any?()
     assert document |> LazyHTML.query("#openapi-schema-url") |> Enum.any?()
     assert document |> LazyHTML.query("#ai-panel-gemini") |> Enum.any?()
     assert document |> LazyHTML.query("input#ai-tab-claude[checked]") |> Enum.any?()
-    assert document |> LazyHTML.query("#contratos table") |> Enum.any?()
+    assert document |> LazyHTML.query("#contratos") |> Enum.any?()
+
+    # Referência é dividida em abas por domínio (Quizzes/Wish Store/Métricas/
+    # Materiais de estudo) — cada uma com seus próprios modelos, endpoints e
+    # ferramentas MCP, para não misturar contextos diferentes na mesma lista.
+    assert document |> LazyHTML.query("input#ref-tab-quizzes[checked]") |> Enum.any?()
+    assert document |> LazyHTML.query("#ref-panel-quizzes") |> Enum.any?()
+    assert document |> LazyHTML.query("#ref-panel-store") |> Enum.any?()
+    assert document |> LazyHTML.query("#ref-panel-metrics") |> Enum.any?()
+    assert document |> LazyHTML.query("#ref-panel-study") |> Enum.any?()
+    assert document |> LazyHTML.query("#quizzes-mcp-tools table") |> Enum.any?()
+    assert document |> LazyHTML.query("#store-mcp-tools table") |> Enum.any?()
+    assert document |> LazyHTML.query("#metrics-mcp-tools table") |> Enum.any?()
     assert document |> LazyHTML.query("#endpoint-create-quiz table") |> Enum.any?()
     assert document |> LazyHTML.query("#endpoint-import-quiz table") |> Enum.any?()
     assert document |> LazyHTML.query("#endpoint-update-version table") |> Enum.any?()
