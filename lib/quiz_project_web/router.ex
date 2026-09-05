@@ -81,6 +81,8 @@ defmodule QuizProjectWeb.Router do
     delete "/questions/:id", QuestionController, :delete
 
     post "/study/import", StudyController, :import
+
+    get "/metrics", MetricsController, :index
   end
 
   scope "/api", QuizProjectWeb do
