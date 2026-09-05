@@ -39,10 +39,11 @@ defmodule QuizProjectWeb.ApiControllerTest do
         operation["operationId"]
       end
 
-    assert length(operation_ids) == 14
+    assert length(operation_ids) == 15
     assert "importQuiz" in operation_ids
     assert "publishQuizVersion" in operation_ids
     assert "createProduct" in operation_ids
+    assert "getMetrics" in operation_ids
 
     # Emissão e revogação de token ficam fora do schema de propósito.
     refute Enum.any?(Map.keys(spec["paths"]), &String.contains?(&1, "auth"))
@@ -222,6 +223,25 @@ defmodule QuizProjectWeb.ApiControllerTest do
       |> post(~p"/api/v1/products", %{"name" => "X", "description" => "Y", "price" => 10})
 
     assert %{"error" => %{"code" => "insufficient_scope"}} = json_response(conn, 403)
+  end
+
+  test "retorna as métricas do usuário autenticado sem exigir escopo específico", %{
+    conn: conn,
+    user: user
+  } do
+    {:ok, product} =
+      QuizProject.Store.create_product(user, %{name: "X", description: "Y", price: 10})
+
+    body = conn |> get(~p"/api/v1/metrics") |> json_response(200)
+
+    assert %{
+             "priorities" => %{"categories_count" => 0},
+             "kanban" => %{"total_count" => 0},
+             "store" => %{"products_count" => 1},
+             "pricing_audit" => %{"products" => [%{"id" => product_id, "price" => 10}]}
+           } = body["data"]
+
+    assert product_id == product.id
   end
 
   test "importa o formato JSON existente", %{conn: conn} do

@@ -35,6 +35,9 @@ defmodule QuizProjectWeb.PageControllerTest do
     assert document |> LazyHTML.query("#endpoint-update-question table") |> Enum.any?()
     assert document |> LazyHTML.query("#endpoint-validate-version pre") |> Enum.any?()
     assert document |> LazyHTML.query("#endpoint-publish-version") |> Enum.any?()
+    assert document |> LazyHTML.query("#endpoint-create-product table") |> Enum.any?()
+    assert document |> LazyHTML.query("#endpoint-get-metrics table") |> Enum.any?()
+    assert document |> LazyHTML.query("#endpoint-study-import table") |> Enum.any?()
     assert document |> LazyHTML.query("#erros table") |> Enum.any?()
   end
 

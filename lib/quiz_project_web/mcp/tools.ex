@@ -1,6 +1,7 @@
 defmodule QuizProjectWeb.Mcp.Tools do
   @moduledoc "Ferramentas MCP que espelham os endpoints JSON de /api/v1."
 
+  alias QuizProject.Metrics
   alias QuizProject.Quizzes
   alias QuizProject.Store
   alias QuizProjectWeb.Api.{Params, Serializer}
@@ -71,6 +72,14 @@ defmodule QuizProjectWeb.Mcp.Tools do
       scope: @store_write_scope,
       properties: @product_properties,
       required: ["name", "description", "price"]
+    },
+    "get_metrics" => %{
+      description:
+        "Métricas agregadas de Prioridades, Kanban e Wish Store do usuário autenticado — " <>
+          "para auditar se os preços da loja fazem sentido perto do ritmo de ganho de pontos.",
+      scope: nil,
+      properties: %{},
+      required: []
     },
     "list_quizzes" => %{
       description: "Lista os quizzes do usuário autenticado com o resumo de suas versões.",
@@ -234,6 +243,10 @@ defmodule QuizProjectWeb.Mcp.Tools do
       {:ok, product} -> ok(Serializer.product(product))
       {:error, error} -> domain_error(error)
     end
+  end
+
+  defp run("get_metrics", _args, user) do
+    ok(Metrics.overview(user))
   end
 
   defp run("list_quizzes", _args, user) do

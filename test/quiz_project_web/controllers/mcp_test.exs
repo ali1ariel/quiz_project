@@ -85,6 +85,7 @@ defmodule QuizProjectWeb.McpTest do
              "create_quiz",
              "create_quiz_draft",
              "delete_question",
+             "get_metrics",
              "get_quiz",
              "get_quiz_version",
              "import_quiz",
@@ -278,6 +279,21 @@ defmodule QuizProjectWeb.McpTest do
 
     assert details =~ "description"
     assert details =~ "price"
+  end
+
+  test "retorna as métricas do usuário via tools/call, sem exigir escopo", %{
+    conn: conn,
+    user: user
+  } do
+    {:ok, product} =
+      QuizProject.Store.create_product(user, %{name: "X", description: "Y", price: 10})
+
+    result = call_tool(conn, "get_metrics")
+
+    refute result["isError"]
+    assert result["structuredContent"]["store"]["products_count"] == 1
+    assert [%{"id" => product_id}] = result["structuredContent"]["pricing_audit"]["products"]
+    assert product_id == product.id
   end
 
   test "exige o escopo store:write para cadastrar produto", %{user: user} do

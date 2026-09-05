@@ -197,6 +197,19 @@ defmodule QuizProjectWeb.Api.OpenApiController do
           }
         }
       },
+      "/metrics" => %{
+        get: %{
+          operationId: "getMetrics",
+          summary: "Métricas agregadas de Prioridades, Kanban e Wish Store",
+          description:
+            "Números para auditar se os preços da loja fazem sentido perto do ritmo de " <>
+              "ganho de pontos, e base para telas próprias de acompanhamento — não é uma " <>
+              "conclusão fechada tipo \"caro\"/\"barato\", só os dados.",
+          responses: %{
+            "200" => data_response("Métricas do usuário autenticado", ref("Metrics"))
+          }
+        }
+      },
       "/questions/{id}" => %{
         patch: %{
           operationId: "updateQuestion",
@@ -316,6 +329,151 @@ defmodule QuizProjectWeb.Api.OpenApiController do
           name: %{type: "string", minLength: 1},
           description: %{type: "string", minLength: 1},
           price: %{type: "integer", minimum: 1, description: "Preço em pontos"}
+        }
+      },
+      "Metrics" => %{
+        type: "object",
+        properties: %{
+          priorities: %{
+            type: "object",
+            properties: %{
+              categories_count: %{type: "integer"},
+              items: %{
+                type: "object",
+                properties: %{
+                  active_count: %{type: "integer"},
+                  archived_count: %{type: "integer"},
+                  by_type: %{
+                    type: "object",
+                    additionalProperties: %{type: "integer"},
+                    description: "Contagem por item_type: book, quiz_goal, course, checklist, manual"
+                  },
+                  by_tier: %{
+                    type: "object",
+                    additionalProperties: %{type: "integer"},
+                    description: "Contagem por tier (S/A/B/C/D); itens sem tier somam na chave \"nil\""
+                  },
+                  total_store_points: %{type: "integer"}
+                }
+              },
+              habits: %{
+                type: "object",
+                properties: %{
+                  active_count: %{type: "integer"},
+                  archived_count: %{type: "integer"},
+                  avg_store_points: %{type: "number"}
+                }
+              }
+            }
+          },
+          kanban: %{
+            type: "object",
+            properties: %{
+              total_count: %{type: "integer"},
+              by_status: %{
+                type: "object",
+                additionalProperties: %{type: "integer"},
+                description: "pendente, concluida, nao_cumprida, descartada"
+              },
+              by_flow: %{
+                type: "object",
+                additionalProperties: %{type: "integer"},
+                description: "todo, fazendo, feito"
+              },
+              by_kind: %{
+                type: "object",
+                additionalProperties: %{type: "integer"},
+                description: "tarefa, evento"
+              },
+              loose_captures_count: %{type: "integer"},
+              completion_rate: %{
+                type: ["number", "null"],
+                description: "concluídas ÷ resolvidas (flow feito); null sem nenhuma resolvida"
+              },
+              recent: %{
+                type: "object",
+                description: "Recorte de window_days dias (padrão 30)",
+                properties: %{
+                  window_days: %{type: "integer"},
+                  count: %{type: "integer"},
+                  completed_count: %{type: "integer"},
+                  store_points_earned: %{type: "integer"}
+                }
+              }
+            }
+          },
+          store: %{
+            type: "object",
+            properties: %{
+              products_count: %{type: "integer"},
+              price_stats: %{
+                type: "object",
+                properties: %{
+                  min: %{type: ["integer", "null"]},
+                  max: %{type: ["integer", "null"]},
+                  avg: %{type: ["number", "null"]},
+                  median: %{type: ["number", "null"]}
+                }
+              },
+              redemptions: %{
+                type: "object",
+                properties: %{
+                  count: %{type: "integer"},
+                  total_points_spent: %{type: "integer"}
+                }
+              },
+              products_never_redeemed: %{
+                type: "array",
+                items: %{type: "string"},
+                description: "Nomes dos produtos sem nenhum resgate"
+              },
+              most_redeemed: %{
+                type: "array",
+                description: "Até 5 produtos, do mais resgatado para o menos",
+                items: %{
+                  type: "object",
+                  properties: %{
+                    id: %{type: "string", format: "uuid"},
+                    name: %{type: "string"},
+                    price: %{type: "integer"},
+                    redemptions: %{type: "integer"}
+                  }
+                }
+              }
+            }
+          },
+          pricing_audit: %{
+            type: "object",
+            properties: %{
+              window_days: %{type: "integer"},
+              avg_daily_earning: %{type: "number"},
+              earning_by_source: %{
+                type: "object",
+                additionalProperties: %{type: "integer"},
+                description: "activity, activity_task, item, habit, gift_card"
+              },
+              wallet_balance: %{type: "integer"},
+              products: %{
+                type: "array",
+                items: %{
+                  type: "object",
+                  properties: %{
+                    id: %{type: "string", format: "uuid"},
+                    name: %{type: "string"},
+                    price: %{type: "integer"},
+                    days_of_earning: %{
+                      type: ["number", "null"],
+                      description: "price ÷ avg_daily_earning; null sem ganho registrado na janela"
+                    },
+                    affordable_now: %{
+                      type: "boolean",
+                      description: "true se o saldo atual da carteira cobre o preço"
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
       },
       "QuizInput" => %{

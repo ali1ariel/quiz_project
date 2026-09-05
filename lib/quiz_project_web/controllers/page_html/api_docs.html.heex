@@ -128,6 +128,9 @@
         <:field name="quizzes:publish" type="scope" presence="Publicação">
           Publica uma versão validada.
         </:field>
+        <:field name="study:write" type="scope" presence="Escrita">
+          Importa bundles de materiais de Conteúdos (leitura/EPUB).
+        </:field>
         <:field name="store:write" type="scope" presence="Escrita">
           Cadastra produtos na Wish Store. Todos os tokens criados atualmente recebem todos os
           escopos emitidos.
@@ -280,6 +283,9 @@
           </:field>
           <:field name="create_product" type="POST /products" presence="store:write">
             Cadastra um produto na Wish Store. Sem suporte a imagens por aqui.
+          </:field>
+          <:field name="get_metrics" type="GET /metrics" presence="token válido">
+            Métricas agregadas de Prioridades, Kanban e Wish Store.
           </:field>
         </.api_fields>
         <div class="overflow-hidden rounded-xl bg-neutral text-neutral-content">
@@ -1112,6 +1118,196 @@
           </.api_fields>
           <p class="text-sm">
             <strong>Resposta:</strong> o produto criado, sem imagens.
+          </p>
+        </.api_endpoint>
+      </div>
+
+      <div class="space-y-3">
+        <h3 class="text-lg font-bold">Métricas</h3>
+
+        <.api_endpoint
+          id="endpoint-get-metrics"
+          method="GET"
+          path="/api/v1/metrics"
+          scope="token válido"
+          response="200 · Metrics"
+        >
+          <p class="text-sm leading-6 opacity-75">
+            Números agregados de Prioridades, Kanban e Wish Store da conta autenticada — para
+            auditar se os preços da loja fazem sentido perto do ritmo de ganho de pontos, e
+            servir de base para visões próprias. Não recebe query params nem path params; sempre
+            traz o panorama completo. Os mapas de contagem (<code>by_type</code>, <code>by_tier</code>
+            etc.) não têm um veredito embutido — são só os números, pra quem consumir decidir.
+          </p>
+          <.api_fields title="data.priorities">
+            <:field name="categories_count" type="integer" presence="Sempre">
+              Total de categorias.
+            </:field>
+            <:field name="items.active_count" type="integer" presence="Sempre">
+              Itens ativos — exclui o item "Geral" interno de cada categoria.
+            </:field>
+            <:field name="items.archived_count" type="integer" presence="Sempre">
+              Itens arquivados.
+            </:field>
+            <:field name="items.by_type" type="object" presence="Sempre">
+              Contagem por <code>item_type</code>: <code>book</code>, <code>quiz_goal</code>, <code>course</code>, <code>checklist</code>, <code>manual</code>.
+            </:field>
+            <:field name="items.by_tier" type="object" presence="Sempre">
+              Contagem por tier (<code>S</code>/<code>A</code>/<code>B</code>/<code>C</code>/<code>D</code>); itens sem tier somam na chave <code>"nil"</code>.
+            </:field>
+            <:field name="items.total_store_points" type="integer" presence="Sempre">
+              Soma de <code>store_points</code> dos itens ativos.
+            </:field>
+            <:field name="habits.active_count" type="integer" presence="Sempre">
+              Hábitos ativos.
+            </:field>
+            <:field name="habits.archived_count" type="integer" presence="Sempre">
+              Hábitos arquivados.
+            </:field>
+            <:field name="habits.avg_store_points" type="number" presence="Sempre">
+              Média de pontos por hábito ativo.
+            </:field>
+          </.api_fields>
+          <.api_fields title="data.kanban">
+            <:field name="total_count" type="integer" presence="Sempre">
+              Total de atividades já criadas.
+            </:field>
+            <:field name="by_status" type="object" presence="Sempre">
+              <code>pendente</code>, <code>concluida</code>, <code>nao_cumprida</code>, <code>descartada</code>.
+            </:field>
+            <:field name="by_flow" type="object" presence="Sempre">
+              <code>todo</code>, <code>fazendo</code>, <code>feito</code>.
+            </:field>
+            <:field name="by_kind" type="object" presence="Sempre">
+              <code>tarefa</code>, <code>evento</code>.
+            </:field>
+            <:field name="loose_captures_count" type="integer" presence="Sempre">
+              Capturas soltas (sem item nem hábito associado).
+            </:field>
+            <:field name="completion_rate" type="number | null" presence="Sempre">
+              Concluídas ÷ resolvidas (flow <code>feito</code>); <code>null</code> sem nenhuma resolvida ainda.
+            </:field>
+            <:field name="recent" type="object" presence="Sempre">
+              Recorte dos últimos <code>window_days</code> dias (30 por padrão): <code>count</code>, <code>completed_count</code>
+              e <code>store_points_earned</code>.
+            </:field>
+          </.api_fields>
+          <.api_fields title="data.store">
+            <:field name="products_count" type="integer" presence="Sempre">
+              Total de produtos cadastrados.
+            </:field>
+            <:field name="price_stats" type="object" presence="Sempre">
+              <code>min</code>, <code>max</code>, <code>avg</code> e <code>median</code> dos preços; tudo <code>null</code> sem nenhum produto.
+            </:field>
+            <:field name="redemptions" type="object" presence="Sempre">
+              <code>count</code> e <code>total_points_spent</code> de todos os resgates.
+            </:field>
+            <:field name="products_never_redeemed" type="string[]" presence="Sempre">
+              Nomes dos produtos sem nenhum resgate.
+            </:field>
+            <:field name="most_redeemed" type="object[]" presence="Sempre">
+              Até 5 produtos (<code>id</code>, <code>name</code>, <code>price</code>, <code>redemptions</code>), do mais resgatado para o menos.
+            </:field>
+          </.api_fields>
+          <.api_fields title="data.pricing_audit">
+            <:field name="window_days" type="integer" presence="Sempre">
+              Janela usada no ritmo de ganho (30 dias por padrão).
+            </:field>
+            <:field name="avg_daily_earning" type="number" presence="Sempre">
+              Média de pontos creditados por dia na janela.
+            </:field>
+            <:field name="earning_by_source" type="object" presence="Sempre">
+              <code>activity</code>, <code>activity_task</code>, <code>item</code>, <code>habit</code>, <code>gift_card</code>.
+            </:field>
+            <:field name="wallet_balance" type="integer" presence="Sempre">
+              Saldo atual da carteira de pontos.
+            </:field>
+            <:field name="products" type="object[]" presence="Sempre">
+              Cada item: <code>id</code>, <code>name</code>, <code>price</code>, <code>days_of_earning</code>
+              (preço ÷ ritmo médio; <code>null</code> sem ganho registrado na janela) e <code>affordable_now</code>
+              (se o saldo atual cobre o preço).
+            </:field>
+          </.api_fields>
+          <div class="overflow-hidden rounded-xl bg-neutral text-neutral-content">
+            <div class="border-b border-white/10 px-5 py-3 text-xs opacity-70">
+              Exemplo de resposta (resumido)
+            </div>
+            <pre class="overflow-x-auto p-5 text-sm leading-6"><code phx-no-curly-interpolation>{
+  "data": {
+    "priorities": {
+      "categories_count": 3,
+      "items": {
+        "active_count": 12,
+        "archived_count": 2,
+        "by_type": {"manual": 8, "book": 4},
+        "by_tier": {"S": 2, "nil": 10},
+        "total_store_points": 340
+      },
+      "habits": {"active_count": 2, "archived_count": 0, "avg_store_points": 5.0}
+    },
+    "kanban": {
+      "total_count": 40,
+      "by_status": {"pendente": 5, "concluida": 30, "nao_cumprida": 3, "descartada": 2},
+      "by_flow": {"todo": 5, "fazendo": 0, "feito": 35},
+      "by_kind": {"tarefa": 38, "evento": 2},
+      "loose_captures_count": 1,
+      "completion_rate": 0.86,
+      "recent": {"window_days": 30, "count": 22, "completed_count": 18, "store_points_earned": 120}
+    },
+    "store": {
+      "products_count": 4,
+      "price_stats": {"min": 10, "max": 200, "avg": 77.5, "median": 60},
+      "redemptions": {"count": 3, "total_points_spent": 150},
+      "products_never_redeemed": ["Vale-café"],
+      "most_redeemed": [{"id": "UUID", "name": "Folga", "price": 200, "redemptions": 2}]
+    },
+    "pricing_audit": {
+      "window_days": 30,
+      "avg_daily_earning": 4.0,
+      "earning_by_source": {"activity": 100, "item": 20},
+      "wallet_balance": 60,
+      "products": [
+        {"id": "UUID", "name": "Vale-café", "price": 10, "days_of_earning": 2.5, "affordable_now": true},
+        {"id": "UUID", "name": "Folga", "price": 200, "days_of_earning": 50.0, "affordable_now": false}
+      ]
+    }
+  }
+}</code></pre>
+          </div>
+        </.api_endpoint>
+      </div>
+
+      <div class="space-y-3">
+        <h3 class="text-lg font-bold">Materiais de estudo</h3>
+
+        <.api_endpoint
+          id="endpoint-study-import"
+          method="POST"
+          path="/api/v1/study/import"
+          scope="study:write"
+          response="200 · materials_imported"
+        >
+          <p class="text-sm leading-6 opacity-75">
+            Recebe um bundle <code>.tar.gz</code> (multipart, campo <code>bundle</code>) gerado
+            por <code>mix study.export</code> e substitui os materiais nele contidos, sempre
+            associados à conta autenticada. Pensado pra sincronizar conteúdo entre ambientes —
+            não é um formato pra um agente de IA gerar do zero.
+          </p>
+          <.api_fields title="Body multipart/form-data">
+            <:field name="bundle" type="file (.tar.gz)" presence="Obrigatório">
+              Arquivo gerado por <code>mix study.export</code>.
+            </:field>
+          </.api_fields>
+          <div class="overflow-hidden rounded-2xl border border-base-300 bg-neutral text-neutral-content">
+            <div class="flex items-center justify-between border-b border-white/10 px-5 py-3 text-xs opacity-70">
+              <span>Exemplo</span><span>POST /api/v1/study/import</span>
+            </div>
+            <pre class="overflow-x-auto p-5 text-sm leading-6"><code phx-no-curly-interpolation>curl -X POST <%= url(~p"/api/v1/study/import") %> \
+  -H 'Authorization: Bearer quiz_SEU_TOKEN' \
+  -F 'bundle=@materiais.tar.gz'</code></pre>
+          </div>
+          <p phx-no-curly-interpolation class="text-sm">
+            <strong>Resposta:</strong> <code>{"data": {"materials_imported": N}}</code>
           </p>
         </.api_endpoint>
       </div>
