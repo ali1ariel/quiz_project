@@ -1,11 +1,14 @@
 defmodule QuizProjectWeb.Mcp.Tools do
   @moduledoc "Ferramentas MCP que espelham os endpoints JSON de /api/v1."
 
+  alias QuizProject.Metrics
   alias QuizProject.Quizzes
+  alias QuizProject.Store
   alias QuizProjectWeb.Api.{Params, Serializer}
 
   @write_scope "quizzes:write"
   @publish_scope "quizzes:publish"
+  @store_write_scope "store:write"
 
   @option_schema %{
     type: "object",
@@ -55,7 +58,29 @@ defmodule QuizProjectWeb.Mcp.Tools do
     }
   }
 
+  @product_properties %{
+    "name" => %{type: "string", description: "Nome do produto"},
+    "description" => %{type: "string", description: "Descrição do produto"},
+    "price" => %{type: "integer", description: "Preço em pontos (mínimo 1)"}
+  }
+
   @tools %{
+    "create_product" => %{
+      description:
+        "Cadastra um produto na Wish Store. Imagens não são aceitas por aqui — a " <>
+          "galeria é sempre gerenciada pela interface (Configurações → Loja).",
+      scope: @store_write_scope,
+      properties: @product_properties,
+      required: ["name", "description", "price"]
+    },
+    "get_metrics" => %{
+      description:
+        "Métricas agregadas de Prioridades, Kanban e Wish Store do usuário autenticado — " <>
+          "para auditar se os preços da loja fazem sentido perto do ritmo de ganho de pontos.",
+      scope: nil,
+      properties: %{},
+      required: []
+    },
     "list_quizzes" => %{
       description: "Lista os quizzes do usuário autenticado com o resumo de suas versões.",
       scope: nil,
@@ -211,6 +236,17 @@ defmodule QuizProjectWeb.Mcp.Tools do
         {:tool_error,
          validation(["argumentos obrigatórios ausentes: " <> Enum.join(missing, ", ")])}
     end
+  end
+
+  defp run("create_product", args, user) do
+    case Store.create_product(user, Params.product(args)) do
+      {:ok, product} -> ok(Serializer.product(product))
+      {:error, error} -> domain_error(error)
+    end
+  end
+
+  defp run("get_metrics", _args, user) do
+    ok(Metrics.overview(user))
   end
 
   defp run("list_quizzes", _args, user) do

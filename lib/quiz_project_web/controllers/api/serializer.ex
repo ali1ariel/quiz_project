@@ -58,6 +58,17 @@ defmodule QuizProjectWeb.Api.Serializer do
     }
   end
 
+  def product(product) do
+    %{
+      id: product.id,
+      name: product.name,
+      description: product.description,
+      price: product.price,
+      inserted_at: datetime(product.inserted_at),
+      updated_at: datetime(product.updated_at)
+    }
+  end
+
   def option_attrs(option) do
     %{id: option.id, position: option.position, text: option.text, correct: option.correct}
   end

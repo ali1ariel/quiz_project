@@ -12,7 +12,8 @@
         <h1 class="text-3xl font-bold tracking-tight sm:text-5xl">API de quizzes</h1>
         <p class="max-w-2xl text-base leading-7 opacity-70 sm:text-lg">
           Crie, leia e altere rascunhos, gerencie questões e publique versões usando o mesmo
-          domínio seguro da aplicação web.
+          domínio seguro da aplicação web. A mesma API também dá acesso à Wish Store e a
+          métricas da conta — veja a seção Referência.
         </p>
         <div class="flex flex-wrap gap-3 pt-2 text-sm">
           <a
@@ -59,6 +60,8 @@
         <p class="mt-2 max-w-3xl leading-7 opacity-70">
           A forma recomendada é gerar o token pela sua conta. Ele é exibido uma única vez:
           copie-o, guarde-o como segredo e envie-o no header Authorization das chamadas seguintes.
+          O mesmo token vale para todos os domínios da API (quizzes, loja, métricas, materiais de
+          estudo) — não há um token por domínio.
         </p>
       </div>
       <div
@@ -126,13 +129,32 @@
           Cria, importa e altera quizzes, rascunhos, questões e alternativas.
         </:field>
         <:field name="quizzes:publish" type="scope" presence="Publicação">
-          Publica uma versão validada. Todos os tokens criados atualmente recebem os três escopos.
+          Publica uma versão validada.
+        </:field>
+        <:field name="study:write" type="scope" presence="Escrita">
+          Importa bundles de materiais de Conteúdos (leitura/EPUB).
+        </:field>
+        <:field name="store:write" type="scope" presence="Escrita">
+          Cadastra produtos na Wish Store. Todos os tokens criados atualmente recebem todos os
+          escopos emitidos.
         </:field>
       </.api_fields>
       <p class="rounded-2xl border border-warning/40 bg-warning/10 p-4 text-sm leading-6">
         Revogue tokens pela tela de Configurações ou envie <code>DELETE /api/v1/auth/token</code>
         com o mesmo header Authorization.
       </p>
+      <.api_endpoint
+        id="endpoint-revoke-token"
+        method="DELETE"
+        path="/api/v1/auth/token"
+        scope="token válido"
+        response="204 · sem corpo"
+      >
+        <p class="text-sm leading-6 opacity-75">
+          Revoga imediatamente o Bearer token usado nesta requisição. As demais credenciais da
+          conta continuam ativas. Não recebe path params nem body.
+        </p>
+      </.api_endpoint>
     </section>
 
     <section
@@ -209,72 +231,10 @@
           e o mesmo objeto <code>error</code>
           da API REST em <code>structuredContent</code>.
         </p>
-        <.api_fields
-          title="Ferramentas disponíveis"
-          name_label="Ferramenta"
-          type_label="Equivalente REST"
-          presence_label="Escopo"
-        >
-          <:field name="list_quizzes" type="GET /quizzes" presence="token válido">
-            Lista os quizzes da conta com resumo das versões.
-          </:field>
-          <:field name="get_quiz" type="GET /quizzes/:id" presence="token válido">
-            Busca um quiz pelo ID.
-          </:field>
-          <:field name="create_quiz" type="POST /quizzes" presence="quizzes:write">
-            Cria um quiz em rascunho.
-          </:field>
-          <:field name="import_quiz" type="POST /quizzes/import" presence="quizzes:write">
-            Importa um quiz completo; o argumento <code>data</code> usa o formato de importação.
-          </:field>
-          <:field name="set_quiz_active" type="PATCH /quizzes/:id" presence="quizzes:write">
-            Ativa ou desativa um quiz.
-          </:field>
-          <:field
-            name="create_quiz_draft"
-            type="POST /quizzes/:id/drafts"
-            presence="quizzes:write"
-          >
-            Garante um rascunho editável.
-          </:field>
-          <:field name="get_quiz_version" type="GET /quiz-versions/:id" presence="token válido">
-            Busca uma versão completa, com questões e alternativas.
-          </:field>
-          <:field
-            name="update_quiz_version"
-            type="PATCH /quiz-versions/:id"
-            presence="quizzes:write"
-          >
-            Atualiza metadados de um rascunho.
-          </:field>
-          <:field
-            name="validate_quiz_version"
-            type="POST /quiz-versions/:id/validate"
-            presence="token válido"
-          >
-            Valida um rascunho sem alterar nada.
-          </:field>
-          <:field
-            name="publish_quiz_version"
-            type="POST /quiz-versions/:id/publish"
-            presence="quizzes:publish"
-          >
-            Publica um rascunho validado.
-          </:field>
-          <:field
-            name="create_question"
-            type="POST /quiz-versions/:id/questions"
-            presence="quizzes:write"
-          >
-            Cria uma questão no rascunho.
-          </:field>
-          <:field name="update_question" type="PATCH /questions/:id" presence="quizzes:write">
-            Atualiza uma questão; <code>options</code> omitido preserva as alternativas.
-          </:field>
-          <:field name="delete_question" type="DELETE /questions/:id" presence="quizzes:write">
-            Remove uma questão do rascunho.
-          </:field>
-        </.api_fields>
+        <p class="text-sm leading-6 opacity-75">
+          As ferramentas disponíveis espelham os endpoints REST uma a uma — cada domínio (
+          <strong>Referência</strong> abaixo) lista as suas junto com o endpoint equivalente.
+        </p>
         <div class="overflow-hidden rounded-xl bg-neutral text-neutral-content">
           <div class="border-b border-white/10 px-5 py-3 text-xs opacity-70">
             Exemplo · chamada de ferramenta
@@ -484,8 +444,9 @@
         <p class="text-sm font-semibold text-primary">02 · Contratos</p>
         <h2 class="mt-1 text-2xl font-bold">Formato das requisições e respostas</h2>
         <p class="mt-2 max-w-3xl leading-7 opacity-70">
-          Todos os corpos usam JSON em UTF-8. IDs são UUIDs; datas usam ISO 8601; valores
-          decimais como <code>total_points</code> e <code>weight</code> retornam como strings.
+          Todos os corpos usam JSON em UTF-8, em qualquer domínio da API. IDs são UUIDs; datas
+          usam ISO 8601. Os modelos de cada domínio (campos e exemplos) ficam na aba
+          correspondente da seção Referência, abaixo.
         </p>
       </div>
 
@@ -513,122 +474,173 @@
           </p>
         </div>
       </div>
+    </section>
 
-      <div class="space-y-4">
-        <h3 class="text-xl font-bold">Modelos retornados</h3>
-        <.api_fields title="Quiz">
-          <:field name="id" type="UUID" presence="Sempre">
-            Identificador do agrupador do quiz.
-          </:field>
-          <:field name="public_slug" type="string" presence="Sempre">
-            Slug do link público em <code>/q/:public_slug</code>.
-          </:field>
-          <:field name="active" type="boolean" presence="Sempre">
-            Se <code>false</code>, o link existe, mas não aceita novas respostas.
-          </:field>
-          <:field name="inserted_at" type="datetime" presence="Sempre">Data de criação.</:field>
-          <:field name="updated_at" type="datetime" presence="Sempre">Última alteração.</:field>
-          <:field name="versions" type="VersionSummary[]" presence="Sempre">
-            Versões da mais recente para a mais antiga. Cada item tem <code>id</code>, <code>version_number</code>, <code>name</code>, <code>status</code>,
-            <code>published_at</code>
-            e <code>updated_at</code>.
-          </:field>
-        </.api_fields>
+    <section id="endpoints" class="scroll-mt-6 space-y-6">
+      <div>
+        <p class="text-sm font-semibold text-primary">03 · Referência</p>
+        <h2 class="mt-1 text-2xl font-bold">Endpoints, modelos e ferramentas MCP por domínio</h2>
+        <p class="mt-2 max-w-3xl leading-7 opacity-70">
+          Escolha um domínio abaixo. Cada aba reúne os modelos de dados, os endpoints REST (abra
+          uma rota para ver corpo, regras e resposta) e as ferramentas MCP equivalentes desse
+          domínio. Todas exigem Bearer token, exceto a emissão inicial em
+          <code>POST /auth/tokens</code>.
+        </p>
+      </div>
 
-        <.api_fields title="Version · versão completa">
-          <:field name="id" type="UUID" presence="Sempre">Identificador da versão.</:field>
-          <:field name="quiz_id" type="UUID" presence="Sempre">Identificador do quiz pai.</:field>
-          <:field name="version_number" type="integer" presence="Sempre">
-            Começa em 1 e cresce a cada novo rascunho.
-          </:field>
-          <:field name="name" type="string" presence="Sempre">Título do quiz.</:field>
-          <:field name="description" type="string" presence="Sempre">
-            Descrição; pode ser vazia.
-          </:field>
-          <:field name="total_points" type="decimal string" presence="Sempre">
-            Exemplo: <code>"100"</code> ou <code>"7.5"</code>.
-          </:field>
-          <:field name="unequal_weights" type="boolean" presence="Sempre">
-            Permite pesos diferentes entre questões.
-          </:field>
-          <:field name="question_order_mode" type="enum" presence="Sempre">
-            <code>fixed</code>, <code>random</code> ou <code>ai</code>.
-          </:field>
-          <:field name="status" type="enum" presence="Sempre">
-            <code>draft</code> ou <code>published</code>.
-          </:field>
-          <:field name="published_at" type="datetime | null" presence="Sempre">
-            Nulo enquanto for rascunho.
-          </:field>
-          <:field name="changelog" type="string[]" presence="Sempre">
-            Resumo de alterações gerado na publicação.
-          </:field>
-          <:field name="inserted_at" type="datetime" presence="Sempre">Data de criação.</:field>
-          <:field name="updated_at" type="datetime" presence="Sempre">Última alteração.</:field>
-          <:field name="questions" type="Question[]" presence="Sempre">
-            Questões ordenadas por <code>position</code>.
-          </:field>
-        </.api_fields>
+      <div class="group/ref-tabs space-y-6">
+        <input type="radio" name="ref-tabs" id="ref-tab-quizzes" class="hidden" checked />
+        <input type="radio" name="ref-tabs" id="ref-tab-store" class="hidden" />
+        <input type="radio" name="ref-tabs" id="ref-tab-metrics" class="hidden" />
+        <input type="radio" name="ref-tabs" id="ref-tab-study" class="hidden" />
 
-        <.api_fields title="Question">
-          <:field name="id" type="UUID" presence="Sempre">
-            Identificador desta questão na versão.
-          </:field>
-          <:field name="identity_key" type="UUID" presence="Sempre">
-            Identidade estável da questão entre versões.
-          </:field>
-          <:field name="position" type="integer" presence="Sempre">
-            Posição iniciada em zero.
-          </:field>
-          <:field name="statement" type="string" presence="Sempre">Enunciado.</:field>
-          <:field name="type" type="enum" presence="Sempre">
-            <code>true_false</code>, <code>single</code>, <code>multiple</code>
-            ou <code>text</code>.
-          </:field>
-          <:field name="allow_partial_credit" type="boolean" presence="Sempre">
-            Usado em questões <code>multiple</code>.
-          </:field>
-          <:field name="true_false_answer" type="boolean | null" presence="Sempre">
-            Resposta de questões <code>true_false</code>.
-          </:field>
-          <:field name="editor_note" type="string | null" presence="Sempre">
-            Resposta de referência e explicação.
-          </:field>
-          <:field name="weight" type="decimal string | null" presence="Sempre">
-            Peso quando <code>unequal_weights</code> estiver ativo.
-          </:field>
-          <:field name="annulled" type="boolean" presence="Sempre">
-            Informa se a questão foi anulada.
-          </:field>
-          <:field name="annulled_reason" type="string | null" presence="Sempre">
-            Motivo da anulação.
-          </:field>
-          <:field name="options" type="Option[]" presence="Sempre">
-            Lista vazia para questões sem alternativas.
-          </:field>
-        </.api_fields>
+        <div class="flex flex-wrap gap-2" role="tablist">
+          <label
+            for="ref-tab-quizzes"
+            class="cursor-pointer rounded-full border border-base-300 bg-base-100 px-4 py-2 text-sm font-semibold transition hover:border-primary hover:text-primary group-has-[#ref-tab-quizzes:checked]/ref-tabs:border-primary group-has-[#ref-tab-quizzes:checked]/ref-tabs:bg-primary group-has-[#ref-tab-quizzes:checked]/ref-tabs:text-primary-content"
+          >
+            Quizzes
+          </label>
+          <label
+            for="ref-tab-store"
+            class="cursor-pointer rounded-full border border-base-300 bg-base-100 px-4 py-2 text-sm font-semibold transition hover:border-primary hover:text-primary group-has-[#ref-tab-store:checked]/ref-tabs:border-primary group-has-[#ref-tab-store:checked]/ref-tabs:bg-primary group-has-[#ref-tab-store:checked]/ref-tabs:text-primary-content"
+          >
+            Wish Store
+          </label>
+          <label
+            for="ref-tab-metrics"
+            class="cursor-pointer rounded-full border border-base-300 bg-base-100 px-4 py-2 text-sm font-semibold transition hover:border-primary hover:text-primary group-has-[#ref-tab-metrics:checked]/ref-tabs:border-primary group-has-[#ref-tab-metrics:checked]/ref-tabs:bg-primary group-has-[#ref-tab-metrics:checked]/ref-tabs:text-primary-content"
+          >
+            Métricas
+          </label>
+          <label
+            for="ref-tab-study"
+            class="cursor-pointer rounded-full border border-base-300 bg-base-100 px-4 py-2 text-sm font-semibold transition hover:border-primary hover:text-primary group-has-[#ref-tab-study:checked]/ref-tabs:border-primary group-has-[#ref-tab-study:checked]/ref-tabs:bg-primary group-has-[#ref-tab-study:checked]/ref-tabs:text-primary-content"
+          >
+            Materiais de estudo
+          </label>
+        </div>
 
-        <.api_fields title="Option">
-          <:field name="id" type="UUID" presence="Sempre">Identificador da alternativa.</:field>
-          <:field name="identity_key" type="UUID" presence="Sempre">
-            Identidade estável entre versões.
-          </:field>
-          <:field name="position" type="integer" presence="Sempre">
-            Posição iniciada em zero.
-          </:field>
-          <:field name="text" type="string" presence="Sempre">
-            Texto exibido ao participante.
-          </:field>
-          <:field name="correct" type="boolean" presence="Sempre">
-            Se a alternativa compõe o gabarito.
-          </:field>
-        </.api_fields>
+        <div
+          id="ref-panel-quizzes"
+          data-ref-panel="ref-tab-quizzes"
+          class="hidden space-y-6 group-has-[#ref-tab-quizzes:checked]/ref-tabs:block"
+        >
+          <div class="space-y-4">
+            <h3 class="text-xl font-bold">Modelos retornados</h3>
+            <.api_fields title="Quiz">
+              <:field name="id" type="UUID" presence="Sempre">
+                Identificador do agrupador do quiz.
+              </:field>
+              <:field name="public_slug" type="string" presence="Sempre">
+                Slug do link público em <code>/q/:public_slug</code>.
+              </:field>
+              <:field name="active" type="boolean" presence="Sempre">
+                Se <code>false</code>, o link existe, mas não aceita novas respostas.
+              </:field>
+              <:field name="inserted_at" type="datetime" presence="Sempre">Data de criação.</:field>
+              <:field name="updated_at" type="datetime" presence="Sempre">Última alteração.</:field>
+              <:field name="versions" type="VersionSummary[]" presence="Sempre">
+                Versões da mais recente para a mais antiga. Cada item tem <code>id</code>, <code>version_number</code>, <code>name</code>, <code>status</code>,
+                <code>published_at</code>
+                e <code>updated_at</code>.
+              </:field>
+            </.api_fields>
 
-        <div class="overflow-hidden rounded-2xl border border-base-300 bg-neutral text-neutral-content">
-          <div class="border-b border-white/10 px-5 py-3 text-xs opacity-70">
-            Exemplo de resposta Version · campos sem valor retornam null
-          </div>
-          <pre class="overflow-x-auto p-5 text-sm leading-6"><code phx-no-curly-interpolation>{
+            <.api_fields title="Version · versão completa">
+              <:field name="id" type="UUID" presence="Sempre">Identificador da versão.</:field>
+              <:field name="quiz_id" type="UUID" presence="Sempre">Identificador do quiz pai.</:field>
+              <:field name="version_number" type="integer" presence="Sempre">
+                Começa em 1 e cresce a cada novo rascunho.
+              </:field>
+              <:field name="name" type="string" presence="Sempre">Título do quiz.</:field>
+              <:field name="description" type="string" presence="Sempre">
+                Descrição; pode ser vazia.
+              </:field>
+              <:field name="total_points" type="decimal string" presence="Sempre">
+                Exemplo: <code>"100"</code> ou <code>"7.5"</code>.
+              </:field>
+              <:field name="unequal_weights" type="boolean" presence="Sempre">
+                Permite pesos diferentes entre questões.
+              </:field>
+              <:field name="question_order_mode" type="enum" presence="Sempre">
+                <code>fixed</code>, <code>random</code> ou <code>ai</code>.
+              </:field>
+              <:field name="status" type="enum" presence="Sempre">
+                <code>draft</code> ou <code>published</code>.
+              </:field>
+              <:field name="published_at" type="datetime | null" presence="Sempre">
+                Nulo enquanto for rascunho.
+              </:field>
+              <:field name="changelog" type="string[]" presence="Sempre">
+                Resumo de alterações gerado na publicação.
+              </:field>
+              <:field name="inserted_at" type="datetime" presence="Sempre">Data de criação.</:field>
+              <:field name="updated_at" type="datetime" presence="Sempre">Última alteração.</:field>
+              <:field name="questions" type="Question[]" presence="Sempre">
+                Questões ordenadas por <code>position</code>.
+              </:field>
+            </.api_fields>
+
+            <.api_fields title="Question">
+              <:field name="id" type="UUID" presence="Sempre">
+                Identificador desta questão na versão.
+              </:field>
+              <:field name="identity_key" type="UUID" presence="Sempre">
+                Identidade estável da questão entre versões.
+              </:field>
+              <:field name="position" type="integer" presence="Sempre">
+                Posição iniciada em zero.
+              </:field>
+              <:field name="statement" type="string" presence="Sempre">Enunciado.</:field>
+              <:field name="type" type="enum" presence="Sempre">
+                <code>true_false</code>, <code>single</code>, <code>multiple</code>
+                ou <code>text</code>.
+              </:field>
+              <:field name="allow_partial_credit" type="boolean" presence="Sempre">
+                Usado em questões <code>multiple</code>.
+              </:field>
+              <:field name="true_false_answer" type="boolean | null" presence="Sempre">
+                Resposta de questões <code>true_false</code>.
+              </:field>
+              <:field name="editor_note" type="string | null" presence="Sempre">
+                Resposta de referência e explicação.
+              </:field>
+              <:field name="weight" type="decimal string | null" presence="Sempre">
+                Peso quando <code>unequal_weights</code> estiver ativo.
+              </:field>
+              <:field name="annulled" type="boolean" presence="Sempre">
+                Informa se a questão foi anulada.
+              </:field>
+              <:field name="annulled_reason" type="string | null" presence="Sempre">
+                Motivo da anulação.
+              </:field>
+              <:field name="options" type="Option[]" presence="Sempre">
+                Lista vazia para questões sem alternativas.
+              </:field>
+            </.api_fields>
+
+            <.api_fields title="Option">
+              <:field name="id" type="UUID" presence="Sempre">Identificador da alternativa.</:field>
+              <:field name="identity_key" type="UUID" presence="Sempre">
+                Identidade estável entre versões.
+              </:field>
+              <:field name="position" type="integer" presence="Sempre">
+                Posição iniciada em zero.
+              </:field>
+              <:field name="text" type="string" presence="Sempre">
+                Texto exibido ao participante.
+              </:field>
+              <:field name="correct" type="boolean" presence="Sempre">
+                Se a alternativa compõe o gabarito.
+              </:field>
+            </.api_fields>
+
+            <div class="overflow-hidden rounded-2xl border border-base-300 bg-neutral text-neutral-content">
+              <div class="border-b border-white/10 px-5 py-3 text-xs opacity-70">
+                Exemplo de resposta Version · campos sem valor retornam null
+              </div>
+              <pre class="overflow-x-auto p-5 text-sm leading-6"><code phx-no-curly-interpolation>{
   "data": {
     "id": "VERSION_UUID",
     "quiz_id": "QUIZ_UUID",
@@ -661,346 +673,335 @@
     ]
   }
 }</code></pre>
-        </div>
-      </div>
-    </section>
+            </div>
+          </div>
 
-    <section id="endpoints" class="scroll-mt-6 space-y-6">
-      <div>
-        <p class="text-sm font-semibold text-primary">03 · Referência</p>
-        <h2 class="mt-1 text-2xl font-bold">Endpoints e parâmetros</h2>
-        <p class="mt-2 max-w-3xl leading-7 opacity-70">
-          Abra uma rota para ver corpo, regras e resposta. Todas exigem Bearer token, exceto a
-          emissão inicial em <code>POST /auth/tokens</code>.
-        </p>
-      </div>
+          <div class="space-y-3">
+            <h3 class="text-lg font-bold">Quizzes</h3>
 
-      <div class="space-y-3">
-        <h3 class="text-lg font-bold">Quizzes</h3>
-
-        <.api_endpoint
-          id="endpoint-list-quizzes"
-          method="GET"
-          path="/api/v1/quizzes"
-          scope="token válido"
-          response="200 · Quiz[]"
-        >
-          <p class="text-sm leading-6 opacity-75">
-            Lista os quizzes da conta, do mais recente para o mais antigo. Não recebe query
-            params nem paginação atualmente. Cada quiz inclui resumos das suas versões.
-          </p>
-          <p phx-no-curly-interpolation class="text-sm">
-            <strong>Resposta:</strong> <code>{"data": [Quiz, ...]}</code>
-          </p>
-        </.api_endpoint>
-
-        <.api_endpoint
-          id="endpoint-create-quiz"
-          method="POST"
-          path="/api/v1/quizzes"
-          scope="quizzes:write"
-          response="201 · Version"
-        >
-          <p class="text-sm leading-6 opacity-75">
-            Cria um quiz e sua versão 1 em estado <code>draft</code>. O corpo pode ser vazio;
-            nome e questões são exigidos apenas para publicar.
-          </p>
-          <.api_fields title="Body JSON">
-            <:field name="name" type="string" presence="Opcional · padrão vazio">
-              Título do quiz.
-            </:field>
-            <:field name="description" type="string" presence="Opcional · padrão vazio">
-              Descrição do quiz.
-            </:field>
-            <:field
-              name="total_points"
-              type="number | decimal string"
-              presence="Opcional · padrão 100"
+            <.api_endpoint
+              id="endpoint-list-quizzes"
+              method="GET"
+              path="/api/v1/quizzes"
+              scope="token válido"
+              response="200 · Quiz[]"
             >
-              Precisa ser maior que zero.
-            </:field>
-            <:field name="unequal_weights" type="boolean" presence="Opcional · padrão false">
-              Ativa pesos por questão.
-            </:field>
-            <:field name="question_order_mode" type="enum" presence="Opcional · padrão fixed">
-              <code>fixed</code>, <code>random</code> ou <code>ai</code>.
-            </:field>
-          </.api_fields>
-          <p class="text-sm">
-            <strong>Resposta:</strong>
-            versão completa, incluindo <code>quiz_id</code>
-            e <code>questions: []</code>.
-          </p>
-        </.api_endpoint>
+              <p class="text-sm leading-6 opacity-75">
+                Lista os quizzes da conta, do mais recente para o mais antigo. Não recebe query
+                params nem paginação atualmente. Cada quiz inclui resumos das suas versões.
+              </p>
+              <p phx-no-curly-interpolation class="text-sm">
+                <strong>Resposta:</strong> <code>{"data": [Quiz, ...]}</code>
+              </p>
+            </.api_endpoint>
 
-        <.api_endpoint
-          id="endpoint-import-quiz"
-          method="POST"
-          path="/api/v1/quizzes/import"
-          scope="quizzes:write"
-          response="201 · Version"
-        >
-          <p class="text-sm leading-6 opacity-75">
-            Cria um rascunho completo em uma chamada. Este endpoint usa deliberadamente chaves em
-            português e o mesmo formato do importador da interface.
-          </p>
-          <.api_fields title="Body raiz · formato de importação">
-            <:field name="nome" type="string" presence="Obrigatório">
-              Não pode estar vazio.
-            </:field>
-            <:field name="descricao" type="string" presence="Opcional · padrão vazio">
-              Descrição do quiz.
-            </:field>
-            <:field name="nota_total" type="number > 0" presence="Opcional · padrão 100">
-              Nota máxima.
-            </:field>
-            <:field name="pesos_desiguais" type="boolean" presence="Opcional · padrão false">
-              Permite <code>peso</code> por questão.
-            </:field>
-            <:field name="modo_ordem" type="enum" presence="Opcional · padrão fixa">
-              <code>fixa</code>, <code>aleatoria</code> ou <code>ia</code>.
-            </:field>
-            <:field name="questoes" type="QuestãoImportada[]" presence="Obrigatório">
-              Lista com pelo menos uma questão.
-            </:field>
-          </.api_fields>
-          <.api_fields title="Cada item de questoes">
-            <:field name="enunciado" type="string" presence="Obrigatório">
-              Não pode estar vazio.
-            </:field>
-            <:field name="tipo" type="enum" presence="Obrigatório">
-              <code>verdadeiro_falso</code>, <code>unica</code>, <code>multipla</code>
-              ou <code>discursiva</code>.
-            </:field>
-            <:field
-              name="resposta_verdadeiro_falso"
-              type="boolean"
-              presence="Obrigatório em verdadeiro_falso"
+            <.api_endpoint
+              id="endpoint-create-quiz"
+              method="POST"
+              path="/api/v1/quizzes"
+              scope="quizzes:write"
+              response="201 · Version"
             >
-              Gabarito da afirmação.
-            </:field>
-            <:field
-              name="alternativas"
-              type="AlternativaImportada[]"
-              presence="Obrigatório em unica/multipla"
+              <p class="text-sm leading-6 opacity-75">
+                Cria um quiz e sua versão 1 em estado <code>draft</code>. O corpo pode ser vazio;
+                nome e questões são exigidos apenas para publicar.
+              </p>
+              <.api_fields title="Body JSON">
+                <:field name="name" type="string" presence="Opcional · padrão vazio">
+                  Título do quiz.
+                </:field>
+                <:field name="description" type="string" presence="Opcional · padrão vazio">
+                  Descrição do quiz.
+                </:field>
+                <:field
+                  name="total_points"
+                  type="number | decimal string"
+                  presence="Opcional · padrão 100"
+                >
+                  Precisa ser maior que zero.
+                </:field>
+                <:field name="unequal_weights" type="boolean" presence="Opcional · padrão false">
+                  Ativa pesos por questão.
+                </:field>
+                <:field name="question_order_mode" type="enum" presence="Opcional · padrão fixed">
+                  <code>fixed</code>, <code>random</code> ou <code>ai</code>.
+                </:field>
+              </.api_fields>
+              <p class="text-sm">
+                <strong>Resposta:</strong>
+                versão completa, incluindo <code>quiz_id</code>
+                e <code>questions: []</code>.
+              </p>
+            </.api_endpoint>
+
+            <.api_endpoint
+              id="endpoint-import-quiz"
+              method="POST"
+              path="/api/v1/quizzes/import"
+              scope="quizzes:write"
+              response="201 · Version"
             >
-              Ao menos 2 itens com <code>texto</code> e <code>correta</code>.
-            </:field>
-            <:field name="nota_parcial" type="boolean" presence="Opcional em multipla">
-              Concede crédito proporcional quando não houver marcação errada.
-            </:field>
-            <:field name="resposta_referencia" type="string" presence="Opcional">
-              Explicação e referência para correção discursiva por IA.
-            </:field>
-            <:field name="peso" type="number >= 0" presence="Opcional">
-              Usado quando <code>pesos_desiguais</code> for verdadeiro.
-            </:field>
-          </.api_fields>
-          <.api_fields title="Cada item de alternativas">
-            <:field name="texto" type="string" presence="Obrigatório">
-              Texto da alternativa.
-            </:field>
-            <:field name="correta" type="boolean" presence="Opcional · padrão false">
-              Marca a alternativa como parte do gabarito.
-            </:field>
-          </.api_fields>
-          <p class="text-sm leading-6 opacity-75">
-            Em <code>unica</code>, exatamente uma alternativa deve ter <code>correta: true</code>;
-            em <code>multipla</code>, pelo menos uma. Chaves desconhecidas são ignoradas.
-          </p>
-          <.link
-            href={~p"/formato-importacao.md"}
-            class="inline-flex items-center gap-2 text-sm font-semibold text-primary hover:underline"
-          >
-            <.icon name="hero-arrow-down-tray" class="size-4" />
-            Baixar contrato completo e exemplo JSON
-          </.link>
-        </.api_endpoint>
+              <p class="text-sm leading-6 opacity-75">
+                Cria um rascunho completo em uma chamada. Este endpoint usa deliberadamente chaves em
+                português e o mesmo formato do importador da interface.
+              </p>
+              <.api_fields title="Body raiz · formato de importação">
+                <:field name="nome" type="string" presence="Obrigatório">
+                  Não pode estar vazio.
+                </:field>
+                <:field name="descricao" type="string" presence="Opcional · padrão vazio">
+                  Descrição do quiz.
+                </:field>
+                <:field name="nota_total" type="number > 0" presence="Opcional · padrão 100">
+                  Nota máxima.
+                </:field>
+                <:field name="pesos_desiguais" type="boolean" presence="Opcional · padrão false">
+                  Permite <code>peso</code> por questão.
+                </:field>
+                <:field name="modo_ordem" type="enum" presence="Opcional · padrão fixa">
+                  <code>fixa</code>, <code>aleatoria</code> ou <code>ia</code>.
+                </:field>
+                <:field name="questoes" type="QuestãoImportada[]" presence="Obrigatório">
+                  Lista com pelo menos uma questão.
+                </:field>
+              </.api_fields>
+              <.api_fields title="Cada item de questoes">
+                <:field name="enunciado" type="string" presence="Obrigatório">
+                  Não pode estar vazio.
+                </:field>
+                <:field name="tipo" type="enum" presence="Obrigatório">
+                  <code>verdadeiro_falso</code>, <code>unica</code>, <code>multipla</code>
+                  ou <code>discursiva</code>.
+                </:field>
+                <:field
+                  name="resposta_verdadeiro_falso"
+                  type="boolean"
+                  presence="Obrigatório em verdadeiro_falso"
+                >
+                  Gabarito da afirmação.
+                </:field>
+                <:field
+                  name="alternativas"
+                  type="AlternativaImportada[]"
+                  presence="Obrigatório em unica/multipla"
+                >
+                  Ao menos 2 itens com <code>texto</code> e <code>correta</code>.
+                </:field>
+                <:field name="nota_parcial" type="boolean" presence="Opcional em multipla">
+                  Concede crédito proporcional quando não houver marcação errada.
+                </:field>
+                <:field name="resposta_referencia" type="string" presence="Opcional">
+                  Explicação e referência para correção discursiva por IA.
+                </:field>
+                <:field name="peso" type="number >= 0" presence="Opcional">
+                  Usado quando <code>pesos_desiguais</code> for verdadeiro.
+                </:field>
+              </.api_fields>
+              <.api_fields title="Cada item de alternativas">
+                <:field name="texto" type="string" presence="Obrigatório">
+                  Texto da alternativa.
+                </:field>
+                <:field name="correta" type="boolean" presence="Opcional · padrão false">
+                  Marca a alternativa como parte do gabarito.
+                </:field>
+              </.api_fields>
+              <p class="text-sm leading-6 opacity-75">
+                Em <code>unica</code>, exatamente uma alternativa deve ter <code>correta: true</code>;
+                em <code>multipla</code>, pelo menos uma. Chaves desconhecidas são ignoradas.
+              </p>
+              <.link
+                href={~p"/formato-importacao.md"}
+                class="inline-flex items-center gap-2 text-sm font-semibold text-primary hover:underline"
+              >
+                <.icon name="hero-arrow-down-tray" class="size-4" />
+                Baixar contrato completo e exemplo JSON
+              </.link>
+            </.api_endpoint>
 
-        <.api_endpoint
-          id="endpoint-show-quiz"
-          method="GET"
-          path="/api/v1/quizzes/:id"
-          scope="token válido"
-          response="200 · Quiz"
-        >
-          <.api_fields title="Path params">
-            <:field name="id" type="UUID" presence="Obrigatório">
-              ID do quiz, não da versão.
-            </:field>
-          </.api_fields>
-          <p class="text-sm">
-            <strong>Resposta:</strong>
-            quiz com a lista de resumos das versões. O conteúdo das questões não vem nesta rota.
-          </p>
-        </.api_endpoint>
+            <.api_endpoint
+              id="endpoint-show-quiz"
+              method="GET"
+              path="/api/v1/quizzes/:id"
+              scope="token válido"
+              response="200 · Quiz"
+            >
+              <.api_fields title="Path params">
+                <:field name="id" type="UUID" presence="Obrigatório">
+                  ID do quiz, não da versão.
+                </:field>
+              </.api_fields>
+              <p class="text-sm">
+                <strong>Resposta:</strong>
+                quiz com a lista de resumos das versões. O conteúdo das questões não vem nesta rota.
+              </p>
+            </.api_endpoint>
 
-        <.api_endpoint
-          id="endpoint-update-quiz"
-          method="PATCH"
-          path="/api/v1/quizzes/:id"
-          scope="quizzes:write"
-          response="200 · Quiz"
-        >
-          <.api_fields title="Body JSON">
-            <:field name="active" type="boolean" presence="Obrigatório">
-              <code>false</code> impede novas respostas; <code>true</code> reabre o quiz.
-            </:field>
-          </.api_fields>
-          <p class="text-sm">
-            Ausência ou tipo incorreto em <code>active</code>
-            retorna <code>422 validation_error</code>.
-          </p>
-        </.api_endpoint>
+            <.api_endpoint
+              id="endpoint-update-quiz"
+              method="PATCH"
+              path="/api/v1/quizzes/:id"
+              scope="quizzes:write"
+              response="200 · Quiz"
+            >
+              <.api_fields title="Body JSON">
+                <:field name="active" type="boolean" presence="Obrigatório">
+                  <code>false</code> impede novas respostas; <code>true</code> reabre o quiz.
+                </:field>
+              </.api_fields>
+              <p class="text-sm">
+                Ausência ou tipo incorreto em <code>active</code>
+                retorna <code>422 validation_error</code>.
+              </p>
+            </.api_endpoint>
 
-        <.api_endpoint
-          id="endpoint-create-draft"
-          method="POST"
-          path="/api/v1/quizzes/:id/drafts"
-          scope="quizzes:write"
-          response="201 · Version"
-        >
-          <p class="text-sm leading-6 opacity-75">
-            Retorna o rascunho existente. Se não houver um, copia a versão publicada mais
-            recente para a próxima <code>version_number</code>, preservando identidades de questões
-            e alternativas. Não recebe body.
-          </p>
-          <.api_fields title="Path params">
-            <:field name="id" type="UUID" presence="Obrigatório">ID do quiz.</:field>
-          </.api_fields>
-        </.api_endpoint>
-      </div>
+            <.api_endpoint
+              id="endpoint-create-draft"
+              method="POST"
+              path="/api/v1/quizzes/:id/drafts"
+              scope="quizzes:write"
+              response="201 · Version"
+            >
+              <p class="text-sm leading-6 opacity-75">
+                Retorna o rascunho existente. Se não houver um, copia a versão publicada mais
+                recente para a próxima <code>version_number</code>, preservando identidades de questões
+                e alternativas. Não recebe body.
+              </p>
+              <.api_fields title="Path params">
+                <:field name="id" type="UUID" presence="Obrigatório">ID do quiz.</:field>
+              </.api_fields>
+            </.api_endpoint>
+          </div>
 
-      <div class="space-y-3">
-        <h3 class="text-lg font-bold">Versões e publicação</h3>
+          <div class="space-y-3">
+            <h3 class="text-lg font-bold">Versões e publicação</h3>
 
-        <.api_endpoint
-          id="endpoint-show-version"
-          method="GET"
-          path="/api/v1/quiz-versions/:id"
-          scope="token válido"
-          response="200 · Version"
-        >
-          <.api_fields title="Path params">
-            <:field name="id" type="UUID" presence="Obrigatório">
-              ID da versão obtido em <code>Quiz.versions</code>.
-            </:field>
-          </.api_fields>
-          <p class="text-sm">Retorna a versão completa, com todas as questões e alternativas.</p>
-        </.api_endpoint>
+            <.api_endpoint
+              id="endpoint-show-version"
+              method="GET"
+              path="/api/v1/quiz-versions/:id"
+              scope="token válido"
+              response="200 · Version"
+            >
+              <.api_fields title="Path params">
+                <:field name="id" type="UUID" presence="Obrigatório">
+                  ID da versão obtido em <code>Quiz.versions</code>.
+                </:field>
+              </.api_fields>
+              <p class="text-sm">Retorna a versão completa, com todas as questões e alternativas.</p>
+            </.api_endpoint>
 
-        <.api_endpoint
-          id="endpoint-update-version"
-          method="PATCH"
-          path="/api/v1/quiz-versions/:id"
-          scope="quizzes:write"
-          response="200 · Version"
-        >
-          <p class="text-sm leading-6 opacity-75">
-            Edita somente rascunhos. Todos os campos são opcionais e a resposta traz a versão completa recarregada.
-          </p>
-          <.api_fields title="Body JSON parcial">
-            <:field name="name" type="string" presence="Opcional">Título.</:field>
-            <:field name="description" type="string" presence="Opcional">Descrição.</:field>
-            <:field name="total_points" type="number | decimal string" presence="Opcional">
-              Precisa ser maior que zero.
-            </:field>
-            <:field name="unequal_weights" type="boolean" presence="Opcional">
-              Ativa pesos por questão.
-            </:field>
-            <:field name="question_order_mode" type="enum" presence="Opcional">
-              <code>fixed</code>, <code>random</code> ou <code>ai</code>.
-            </:field>
-          </.api_fields>
-        </.api_endpoint>
+            <.api_endpoint
+              id="endpoint-update-version"
+              method="PATCH"
+              path="/api/v1/quiz-versions/:id"
+              scope="quizzes:write"
+              response="200 · Version"
+            >
+              <p class="text-sm leading-6 opacity-75">
+                Edita somente rascunhos. Todos os campos são opcionais e a resposta traz a versão completa recarregada.
+              </p>
+              <.api_fields title="Body JSON parcial">
+                <:field name="name" type="string" presence="Opcional">Título.</:field>
+                <:field name="description" type="string" presence="Opcional">Descrição.</:field>
+                <:field name="total_points" type="number | decimal string" presence="Opcional">
+                  Precisa ser maior que zero.
+                </:field>
+                <:field name="unequal_weights" type="boolean" presence="Opcional">
+                  Ativa pesos por questão.
+                </:field>
+                <:field name="question_order_mode" type="enum" presence="Opcional">
+                  <code>fixed</code>, <code>random</code> ou <code>ai</code>.
+                </:field>
+              </.api_fields>
+            </.api_endpoint>
 
-        <.api_endpoint
-          id="endpoint-validate-version"
-          method="POST"
-          path="/api/v1/quiz-versions/:id/validate"
-          scope="token válido"
-          response="200 · Validation"
-        >
-          <p class="text-sm leading-6 opacity-75">
-            Executa as mesmas regras da publicação sem alterar nada. Uma validação
-            negativa ainda retorna HTTP 200; consulte <code>data.valid</code>. Não recebe body.
-          </p>
-          <pre class="overflow-x-auto rounded-xl bg-neutral p-4 text-sm leading-6 text-neutral-content"><code phx-no-curly-interpolation>{
+            <.api_endpoint
+              id="endpoint-validate-version"
+              method="POST"
+              path="/api/v1/quiz-versions/:id/validate"
+              scope="token válido"
+              response="200 · Validation"
+            >
+              <p class="text-sm leading-6 opacity-75">
+                Executa as mesmas regras da publicação sem alterar nada. Uma validação
+                negativa ainda retorna HTTP 200; consulte <code>data.valid</code>. Não recebe body.
+              </p>
+              <pre class="overflow-x-auto rounded-xl bg-neutral p-4 text-sm leading-6 text-neutral-content"><code phx-no-curly-interpolation>{
   "data": {
     "valid": false,
     "errors": ["O quiz precisa de um nome", "O quiz precisa de pelo menos uma questão"]
   }
 }</code></pre>
-        </.api_endpoint>
+            </.api_endpoint>
 
-        <.api_endpoint
-          id="endpoint-publish-version"
-          method="POST"
-          path="/api/v1/quiz-versions/:id/publish"
-          scope="quizzes:publish"
-          response="200 · Version"
-        >
-          <p class="text-sm leading-6 opacity-75">
-            Valida, publica e congela o rascunho. Também gera tags internas de IA e o changelog.
-            Não recebe body. Se houver problemas de conteúdo, retorna <code>422</code> com todos
-            os erros em <code>error.details</code>.
-          </p>
-          <div class="rounded-xl border border-base-300 bg-base-100 p-4 text-sm leading-6">
-            <strong>Regras principais:</strong>
-            nome preenchido, pelo menos uma questão, nota total
-            positiva, enunciados preenchidos e gabarito coerente com cada tipo. Se pesos desiguais
-            estiverem ativos, a soma dos pesos definidos não pode exceder a nota total.
+            <.api_endpoint
+              id="endpoint-publish-version"
+              method="POST"
+              path="/api/v1/quiz-versions/:id/publish"
+              scope="quizzes:publish"
+              response="200 · Version"
+            >
+              <p class="text-sm leading-6 opacity-75">
+                Valida, publica e congela o rascunho. Também gera tags internas de IA e o changelog.
+                Não recebe body. Se houver problemas de conteúdo, retorna <code>422</code> com todos
+                os erros em <code>error.details</code>.
+              </p>
+              <div class="rounded-xl border border-base-300 bg-base-100 p-4 text-sm leading-6">
+                <strong>Regras principais:</strong>
+                nome preenchido, pelo menos uma questão, nota total
+                positiva, enunciados preenchidos e gabarito coerente com cada tipo. Se pesos desiguais
+                estiverem ativos, a soma dos pesos definidos não pode exceder a nota total.
+              </div>
+            </.api_endpoint>
           </div>
-        </.api_endpoint>
-      </div>
 
-      <div class="space-y-3">
-        <h3 class="text-lg font-bold">Questões e alternativas</h3>
+          <div class="space-y-3">
+            <h3 class="text-lg font-bold">Questões e alternativas</h3>
 
-        <.api_endpoint
-          id="endpoint-create-question"
-          method="POST"
-          path="/api/v1/quiz-versions/:id/questions"
-          scope="quizzes:write"
-          response="201 · Question"
-        >
-          <p class="text-sm leading-6 opacity-75">
-            Adiciona uma questão ao fim do rascunho. A posição é atribuída automaticamente.
-            O endpoint permite salvar incompleto; use a validação antes de publicar.
-          </p>
-          <.api_fields title="Body JSON">
-            <:field name="statement" type="string" presence="Opcional · padrão vazio">
-              Enunciado.
-            </:field>
-            <:field name="type" type="enum" presence="Opcional · padrão single">
-              <code>true_false</code>, <code>single</code>, <code>multiple</code>
-              ou <code>text</code>.
-            </:field>
-            <:field
-              name="allow_partial_credit"
-              type="boolean"
-              presence="Opcional · padrão false"
+            <.api_endpoint
+              id="endpoint-create-question"
+              method="POST"
+              path="/api/v1/quiz-versions/:id/questions"
+              scope="quizzes:write"
+              response="201 · Question"
             >
-              Use apenas com <code>multiple</code>.
-            </:field>
-            <:field
-              name="true_false_answer"
-              type="boolean | null"
-              presence="Exigido para publicar true_false"
-            >
-              Gabarito verdadeiro/falso.
-            </:field>
-            <:field name="editor_note" type="string | null" presence="Opcional">
-              Explicação ou resposta de referência.
-            </:field>
-            <:field name="weight" type="number | decimal string | null" presence="Opcional">
-              Peso da questão.
-            </:field>
-            <:field name="options" type="OptionInput[]" presence="Opcional · padrão []">
-              Alternativas com <code>text</code>, <code>correct</code> e <code>position</code>.
-            </:field>
-          </.api_fields>
-          <pre class="overflow-x-auto rounded-xl bg-neutral p-4 text-sm leading-6 text-neutral-content"><code phx-no-curly-interpolation>{
+              <p class="text-sm leading-6 opacity-75">
+                Adiciona uma questão ao fim do rascunho. A posição é atribuída automaticamente.
+                O endpoint permite salvar incompleto; use a validação antes de publicar.
+              </p>
+              <.api_fields title="Body JSON">
+                <:field name="statement" type="string" presence="Opcional · padrão vazio">
+                  Enunciado.
+                </:field>
+                <:field name="type" type="enum" presence="Opcional · padrão single">
+                  <code>true_false</code>, <code>single</code>, <code>multiple</code>
+                  ou <code>text</code>.
+                </:field>
+                <:field
+                  name="allow_partial_credit"
+                  type="boolean"
+                  presence="Opcional · padrão false"
+                >
+                  Use apenas com <code>multiple</code>.
+                </:field>
+                <:field
+                  name="true_false_answer"
+                  type="boolean | null"
+                  presence="Exigido para publicar true_false"
+                >
+                  Gabarito verdadeiro/falso.
+                </:field>
+                <:field name="editor_note" type="string | null" presence="Opcional">
+                  Explicação ou resposta de referência.
+                </:field>
+                <:field name="weight" type="number | decimal string | null" presence="Opcional">
+                  Peso da questão.
+                </:field>
+                <:field name="options" type="OptionInput[]" presence="Opcional · padrão []">
+                  Alternativas com <code>text</code>, <code>correct</code> e <code>position</code>.
+                </:field>
+              </.api_fields>
+              <pre class="overflow-x-auto rounded-xl bg-neutral p-4 text-sm leading-6 text-neutral-content"><code phx-no-curly-interpolation>{
   "statement": "Quais valores são booleanos?",
   "type": "multiple",
   "allow_partial_credit": true,
@@ -1011,121 +1012,484 @@
     {"text": "nil", "correct": false, "position": 2}
   ]
 }</code></pre>
-        </.api_endpoint>
+            </.api_endpoint>
 
-        <.api_endpoint
-          id="endpoint-update-question"
-          method="PATCH"
-          path="/api/v1/questions/:id"
-          scope="quizzes:write"
-          response="200 · Question"
-        >
-          <p class="text-sm leading-6 opacity-75">
-            Atualiza uma questão de rascunho. Aceita os mesmos campos da criação, além de <code>position</code>. Se
-            <code>options</code>
-            for omitido, as alternativas permanecem;
-            se for enviado, ele substitui a coleção inteira.
-          </p>
-          <.api_fields title="Regras de options no PATCH">
-            <:field name="options[].id" type="UUID" presence="Para manter uma alternativa">
-              IDs existentes preservam identidade e atualizam o item.
+            <.api_endpoint
+              id="endpoint-update-question"
+              method="PATCH"
+              path="/api/v1/questions/:id"
+              scope="quizzes:write"
+              response="200 · Question"
+            >
+              <p class="text-sm leading-6 opacity-75">
+                Atualiza uma questão de rascunho. Aceita os mesmos campos da criação, além de <code>position</code>. Se
+                <code>options</code>
+                for omitido, as alternativas permanecem;
+                se for enviado, ele substitui a coleção inteira.
+              </p>
+              <.api_fields title="Regras de options no PATCH">
+                <:field name="options[].id" type="UUID" presence="Para manter uma alternativa">
+                  IDs existentes preservam identidade e atualizam o item.
+                </:field>
+                <:field name="options[].text" type="string" presence="Opcional">
+                  Texto da alternativa.
+                </:field>
+                <:field name="options[].correct" type="boolean" presence="Opcional · padrão false">
+                  Participa do gabarito.
+                </:field>
+                <:field name="options[].position" type="integer" presence="Opcional · padrão 0">
+                  Ordem da alternativa.
+                </:field>
+              </.api_fields>
+              <p class="rounded-xl border border-warning/30 bg-warning/10 p-4 text-sm leading-6">
+                Atenção: alternativas existentes omitidas da lista enviada são excluídas; itens sem
+                <code>id</code>
+                são criados como novas alternativas.
+              </p>
+            </.api_endpoint>
+
+            <.api_endpoint
+              id="endpoint-delete-question"
+              method="DELETE"
+              path="/api/v1/questions/:id"
+              scope="quizzes:write"
+              response="204 · sem corpo"
+            >
+              <p class="text-sm leading-6 opacity-75">
+                Remove a questão de um rascunho e renumera as posições restantes. Questões de
+                versões publicadas não podem ser removidas.
+              </p>
+              <.api_fields title="Path params">
+                <:field name="id" type="UUID" presence="Obrigatório">
+                  ID da questão, não o <code>identity_key</code>.
+                </:field>
+              </.api_fields>
+            </.api_endpoint>
+          </div>
+
+          <.api_fields
+            id="quizzes-mcp-tools"
+            title="Ferramentas MCP equivalentes"
+            name_label="Ferramenta"
+            type_label="Endpoint REST"
+            presence_label="Escopo"
+          >
+            <:field name="list_quizzes" type="GET /quizzes" presence="token válido">
+              Lista os quizzes da conta com resumo das versões.
             </:field>
-            <:field name="options[].text" type="string" presence="Opcional">
-              Texto da alternativa.
+            <:field name="get_quiz" type="GET /quizzes/:id" presence="token válido">
+              Busca um quiz pelo ID.
             </:field>
-            <:field name="options[].correct" type="boolean" presence="Opcional · padrão false">
-              Participa do gabarito.
+            <:field name="create_quiz" type="POST /quizzes" presence="quizzes:write">
+              Cria um quiz em rascunho.
             </:field>
-            <:field name="options[].position" type="integer" presence="Opcional · padrão 0">
-              Ordem da alternativa.
+            <:field name="import_quiz" type="POST /quizzes/import" presence="quizzes:write">
+              Importa um quiz completo; o argumento <code>data</code> usa o formato de importação.
+            </:field>
+            <:field name="set_quiz_active" type="PATCH /quizzes/:id" presence="quizzes:write">
+              Ativa ou desativa um quiz.
+            </:field>
+            <:field
+              name="create_quiz_draft"
+              type="POST /quizzes/:id/drafts"
+              presence="quizzes:write"
+            >
+              Garante um rascunho editável.
+            </:field>
+            <:field name="get_quiz_version" type="GET /quiz-versions/:id" presence="token válido">
+              Busca uma versão completa, com questões e alternativas.
+            </:field>
+            <:field
+              name="update_quiz_version"
+              type="PATCH /quiz-versions/:id"
+              presence="quizzes:write"
+            >
+              Atualiza metadados de um rascunho.
+            </:field>
+            <:field
+              name="validate_quiz_version"
+              type="POST /quiz-versions/:id/validate"
+              presence="token válido"
+            >
+              Valida um rascunho sem alterar nada.
+            </:field>
+            <:field
+              name="publish_quiz_version"
+              type="POST /quiz-versions/:id/publish"
+              presence="quizzes:publish"
+            >
+              Publica um rascunho validado.
+            </:field>
+            <:field
+              name="create_question"
+              type="POST /quiz-versions/:id/questions"
+              presence="quizzes:write"
+            >
+              Cria uma questão no rascunho.
+            </:field>
+            <:field name="update_question" type="PATCH /questions/:id" presence="quizzes:write">
+              Atualiza uma questão; <code>options</code> omitido preserva as alternativas.
+            </:field>
+            <:field name="delete_question" type="DELETE /questions/:id" presence="quizzes:write">
+              Remove uma questão do rascunho.
             </:field>
           </.api_fields>
-          <p class="rounded-xl border border-warning/30 bg-warning/10 p-4 text-sm leading-6">
-            Atenção: alternativas existentes omitidas da lista enviada são excluídas; itens sem
-            <code>id</code>
-            são criados como novas alternativas.
-          </p>
-        </.api_endpoint>
 
-        <.api_endpoint
-          id="endpoint-delete-question"
-          method="DELETE"
-          path="/api/v1/questions/:id"
-          scope="quizzes:write"
-          response="204 · sem corpo"
+          <section id="fluxo-completo" class="scroll-mt-6 space-y-4">
+            <h3 class="text-xl font-bold">Fluxo recomendado · do rascunho à publicação</h3>
+            <ol class="grid gap-4 md:grid-cols-2">
+              <li class="rounded-2xl border border-base-300 p-5">
+                <span class="text-xs font-bold text-primary">1 · CRIAR</span>
+                <p class="mt-2 font-semibold">
+                  <code>POST /quizzes</code> ou <code>POST /quizzes/import</code>
+                </p>
+                <p class="mt-1 text-sm leading-6 opacity-70">
+                  Guarde <code>data.id</code> como VERSION_ID e <code>data.quiz_id</code> como QUIZ_ID.
+                </p>
+              </li>
+              <li class="rounded-2xl border border-base-300 p-5">
+                <span class="text-xs font-bold text-primary">2 · EDITAR</span>
+                <p class="mt-2 font-semibold"><code>PATCH /quiz-versions/VERSION_ID</code></p>
+                <p class="mt-1 text-sm leading-6 opacity-70">
+                  Ajuste metadados e adicione questões enquanto o status for <code>draft</code>.
+                </p>
+              </li>
+              <li class="rounded-2xl border border-base-300 p-5">
+                <span class="text-xs font-bold text-primary">3 · VALIDAR</span>
+                <p class="mt-2 font-semibold"><code>POST /quiz-versions/VERSION_ID/validate</code></p>
+                <p class="mt-1 text-sm leading-6 opacity-70">
+                  Prossiga apenas quando <code>data.valid</code> for <code>true</code>.
+                </p>
+              </li>
+              <li class="rounded-2xl border border-base-300 p-5">
+                <span class="text-xs font-bold text-primary">4 · PUBLICAR</span>
+                <p class="mt-2 font-semibold"><code>POST /quiz-versions/VERSION_ID/publish</code></p>
+                <p class="mt-1 text-sm leading-6 opacity-70">
+                  A versão se torna imutável. Use <code>POST /quizzes/QUIZ_ID/drafts</code>
+                  para a próxima edição.
+                </p>
+              </li>
+            </ol>
+          </section>
+        </div>
+
+        <div
+          id="ref-panel-store"
+          data-ref-panel="ref-tab-store"
+          class="hidden space-y-6 group-has-[#ref-tab-store:checked]/ref-tabs:block"
         >
-          <p class="text-sm leading-6 opacity-75">
-            Remove a questão de um rascunho e renumera as posições restantes. Questões de
-            versões publicadas não podem ser removidas.
-          </p>
-          <.api_fields title="Path params">
-            <:field name="id" type="UUID" presence="Obrigatório">
-              ID da questão, não o <code>identity_key</code>.
+          <div class="space-y-4">
+            <h3 class="text-xl font-bold">Modelo retornado</h3>
+            <.api_fields title="Product">
+              <:field name="id" type="UUID" presence="Sempre">Identificador do produto.</:field>
+              <:field name="name" type="string" presence="Sempre">Nome do produto.</:field>
+              <:field name="description" type="string" presence="Sempre">
+                Descrição do produto.
+              </:field>
+              <:field name="price" type="integer" presence="Sempre">Preço em pontos.</:field>
+              <:field name="inserted_at" type="datetime" presence="Sempre">Data de criação.</:field>
+              <:field name="updated_at" type="datetime" presence="Sempre">Última alteração.</:field>
+            </.api_fields>
+          </div>
+
+          <div class="space-y-3">
+            <h3 class="text-lg font-bold">Loja</h3>
+
+            <.api_endpoint
+              id="endpoint-create-product"
+              method="POST"
+              path="/api/v1/products"
+              scope="store:write"
+              response="201 · Product"
+            >
+              <p class="text-sm leading-6 opacity-75">
+                Cadastra um produto na Wish Store, pertencente à conta autenticada. Imagens não são
+                aceitas por aqui — a galeria é sempre gerenciada pela interface (Configurações →
+                Loja → Produtos).
+              </p>
+              <.api_fields title="Body JSON">
+                <:field name="name" type="string" presence="Obrigatório">
+                  Nome do produto.
+                </:field>
+                <:field name="description" type="string" presence="Obrigatório">
+                  Descrição do produto.
+                </:field>
+                <:field name="price" type="integer" presence="Obrigatório">
+                  Preço em pontos. Precisa ser maior que zero.
+                </:field>
+              </.api_fields>
+              <p class="text-sm">
+                <strong>Resposta:</strong> o produto criado, sem imagens.
+              </p>
+            </.api_endpoint>
+          </div>
+
+          <.api_fields
+            id="store-mcp-tools"
+            title="Ferramentas MCP equivalentes"
+            name_label="Ferramenta"
+            type_label="Endpoint REST"
+            presence_label="Escopo"
+          >
+            <:field name="create_product" type="POST /products" presence="store:write">
+              Cadastra um produto na Wish Store. Sem suporte a imagens por aqui.
             </:field>
           </.api_fields>
-        </.api_endpoint>
-      </div>
+        </div>
 
-      <div class="space-y-3">
-        <h3 class="text-lg font-bold">Token atual</h3>
-        <.api_endpoint
-          id="endpoint-revoke-token"
-          method="DELETE"
-          path="/api/v1/auth/token"
-          scope="token válido"
-          response="204 · sem corpo"
+        <div
+          id="ref-panel-metrics"
+          data-ref-panel="ref-tab-metrics"
+          class="hidden space-y-6 group-has-[#ref-tab-metrics:checked]/ref-tabs:block"
         >
-          <p class="text-sm leading-6 opacity-75">
-            Revoga imediatamente o Bearer token usado nesta requisição. As demais credenciais da
-            conta continuam ativas. Não recebe path params nem body.
-          </p>
-        </.api_endpoint>
-      </div>
-    </section>
+          <div class="space-y-3">
+            <h3 class="text-lg font-bold">Métricas</h3>
 
-    <section id="fluxo-completo" class="scroll-mt-6 space-y-5">
-      <div>
-        <p class="text-sm font-semibold text-primary">04 · Fluxo recomendado</p>
-        <h2 class="mt-1 text-2xl font-bold">Do rascunho à publicação</h2>
+            <.api_endpoint
+              id="endpoint-get-metrics"
+              method="GET"
+              path="/api/v1/metrics"
+              scope="token válido"
+              response="200 · Metrics"
+            >
+              <p class="text-sm leading-6 opacity-75">
+                Números agregados de Prioridades, Kanban e Wish Store da conta autenticada — para
+                auditar se os preços da loja fazem sentido perto do ritmo de ganho de pontos, e
+                servir de base para visões próprias. Não recebe query params nem path params; sempre
+                traz o panorama completo. Os mapas de contagem (<code>by_type</code>, <code>by_tier</code>
+                etc.) não têm um veredito embutido — são só os números, pra quem consumir decidir.
+              </p>
+              <.api_fields title="data.priorities">
+                <:field name="categories_count" type="integer" presence="Sempre">
+                  Total de categorias.
+                </:field>
+                <:field name="items.active_count" type="integer" presence="Sempre">
+                  Itens ativos — exclui o item "Geral" interno de cada categoria.
+                </:field>
+                <:field name="items.archived_count" type="integer" presence="Sempre">
+                  Itens arquivados.
+                </:field>
+                <:field name="items.by_type" type="object" presence="Sempre">
+                  Contagem por <code>item_type</code>: <code>book</code>, <code>quiz_goal</code>, <code>course</code>, <code>checklist</code>, <code>manual</code>.
+                </:field>
+                <:field name="items.by_tier" type="object" presence="Sempre">
+                  Contagem por tier (<code>S</code>/<code>A</code>/<code>B</code>/<code>C</code>/<code>D</code>); itens sem tier somam na chave <code>"nil"</code>.
+                </:field>
+                <:field name="items.total_store_points" type="integer" presence="Sempre">
+                  Soma de <code>store_points</code> dos itens ativos.
+                </:field>
+                <:field name="habits.active_count" type="integer" presence="Sempre">
+                  Hábitos ativos.
+                </:field>
+                <:field name="habits.archived_count" type="integer" presence="Sempre">
+                  Hábitos arquivados.
+                </:field>
+                <:field name="habits.avg_store_points" type="number" presence="Sempre">
+                  Média de pontos por hábito ativo.
+                </:field>
+              </.api_fields>
+              <.api_fields title="data.kanban">
+                <:field name="total_count" type="integer" presence="Sempre">
+                  Total de atividades já criadas.
+                </:field>
+                <:field name="by_status" type="object" presence="Sempre">
+                  <code>pendente</code>, <code>concluida</code>, <code>nao_cumprida</code>, <code>descartada</code>.
+                </:field>
+                <:field name="by_flow" type="object" presence="Sempre">
+                  <code>todo</code>, <code>fazendo</code>, <code>feito</code>.
+                </:field>
+                <:field name="by_kind" type="object" presence="Sempre">
+                  <code>tarefa</code>, <code>evento</code>.
+                </:field>
+                <:field name="loose_captures_count" type="integer" presence="Sempre">
+                  Capturas soltas (sem item nem hábito associado).
+                </:field>
+                <:field name="completion_rate" type="number | null" presence="Sempre">
+                  Concluídas ÷ resolvidas (flow <code>feito</code>); <code>null</code> sem nenhuma resolvida ainda.
+                </:field>
+                <:field name="recent" type="object" presence="Sempre">
+                  Recorte dos últimos <code>window_days</code> dias (30 por padrão): <code>count</code>, <code>completed_count</code>
+                  e <code>store_points_earned</code>.
+                </:field>
+              </.api_fields>
+              <.api_fields title="data.store">
+                <:field name="products_count" type="integer" presence="Sempre">
+                  Total de produtos cadastrados.
+                </:field>
+                <:field name="price_stats" type="object" presence="Sempre">
+                  <code>min</code>, <code>max</code>, <code>avg</code> e <code>median</code> dos preços; tudo <code>null</code> sem nenhum produto.
+                </:field>
+                <:field name="redemptions" type="object" presence="Sempre">
+                  <code>count</code> e <code>total_points_spent</code> de todos os resgates.
+                </:field>
+                <:field name="products_never_redeemed" type="string[]" presence="Sempre">
+                  Nomes dos produtos sem nenhum resgate.
+                </:field>
+                <:field name="most_redeemed" type="object[]" presence="Sempre">
+                  Até 5 produtos (<code>id</code>, <code>name</code>, <code>price</code>, <code>redemptions</code>), do mais resgatado para o menos.
+                </:field>
+              </.api_fields>
+              <.api_fields title="data.pricing_audit">
+                <:field name="window_days" type="integer" presence="Sempre">
+                  Janela usada no ritmo de ganho (30 dias por padrão).
+                </:field>
+                <:field name="avg_daily_earning" type="number" presence="Sempre">
+                  Média de pontos creditados por dia na janela.
+                </:field>
+                <:field name="earning_by_source" type="object" presence="Sempre">
+                  <code>activity</code>, <code>activity_task</code>, <code>item</code>, <code>habit</code>, <code>gift_card</code>.
+                </:field>
+                <:field name="wallet_balance" type="integer" presence="Sempre">
+                  Saldo atual da carteira de pontos.
+                </:field>
+                <:field name="products" type="object[]" presence="Sempre">
+                  Cada item: <code>id</code>, <code>name</code>, <code>price</code>, <code>days_of_earning</code>
+                  (preço ÷ ritmo médio; <code>null</code> sem ganho registrado na janela) e <code>affordable_now</code>
+                  (se o saldo atual cobre o preço).
+                </:field>
+              </.api_fields>
+              <div class="overflow-hidden rounded-xl bg-neutral text-neutral-content">
+                <div class="border-b border-white/10 px-5 py-3 text-xs opacity-70">
+                  Exemplo de resposta (resumido)
+                </div>
+                <pre class="overflow-x-auto p-5 text-sm leading-6"><code phx-no-curly-interpolation>{
+  "data": {
+    "priorities": {
+      "categories_count": 3,
+      "items": {
+        "active_count": 12,
+        "archived_count": 2,
+        "by_type": {"manual": 8, "book": 4},
+        "by_tier": {"S": 2, "nil": 10},
+        "total_store_points": 340
+      },
+      "habits": {"active_count": 2, "archived_count": 0, "avg_store_points": 5.0}
+    },
+    "kanban": {
+      "total_count": 40,
+      "by_status": {"pendente": 5, "concluida": 30, "nao_cumprida": 3, "descartada": 2},
+      "by_flow": {"todo": 5, "fazendo": 0, "feito": 35},
+      "by_kind": {"tarefa": 38, "evento": 2},
+      "loose_captures_count": 1,
+      "completion_rate": 0.86,
+      "recent": {"window_days": 30, "count": 22, "completed_count": 18, "store_points_earned": 120}
+    },
+    "store": {
+      "products_count": 4,
+      "price_stats": {"min": 10, "max": 200, "avg": 77.5, "median": 60},
+      "redemptions": {"count": 3, "total_points_spent": 150},
+      "products_never_redeemed": ["Vale-café"],
+      "most_redeemed": [{"id": "UUID", "name": "Folga", "price": 200, "redemptions": 2}]
+    },
+    "pricing_audit": {
+      "window_days": 30,
+      "avg_daily_earning": 4.0,
+      "earning_by_source": {"activity": 100, "item": 20},
+      "wallet_balance": 60,
+      "products": [
+        {"id": "UUID", "name": "Vale-café", "price": 10, "days_of_earning": 2.5, "affordable_now": true},
+        {"id": "UUID", "name": "Folga", "price": 200, "days_of_earning": 50.0, "affordable_now": false}
+      ]
+    }
+  }
+}</code></pre>
+              </div>
+            </.api_endpoint>
+          </div>
+
+          <.api_fields
+            id="metrics-mcp-tools"
+            title="Ferramentas MCP equivalentes"
+            name_label="Ferramenta"
+            type_label="Endpoint REST"
+            presence_label="Escopo"
+          >
+            <:field name="get_metrics" type="GET /metrics" presence="token válido">
+              Métricas agregadas de Prioridades, Kanban e Wish Store.
+            </:field>
+          </.api_fields>
+        </div>
+
+        <div
+          id="ref-panel-study"
+          data-ref-panel="ref-tab-study"
+          class="hidden space-y-6 group-has-[#ref-tab-study:checked]/ref-tabs:block"
+        >
+          <div class="space-y-3">
+            <h3 class="text-lg font-bold">Materiais de estudo</h3>
+
+            <.api_endpoint
+              id="endpoint-study-import"
+              method="POST"
+              path="/api/v1/study/import"
+              scope="study:write"
+              response="200 · materials_imported"
+            >
+              <p class="text-sm leading-6 opacity-75">
+                Recebe um bundle <code>.tar.gz</code> (multipart, campo <code>bundle</code>) gerado
+                por <code>mix study.export</code> e substitui os materiais nele contidos, sempre
+                associados à conta autenticada. Pensado pra sincronizar conteúdo entre ambientes —
+                não é um formato pra um agente de IA gerar do zero.
+              </p>
+              <.api_fields title="Body multipart/form-data">
+                <:field name="bundle" type="file (.tar.gz)" presence="Obrigatório">
+                  Arquivo gerado por <code>mix study.export</code>.
+                </:field>
+              </.api_fields>
+              <div class="overflow-hidden rounded-2xl border border-base-300 bg-neutral text-neutral-content">
+                <div class="flex items-center justify-between border-b border-white/10 px-5 py-3 text-xs opacity-70">
+                  <span>Exemplo</span><span>POST /api/v1/study/import</span>
+                </div>
+                <pre class="overflow-x-auto p-5 text-sm leading-6"><code phx-no-curly-interpolation>curl -X POST <%= url(~p"/api/v1/study/import") %> \
+  -H 'Authorization: Bearer quiz_SEU_TOKEN' \
+  -F 'bundle=@materiais.tar.gz'</code></pre>
+              </div>
+              <p phx-no-curly-interpolation class="text-sm">
+                <strong>Resposta:</strong> <code>{"data": {"materials_imported": N}}</code>
+              </p>
+            </.api_endpoint>
+          </div>
+
+          <p class="rounded-2xl border border-base-300 bg-base-100 p-4 text-sm leading-6 opacity-75">
+            Sem ferramenta MCP equivalente — é upload de arquivo binário, fora do que
+            <code>tools/call</code>
+            transporta. Use o endpoint REST diretamente.
+          </p>
+        </div>
+
+        <script>
+          (function () {
+            function activateTabForHash(hash) {
+              if (!hash || hash.length < 2) return;
+              var target;
+
+              try {
+                target = document.querySelector(hash);
+              } catch (_e) {
+                return;
+              }
+
+              if (!target) return;
+
+              var panel = target.closest("[data-ref-panel]");
+              if (!panel) return;
+
+              var radio = document.getElementById(panel.dataset.refPanel);
+              if (radio) radio.checked = true;
+            }
+
+            activateTabForHash(window.location.hash);
+            window.addEventListener("hashchange", function () {
+              activateTabForHash(window.location.hash);
+            });
+          })();
+        </script>
       </div>
-      <ol class="grid gap-4 md:grid-cols-2">
-        <li class="rounded-2xl border border-base-300 p-5">
-          <span class="text-xs font-bold text-primary">1 · CRIAR</span>
-          <p class="mt-2 font-semibold">
-            <code>POST /quizzes</code> ou <code>POST /quizzes/import</code>
-          </p>
-          <p class="mt-1 text-sm leading-6 opacity-70">
-            Guarde <code>data.id</code> como VERSION_ID e <code>data.quiz_id</code> como QUIZ_ID.
-          </p>
-        </li>
-        <li class="rounded-2xl border border-base-300 p-5">
-          <span class="text-xs font-bold text-primary">2 · EDITAR</span>
-          <p class="mt-2 font-semibold"><code>PATCH /quiz-versions/VERSION_ID</code></p>
-          <p class="mt-1 text-sm leading-6 opacity-70">
-            Ajuste metadados e adicione questões enquanto o status for <code>draft</code>.
-          </p>
-        </li>
-        <li class="rounded-2xl border border-base-300 p-5">
-          <span class="text-xs font-bold text-primary">3 · VALIDAR</span>
-          <p class="mt-2 font-semibold"><code>POST /quiz-versions/VERSION_ID/validate</code></p>
-          <p class="mt-1 text-sm leading-6 opacity-70">
-            Prossiga apenas quando <code>data.valid</code> for <code>true</code>.
-          </p>
-        </li>
-        <li class="rounded-2xl border border-base-300 p-5">
-          <span class="text-xs font-bold text-primary">4 · PUBLICAR</span>
-          <p class="mt-2 font-semibold"><code>POST /quiz-versions/VERSION_ID/publish</code></p>
-          <p class="mt-1 text-sm leading-6 opacity-70">
-            A versão se torna imutável. Use <code>POST /quizzes/QUIZ_ID/drafts</code>
-            para a próxima edição.
-          </p>
-        </li>
-      </ol>
     </section>
 
     <section id="erros" class="scroll-mt-6 space-y-5">
       <div>
-        <p class="text-sm font-semibold text-primary">05 · Erros</p>
+        <p class="text-sm font-semibold text-primary">04 · Erros</p>
         <h2 class="mt-1 text-2xl font-bold">Códigos e formatos de falha</h2>
       </div>
       <.api_fields title="Respostas de erro">

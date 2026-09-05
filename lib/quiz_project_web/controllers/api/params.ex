@@ -26,6 +26,12 @@ defmodule QuizProjectWeb.Api.Params do
     "position" => :position
   }
 
+  @product_fields %{
+    "name" => :name,
+    "description" => :description,
+    "price" => :price
+  }
+
   @order_modes %{"fixed" => :fixed, "random" => :random, "ai" => :ai}
   @question_types %{
     "true_false" => :true_false,
@@ -52,6 +58,8 @@ defmodule QuizProjectWeb.Api.Params do
 
   def options(%{"options" => _}), do: {:error, "options precisa ser uma lista"}
   def options(_params), do: {:ok, nil}
+
+  def product(params) when is_map(params), do: take_known(params, @product_fields)
 
   defp take_known(params, fields) do
     Enum.reduce(fields, %{}, fn {external, internal}, attrs ->

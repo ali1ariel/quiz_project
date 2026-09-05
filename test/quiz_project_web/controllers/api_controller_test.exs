@@ -39,9 +39,11 @@ defmodule QuizProjectWeb.ApiControllerTest do
         operation["operationId"]
       end
 
-    assert length(operation_ids) == 13
+    assert length(operation_ids) == 15
     assert "importQuiz" in operation_ids
     assert "publishQuizVersion" in operation_ids
+    assert "createProduct" in operation_ids
+    assert "getMetrics" in operation_ids
 
     # Emissão e revogação de token ficam fora do schema de propósito.
     refute Enum.any?(Map.keys(spec["paths"]), &String.contains?(&1, "auth"))
@@ -178,6 +180,68 @@ defmodule QuizProjectWeb.ApiControllerTest do
              |> recycle()
              |> get(~p"/api/v1/quiz-versions/#{version_id}")
              |> json_response(200)
+  end
+
+  test "cadastra um produto na Wish Store", %{conn: conn, user: user} do
+    created =
+      conn
+      |> post(~p"/api/v1/products", %{
+        "name" => "Vale-café",
+        "description" => "Um café por conta da casa.",
+        "price" => 100
+      })
+      |> json_response(201)
+
+    assert %{
+             "data" => %{
+               "name" => "Vale-café",
+               "description" => "Um café por conta da casa.",
+               "price" => 100
+             }
+           } = created
+
+    assert [product] = QuizProject.Store.list_products(user)
+    assert product.id == created["data"]["id"]
+  end
+
+  test "recusa cadastro de produto sem escopo store:write", %{user: user} do
+    raw = "quiz_" <> Base.url_encode64(:crypto.strong_rand_bytes(32), padding: false)
+    hash = :crypto.hash(:sha256, raw) |> Base.encode16(case: :lower)
+
+    QuizProject.Accounts.ApiToken
+    |> Ash.Changeset.for_create(
+      :create,
+      %{user_id: user.id, name: "Somente leitura", token_hash: hash, scopes: ["quizzes:read"]},
+      authorize?: false
+    )
+    |> Ash.create!()
+
+    conn =
+      build_conn()
+      |> api_json_conn()
+      |> put_req_header("authorization", "Bearer #{raw}")
+      |> post(~p"/api/v1/products", %{"name" => "X", "description" => "Y", "price" => 10})
+
+    assert %{"error" => %{"code" => "insufficient_scope"}} = json_response(conn, 403)
+  end
+
+  test "retorna as métricas do usuário autenticado sem exigir escopo específico", %{
+    conn: conn,
+    user: user
+  } do
+    {:ok, product} =
+      QuizProject.Store.create_product(user, %{name: "X", description: "Y", price: 10})
+
+    body = conn |> get(~p"/api/v1/metrics") |> json_response(200)
+
+    assert %{
+             "priorities" => %{"categories_count" => 0},
+             "kanban" => %{"total_count" => 0},
+             "store" => %{"products_count" => 1},
+             "pricing_audit" => %{"products" => [%{"id" => product_id, "price" => 10}]}
+           } = body["data"]
+
+    assert product_id == product.id
   end
 
   test "importa o formato JSON existente", %{conn: conn} do

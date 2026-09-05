@@ -83,6 +83,8 @@ defmodule QuizProjectWeb.Router do
     post "/study/import", StudyController, :import
 
     get "/metrics", MetricsController, :index
+
+    post "/products", ProductController, :create
   end
 
   scope "/api", QuizProjectWeb do
