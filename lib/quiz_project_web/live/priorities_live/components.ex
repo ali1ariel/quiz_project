@@ -198,7 +198,7 @@ defmodule QuizProjectWeb.PrioritiesLive.Components do
         "relative",
         @handle && "group/drag",
         !@handle &&
-          "cursor-grab touch-none select-none [-webkit-touch-callout:none] active:cursor-grabbing"
+          "cursor-grab touch-pan-y select-none [-webkit-touch-callout:none] active:cursor-grabbing"
       ]}
     >
       <button
