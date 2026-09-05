@@ -210,6 +210,25 @@ defmodule QuizProjectWeb.SettingsLiveTest do
              )
     end
 
+    test "produto cadastrado aparece ao navegar pelas abas (sem params na URL)", %{
+      conn: conn,
+      user: user
+    } do
+      {:ok, _product} =
+        Store.create_product(user, %{name: "Vale-café", description: "Um café.", price: 100})
+
+      # Entra em /settings puro (aba "profile" por padrão) e só depois clica
+      # até a Loja — é o que a navegação real faz, diferente de já abrir a
+      # URL com `store_tab=products` (esse caminho é o que expôs o bug de
+      # stream perdida atrás de :if fechado por padrão).
+      {:ok, view, _html} = live(conn, ~p"/settings")
+
+      view |> element("#settings-tab-store") |> render_click()
+      view |> element("#store-subtab-products") |> render_click()
+
+      assert render(view) =~ "Vale-café"
+    end
+
     test "sub-aba de produtos vazia mostra mensagem", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/settings?tab=store&store_tab=products")
 

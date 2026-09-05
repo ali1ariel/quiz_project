@@ -701,13 +701,17 @@ defmodule QuizProjectWeb.SettingsLive do
 
   @impl true
   def handle_event("switch_tab", %{"tab" => tab}, socket) when tab in @tabs do
-    {:noreply, assign(socket, :tab, tab)}
+    socket = assign(socket, :tab, tab)
+    socket = if tab == "store", do: refresh_store_products(socket), else: socket
+    {:noreply, socket}
   end
 
   def handle_event("switch_tab", _params, socket), do: {:noreply, socket}
 
   def handle_event("switch_store_tab", %{"tab" => tab}, socket) when tab in @store_tabs do
-    {:noreply, assign(socket, :store_tab, tab)}
+    socket = assign(socket, :store_tab, tab)
+    socket = if tab == "products", do: refresh_store_products(socket), else: socket
+    {:noreply, socket}
   end
 
   def handle_event("switch_store_tab", _params, socket), do: {:noreply, socket}
@@ -841,6 +845,17 @@ defmodule QuizProjectWeb.SettingsLive do
     else
       _ -> {:noreply, put_flash(socket, :error, "Informe valores válidos.")}
     end
+  end
+
+  # Streams populados no mount, dentro de uma seção que começa fechada
+  # (:if={@tab == "store"} / :if={@store_tab == "products"}), não chegam a
+  # ser enviados ao cliente até o contêiner aparecer de verdade no DOM — só
+  # trocar a aba por `phx-click` não é um novo mount, então o insert original
+  # se perde. Re-empurrar a stream (com `reset: true`) no momento em que a
+  # aba abre garante que o catálogo apareça, em vez de ficar preso ao que
+  # foi computado (e descartado) na primeira renderização.
+  defp refresh_store_products(socket) do
+    stream(socket, :store_products, Store.list_products(socket.assigns.current_user), reset: true)
   end
 
   defp parse_positive_int(value) when is_binary(value) do
