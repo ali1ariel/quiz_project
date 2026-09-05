@@ -287,6 +287,15 @@ defmodule QuizProjectWeb.PrioritiesLive.Components do
             // reconhecer o gesto de arrastar.
             forceFallback: true,
             fallbackTolerance: 3,
+            // No touch, um toque vira arrastar na hora — mesmo gesto de um
+            // scroll comum. `delay` exige uma pausa antes de iniciar o
+            // drag; `delayOnTouchOnly` restringe isso ao touch (mouse
+            // continua instantâneo); `touchStartThreshold` cancela o
+            // delay (e libera o scroll nativo) se o dedo já mover mais que
+            // isso enquanto espera.
+            delay: 150,
+            delayOnTouchOnly: true,
+            touchStartThreshold: 5,
             // `forceFallback` tira o autoscroll do caminho nativo de
             // `dragover` — sem `forceAutoScrollFallback` ele não engata
             // de forma confiável em touch, que era exatamente o sintoma
