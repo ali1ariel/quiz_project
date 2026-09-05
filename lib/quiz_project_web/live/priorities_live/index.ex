@@ -208,7 +208,12 @@ defmodule QuizProjectWeb.PrioritiesLive.Index do
           |> Priorities.list_items_by_category()
           |> Enum.split_with(&(&1.category_id == category.id))
 
-        %{category: category, primary_items: primary, secondary_items: secondary}
+        %{
+          category: category,
+          primary_items: primary,
+          secondary_items: secondary,
+          total_store_points: Enum.reduce(primary, 0, &(&1.store_points + &2))
+        }
       end)
 
     assign(socket,
@@ -390,13 +395,18 @@ defmodule QuizProjectWeb.PrioritiesLive.Index do
                       <.icon name="hero-pencil" class="size-3.5" />
                     </button>
                   </h2>
-                  <button
-                    phx-click="toggle_item_form"
-                    phx-value-category_id={section.category.id}
-                    class="btn btn-soft btn-sm rounded-full"
-                  >
-                    <.icon name="hero-plus" class="size-3.5" /> Novo item
-                  </button>
+                  <div class="flex items-center gap-3">
+                    <span class="flex items-center gap-1 text-xs font-semibold opacity-60">
+                      <.icon name="hero-star-solid" class="size-3.5" /> {section.total_store_points}
+                    </span>
+                    <button
+                      phx-click="toggle_item_form"
+                      phx-value-category_id={section.category.id}
+                      class="btn btn-soft btn-sm rounded-full"
+                    >
+                      <.icon name="hero-plus" class="size-3.5" /> Novo item
+                    </button>
+                  </div>
                 </div>
 
                 <form

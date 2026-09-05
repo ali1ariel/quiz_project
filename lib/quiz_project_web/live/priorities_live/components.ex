@@ -119,8 +119,11 @@ defmodule QuizProjectWeb.PrioritiesLive.Components do
         <.tag_chip :for={tag <- @item.tags} tag={tag} />
       </div>
 
-      <div class="mt-auto pt-1">
+      <div class="mt-auto space-y-1 pt-1">
         <.progress_summary progress={@progress} />
+        <p class="flex items-center gap-1 text-xs opacity-50">
+          <.icon name="hero-star-solid" class="size-3" />{@item.store_points}
+        </p>
       </div>
     </div>
 
@@ -753,8 +756,13 @@ defmodule QuizProjectWeb.PrioritiesLive.Components do
         {elem(@category, 0)}
       </span>
 
-      <div :if={@actions != []} class="flex w-full flex-wrap items-center justify-end gap-2 pt-1">
-        {render_slot(@actions)}
+      <div class="flex w-full flex-wrap items-center justify-between gap-2 pt-1">
+        <p class="flex items-center gap-1 text-[0.65rem] opacity-50">
+          <.icon name="hero-star-solid" class="size-3" />{@activity.store_points}
+        </p>
+        <div :if={@actions != []} class="flex flex-wrap items-center justify-end gap-2">
+          {render_slot(@actions)}
+        </div>
       </div>
     </div>
     """
