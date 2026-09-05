@@ -126,7 +126,11 @@
           Cria, importa e altera quizzes, rascunhos, questões e alternativas.
         </:field>
         <:field name="quizzes:publish" type="scope" presence="Publicação">
-          Publica uma versão validada. Todos os tokens criados atualmente recebem os três escopos.
+          Publica uma versão validada.
+        </:field>
+        <:field name="store:write" type="scope" presence="Escrita">
+          Cadastra produtos na Wish Store. Todos os tokens criados atualmente recebem todos os
+          escopos emitidos.
         </:field>
       </.api_fields>
       <p class="rounded-2xl border border-warning/40 bg-warning/10 p-4 text-sm leading-6">
@@ -273,6 +277,9 @@
           </:field>
           <:field name="delete_question" type="DELETE /questions/:id" presence="quizzes:write">
             Remove uma questão do rascunho.
+          </:field>
+          <:field name="create_product" type="POST /products" presence="store:write">
+            Cadastra um produto na Wish Store. Sem suporte a imagens por aqui.
           </:field>
         </.api_fields>
         <div class="overflow-hidden rounded-xl bg-neutral text-neutral-content">
@@ -622,6 +629,17 @@
           <:field name="correct" type="boolean" presence="Sempre">
             Se a alternativa compõe o gabarito.
           </:field>
+        </.api_fields>
+
+        <.api_fields title="Product">
+          <:field name="id" type="UUID" presence="Sempre">Identificador do produto.</:field>
+          <:field name="name" type="string" presence="Sempre">Nome do produto.</:field>
+          <:field name="description" type="string" presence="Sempre">
+            Descrição do produto.
+          </:field>
+          <:field name="price" type="integer" presence="Sempre">Preço em pontos.</:field>
+          <:field name="inserted_at" type="datetime" presence="Sempre">Data de criação.</:field>
+          <:field name="updated_at" type="datetime" presence="Sempre">Última alteração.</:field>
         </.api_fields>
 
         <div class="overflow-hidden rounded-2xl border border-base-300 bg-neutral text-neutral-content">
@@ -1063,6 +1081,38 @@
               ID da questão, não o <code>identity_key</code>.
             </:field>
           </.api_fields>
+        </.api_endpoint>
+      </div>
+
+      <div class="space-y-3">
+        <h3 class="text-lg font-bold">Loja</h3>
+
+        <.api_endpoint
+          id="endpoint-create-product"
+          method="POST"
+          path="/api/v1/products"
+          scope="store:write"
+          response="201 · Product"
+        >
+          <p class="text-sm leading-6 opacity-75">
+            Cadastra um produto na Wish Store, pertencente à conta autenticada. Imagens não são
+            aceitas por aqui — a galeria é sempre gerenciada pela interface (Configurações →
+            Loja → Produtos).
+          </p>
+          <.api_fields title="Body JSON">
+            <:field name="name" type="string" presence="Obrigatório">
+              Nome do produto.
+            </:field>
+            <:field name="description" type="string" presence="Obrigatório">
+              Descrição do produto.
+            </:field>
+            <:field name="price" type="integer" presence="Obrigatório">
+              Preço em pontos. Precisa ser maior que zero.
+            </:field>
+          </.api_fields>
+          <p class="text-sm">
+            <strong>Resposta:</strong> o produto criado, sem imagens.
+          </p>
         </.api_endpoint>
       </div>
 

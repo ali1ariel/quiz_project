@@ -183,6 +183,20 @@ defmodule QuizProjectWeb.Api.OpenApiController do
           }
         }
       },
+      "/products" => %{
+        post: %{
+          operationId: "createProduct",
+          summary: "Cadastra um produto na Wish Store",
+          description:
+            "Imagens não são aceitas por aqui — a galeria é sempre gerenciada pela " <>
+              "interface (Configurações → Loja). Requer o escopo store:write.",
+          requestBody: json_body("ProductInput", required: true),
+          responses: %{
+            "201" => data_response("Produto criado", ref("Product")),
+            "422" => error_response("Parâmetros inválidos")
+          }
+        }
+      },
       "/questions/{id}" => %{
         patch: %{
           operationId: "updateQuestion",
@@ -282,6 +296,26 @@ defmodule QuizProjectWeb.Api.OpenApiController do
           position: %{type: "integer"},
           text: %{type: "string"},
           correct: %{type: "boolean"}
+        }
+      },
+      "Product" => %{
+        type: "object",
+        properties: %{
+          id: %{type: "string", format: "uuid"},
+          name: %{type: "string"},
+          description: %{type: "string"},
+          price: %{type: "integer", description: "Preço em pontos"},
+          inserted_at: %{type: "string", format: "date-time"},
+          updated_at: %{type: "string", format: "date-time"}
+        }
+      },
+      "ProductInput" => %{
+        type: "object",
+        required: ["name", "description", "price"],
+        properties: %{
+          name: %{type: "string", minLength: 1},
+          description: %{type: "string", minLength: 1},
+          price: %{type: "integer", minimum: 1, description: "Preço em pontos"}
         }
       },
       "QuizInput" => %{

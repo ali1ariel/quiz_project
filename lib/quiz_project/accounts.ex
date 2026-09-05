@@ -5,7 +5,7 @@ defmodule QuizProject.Accounts do
 
   alias QuizProject.Accounts.{ApiToken, GoogleCalendarConnection}
 
-  @api_scopes ["quizzes:read", "quizzes:write", "quizzes:publish", "study:write"]
+  @api_scopes ["quizzes:read", "quizzes:write", "quizzes:publish", "study:write", "store:write"]
 
   resources do
     resource QuizProject.Accounts.User do

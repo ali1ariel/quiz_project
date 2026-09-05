@@ -80,6 +80,7 @@ defmodule QuizProjectWeb.McpTest do
     names = Enum.map(response["result"]["tools"], & &1["name"])
 
     assert names == [
+             "create_product",
              "create_question",
              "create_quiz",
              "create_quiz_draft",
@@ -249,6 +250,61 @@ defmodule QuizProjectWeb.McpTest do
 
     assert result["isError"]
     assert result["structuredContent"]["error"]["code"] == "validation_error"
+  end
+
+  test "cadastra um produto na Wish Store via tools/call", %{conn: conn, user: user} do
+    created =
+      call_tool(conn, "create_product", %{
+        "name" => "Vale-café",
+        "description" => "Um café por conta da casa.",
+        "price" => 100
+      })
+
+    refute created["isError"]
+    assert created["structuredContent"]["name"] == "Vale-café"
+    assert created["structuredContent"]["price"] == 100
+
+    assert [product] = QuizProject.Store.list_products(user)
+    assert product.id == created["structuredContent"]["id"]
+  end
+
+  test "sinaliza argumentos obrigatórios ausentes ao criar produto", %{conn: conn} do
+    result = call_tool(conn, "create_product", %{"name" => "Sem preço"})
+
+    assert result["isError"]
+
+    assert %{"code" => "validation_error", "details" => [details]} =
+             result["structuredContent"]["error"]
+
+    assert details =~ "description"
+    assert details =~ "price"
+  end
+
+  test "exige o escopo store:write para cadastrar produto", %{user: user} do
+    raw = "quiz_" <> Base.url_encode64(:crypto.strong_rand_bytes(32), padding: false)
+    hash = :crypto.hash(:sha256, raw) |> Base.encode16(case: :lower)
+
+    ApiToken
+    |> Ash.Changeset.for_create(
+      :create,
+      %{user_id: user.id, name: "Somente leitura", token_hash: hash, scopes: ["quizzes:read"]},
+      authorize?: false
+    )
+    |> Ash.create!()
+
+    read_only = api_conn(build_conn(), raw)
+
+    denied =
+      call_tool(read_only, "create_product", %{
+        "name" => "Sem escopo",
+        "description" => "Y",
+        "price" => 10
+      })
+
+    assert denied["isError"]
+
+    assert %{"code" => "insufficient_scope", "required_scope" => "store:write"} =
+             denied["structuredContent"]["error"]
   end
 
   test "sinaliza argumentos obrigatórios ausentes", %{conn: conn} do
