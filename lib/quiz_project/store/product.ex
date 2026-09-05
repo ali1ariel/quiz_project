@@ -27,12 +27,22 @@ defmodule QuizProject.Store.Product do
     defaults [:read, :destroy]
 
     create :create do
-      accept [:user_id, :name, :description, :price]
+      accept [:user_id, :name, :description, :price, :link_url, :link_text]
     end
 
     update :update do
-      accept [:name, :description, :price]
+      accept [:name, :description, :price, :link_url, :link_text]
     end
+  end
+
+  validations do
+    validate present(:link_url),
+      where: [present(:link_text)],
+      message: "obrigatório quando o texto do link é informado"
+
+    validate present(:link_text),
+      where: [present(:link_url)],
+      message: "obrigatório quando a URL do link é informada"
   end
 
   attributes do
@@ -55,6 +65,16 @@ defmodule QuizProject.Store.Product do
     attribute :price, :integer do
       allow_nil? false
       constraints min: 1
+    end
+
+    attribute :link_url, :string do
+      allow_nil? true
+      constraints max_length: 2048
+    end
+
+    attribute :link_text, :string do
+      allow_nil? true
+      constraints max_length: 120
     end
 
     timestamps()

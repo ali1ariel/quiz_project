@@ -204,6 +204,38 @@ defmodule QuizProjectWeb.ApiControllerTest do
     assert product.id == created["data"]["id"]
   end
 
+  test "cadastra produto com link externo", %{conn: conn} do
+    created =
+      conn
+      |> post(~p"/api/v1/products", %{
+        "name" => "Vale-café",
+        "description" => "Um café por conta da casa.",
+        "price" => 100,
+        "link_url" => "https://loja.com/vale-cafe",
+        "link_text" => "Ver na loja"
+      })
+      |> json_response(201)
+
+    assert %{
+             "data" => %{
+               "link_url" => "https://loja.com/vale-cafe",
+               "link_text" => "Ver na loja"
+             }
+           } = created
+  end
+
+  test "recusa link_url sem link_text", %{conn: conn} do
+    assert %{"error" => %{"code" => "validation_error"}} =
+             conn
+             |> post(~p"/api/v1/products", %{
+               "name" => "Vale-café",
+               "description" => "Um café por conta da casa.",
+               "price" => 100,
+               "link_url" => "https://loja.com/vale-cafe"
+             })
+             |> json_response(422)
+  end
+
   test "recusa cadastro de produto sem escopo store:write", %{user: user} do
     raw = "quiz_" <> Base.url_encode64(:crypto.strong_rand_bytes(32), padding: false)
     hash = :crypto.hash(:sha256, raw) |> Base.encode16(case: :lower)

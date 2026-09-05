@@ -61,7 +61,12 @@ defmodule QuizProjectWeb.Mcp.Tools do
   @product_properties %{
     "name" => %{type: "string", description: "Nome do produto"},
     "description" => %{type: "string", description: "Descrição do produto"},
-    "price" => %{type: "integer", description: "Preço em pontos (mínimo 1)"}
+    "price" => %{type: "integer", description: "Preço em pontos (mínimo 1)"},
+    "link_url" => %{type: "string", description: "URL do produto externo (opcional)"},
+    "link_text" => %{
+      type: "string",
+      description: "Texto exibido para o link externo (opcional, exigido junto com link_url)"
+    }
   }
 
   @tools %{

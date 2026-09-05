@@ -318,6 +318,12 @@ defmodule QuizProjectWeb.Api.OpenApiController do
           name: %{type: "string"},
           description: %{type: "string"},
           price: %{type: "integer", description: "Preço em pontos"},
+          link_url: %{type: "string", nullable: true, description: "URL do produto externo"},
+          link_text: %{
+            type: "string",
+            nullable: true,
+            description: "Texto exibido para o link externo"
+          },
           inserted_at: %{type: "string", format: "date-time"},
           updated_at: %{type: "string", format: "date-time"}
         }
@@ -328,7 +334,15 @@ defmodule QuizProjectWeb.Api.OpenApiController do
         properties: %{
           name: %{type: "string", minLength: 1},
           description: %{type: "string", minLength: 1},
-          price: %{type: "integer", minimum: 1, description: "Preço em pontos"}
+          price: %{type: "integer", minimum: 1, description: "Preço em pontos"},
+          link_url: %{
+            type: "string",
+            description: "URL do produto externo (opcional, exigido junto com link_text)"
+          },
+          link_text: %{
+            type: "string",
+            description: "Texto exibido para o link externo (opcional, exigido junto com link_url)"
+          }
         }
       },
       "Metrics" => %{

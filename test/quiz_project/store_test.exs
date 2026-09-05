@@ -37,6 +37,31 @@ defmodule QuizProject.StoreTest do
       assert {:error, _} = Store.create_product(user, %{name: "X", description: "Y", price: 0})
       assert {:error, _} = Store.create_product(user, %{name: "X", description: "Y", price: -5})
     end
+
+    test "aceita link_url e link_text juntos", %{user: user} do
+      produto = product(user, %{link_url: "https://loja.com/item", link_text: "Ver na loja"})
+
+      assert produto.link_url == "https://loja.com/item"
+      assert produto.link_text == "Ver na loja"
+    end
+
+    test "recusa link_url sem link_text e vice-versa", %{user: user} do
+      assert {:error, _} =
+               Store.create_product(user, %{
+                 name: "X",
+                 description: "Y",
+                 price: 10,
+                 link_url: "https://loja.com/item"
+               })
+
+      assert {:error, _} =
+               Store.create_product(user, %{
+                 name: "X",
+                 description: "Y",
+                 price: 10,
+                 link_text: "Ver na loja"
+               })
+    end
   end
 
   describe "list_products/1" do

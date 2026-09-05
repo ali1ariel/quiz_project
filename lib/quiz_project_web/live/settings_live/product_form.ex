@@ -59,6 +59,8 @@ defmodule QuizProjectWeb.SettingsLive.ProductForm do
       name: (product && product.name) || "",
       description: (product && product.description) || "",
       price: (product && to_string(product.price)) || "",
+      link_url: (product && product.link_url) || "",
+      link_text: (product && product.link_text) || "",
       max_images: @max_images
     )
   end
@@ -77,7 +79,9 @@ defmodule QuizProjectWeb.SettingsLive.ProductForm do
      assign(socket,
        name: Map.get(params, "name", ""),
        description: Map.get(params, "description", ""),
-       price: Map.get(params, "price", "")
+       price: Map.get(params, "price", ""),
+       link_url: Map.get(params, "link_url", ""),
+       link_text: Map.get(params, "link_text", "")
      )}
   end
 
@@ -110,7 +114,9 @@ defmodule QuizProjectWeb.SettingsLive.ProductForm do
          attrs = %{
            name: String.trim(params["name"] || ""),
            description: String.trim(params["description"] || ""),
-           price: price
+           price: price,
+           link_url: blank_to_nil(params["link_url"]),
+           link_text: blank_to_nil(params["link_text"])
          },
          {:ok, product} <- save_product(socket, attrs) do
       consume_uploaded_entries(socket, :images, fn %{path: path}, entry ->
@@ -155,6 +161,13 @@ defmodule QuizProjectWeb.SettingsLive.ProductForm do
 
   defp parse_price(_value), do: :error
 
+  defp blank_to_nil(value) do
+    case value && String.trim(value) do
+      "" -> nil
+      trimmed -> trimmed
+    end
+  end
+
   @impl true
   def render(assigns) do
     total_images = length(assigns.existing_images) + length(assigns.uploads.images.entries)
@@ -184,7 +197,9 @@ defmodule QuizProjectWeb.SettingsLive.ProductForm do
 
         <div class="border-b border-base-300 pb-4">
           <h1 class="text-2xl font-bold tracking-tight">{@page_title}</h1>
-          <p class="text-sm opacity-70">Nome, descrição, preço em pontos e imagens do produto.</p>
+          <p class="text-sm opacity-70">
+            Nome, descrição, preço em pontos, link externo e imagens do produto.
+          </p>
         </div>
 
         <form
@@ -307,6 +322,38 @@ defmodule QuizProjectWeb.SettingsLive.ProductForm do
                 maxlength="2000"
                 class="textarea textarea-bordered w-full rounded-xl"
               >{@description}</textarea>
+            </div>
+
+            <div class="flex gap-4">
+              <div class="flex-1 space-y-2">
+                <label for="product-link-url" class="block text-sm font-semibold opacity-75">
+                  Link do produto (opcional)
+                </label>
+                <input
+                  type="url"
+                  id="product-link-url"
+                  name="product[link_url]"
+                  value={@link_url}
+                  maxlength="2048"
+                  placeholder="https://..."
+                  class="input input-bordered w-full rounded-xl"
+                />
+              </div>
+
+              <div class="flex-1 space-y-2">
+                <label for="product-link-text" class="block text-sm font-semibold opacity-75">
+                  Texto do link
+                </label>
+                <input
+                  type="text"
+                  id="product-link-text"
+                  name="product[link_text]"
+                  value={@link_text}
+                  maxlength="120"
+                  placeholder="Ver na loja"
+                  class="input input-bordered w-full rounded-xl"
+                />
+              </div>
             </div>
 
             <div class="flex gap-3 pt-2">

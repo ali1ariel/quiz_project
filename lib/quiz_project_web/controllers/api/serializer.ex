@@ -64,6 +64,8 @@ defmodule QuizProjectWeb.Api.Serializer do
       name: product.name,
       description: product.description,
       price: product.price,
+      link_url: product.link_url,
+      link_text: product.link_text,
       inserted_at: datetime(product.inserted_at),
       updated_at: datetime(product.updated_at)
     }

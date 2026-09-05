@@ -1187,6 +1187,12 @@
                 Descrição do produto.
               </:field>
               <:field name="price" type="integer" presence="Sempre">Preço em pontos.</:field>
+              <:field name="link_url" type="string" presence="Opcional">
+                URL do produto externo.
+              </:field>
+              <:field name="link_text" type="string" presence="Opcional">
+                Texto exibido para o link externo.
+              </:field>
               <:field name="inserted_at" type="datetime" presence="Sempre">Data de criação.</:field>
               <:field name="updated_at" type="datetime" presence="Sempre">Última alteração.</:field>
             </.api_fields>
@@ -1216,6 +1222,12 @@
                 </:field>
                 <:field name="price" type="integer" presence="Obrigatório">
                   Preço em pontos. Precisa ser maior que zero.
+                </:field>
+                <:field name="link_url" type="string" presence="Opcional">
+                  URL do produto externo. Obrigatório se link_text for informado.
+                </:field>
+                <:field name="link_text" type="string" presence="Opcional">
+                  Texto exibido para o link externo. Obrigatório se link_url for informado.
                 </:field>
               </.api_fields>
               <p class="text-sm">

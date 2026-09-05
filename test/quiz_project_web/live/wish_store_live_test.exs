@@ -117,5 +117,29 @@ defmodule QuizProjectWeb.WishStoreLiveTest do
 
       assert has_element?(view, "button[disabled]", "Resgatar por 999 pontos")
     end
+
+    test "mostra o link externo com o texto cadastrado", %{conn: conn, user: user} do
+      {:ok, product} =
+        Store.create_product(user, %{
+          name: "Vale-café",
+          description: "Um café.",
+          price: 100,
+          link_url: "https://loja.com/vale-cafe",
+          link_text: "Ver na loja"
+        })
+
+      {:ok, view, _html} = live(conn, ~p"/wish-store/#{product.id}")
+
+      assert has_element?(view, ~s(a[href="https://loja.com/vale-cafe"]), "Ver na loja")
+    end
+
+    test "não mostra link quando produto não tem um cadastrado", %{conn: conn, user: user} do
+      {:ok, product} =
+        Store.create_product(user, %{name: "Vale-café", description: "Um café.", price: 100})
+
+      {:ok, view, _html} = live(conn, ~p"/wish-store/#{product.id}")
+
+      refute has_element?(view, "a[target=_blank]")
+    end
   end
 end

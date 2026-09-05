@@ -29,7 +29,9 @@ defmodule QuizProjectWeb.Api.Params do
   @product_fields %{
     "name" => :name,
     "description" => :description,
-    "price" => :price
+    "price" => :price,
+    "link_url" => :link_url,
+    "link_text" => :link_text
   }
 
   @order_modes %{"fixed" => :fixed, "random" => :random, "ai" => :ai}

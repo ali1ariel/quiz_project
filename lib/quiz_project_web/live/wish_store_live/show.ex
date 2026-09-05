@@ -113,6 +113,17 @@ defmodule QuizProjectWeb.WishStoreLive.Show do
               {@product.description}
             </p>
 
+            <a
+              :if={@product.link_url}
+              href={@product.link_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              class="flex w-fit items-center gap-1 text-sm font-semibold text-primary hover:underline"
+            >
+              <.icon name="hero-arrow-top-right-on-square" class="size-4" />
+              {@product.link_text || @product.link_url}
+            </a>
+
             <div class="h-px bg-base-300" />
 
             <Components.price_tag price={@product.price} size="text-3xl" />
